@@ -2,7 +2,7 @@
 
 Installando los requerimientos para la app
 
-1. pip install -r requeriments.txt
+1. pip install -r requirements.txt
 
 2. Crear un nueva base de datos llamada GroupTours desde postgres
 
