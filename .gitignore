@@ -1,4 +1,81 @@
-*.pyc
-__pycache__/
-.env
 *.DS_Store
+*.pyc
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+*.egg
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.coverage
+.tox/
+nosetests.xml
+coverage.xml
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+media/
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# IDEs
+.idea/
+.vscode/
+*.pydevproject
+*.project
+*.settings
+*.tmproj
+*.pycharm
+*.iml
+*.nbs
+*.bak
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+
+# Type annotations
+*.pyi
+*.pyd
+
+# IPython Notebook
+.ipynb_checkpoints
