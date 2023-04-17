@@ -1,0 +1,10 @@
+{% extends 'index.html' %}
+
+{% block content %}
+<h1>Eliminar Usuario</h1>
+<p>¿Está seguro de que desea eliminar este usuario?</p>
+<form method="post">
+    {% csrf_token %}
+    <input type="submit" value="Eliminar">
+</form>
+{% endblock %}
