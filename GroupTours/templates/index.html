@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!-- <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -9,4 +9,90 @@
 <body>
     <h1>Bienvenido a GROUP TOURS APP</h1>
 </body>
+</html> -->
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Formulario de inicio de sesión en Python</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+      /* Estilos CSS para el formulario de inicio de sesión */
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        background: url('https://st2.depositphotos.com/1154952/5383/i/600/depositphotos_53830577-stock-photo-young-business-man-standing-with.jpg') no-repeat center center fixed;
+        background-size: cover;
+      }
+      
+      .login-box {
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        box-shadow: 0 0 10px #ccc;
+        padding: 20px;
+        max-width: 400px;
+        width: 100%;
+      }
+      
+      form {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      
+      input[type="text"],
+      input[type="password"] {
+        margin: 10px 0;
+        padding: 10px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        width: 100%;
+        box-sizing: border-box;
+      }
+      
+      input[type="submit"] {
+        margin: 10px 0;
+        padding: 10px;
+        border: none;
+        border-radius: 4px;
+        background-color: #007bff;
+        color: #fff;
+        cursor: pointer;
+        width: 100%;
+        box-sizing: border-box;
+      }
+      
+      input[type="submit"]:hover {
+        background-color: #0062cc;
+      }
+      
+      label {
+        font-weight: bold;
+        margin-bottom: 5px;
+      }
+      
+      .error-message {
+        color: red;
+        margin-top: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="login-box">
+      <h1 style="text-align: center; color:#fff">Group Tours App</h1>
+      <h3 style="text-align: center; color:#fff">Iniciar Sesión</h3>
+      <form action="/login" method="post">
+        <label for="username">Nombre de usuario:</label>
+        <input type="text" id="username" name="username">
+        
+        <label for="password">Contraseña:</label>
+        <input type="password" id="password" name="password">
+        
+        <input type="submit" value="Iniciar sesión">
+      </form>
+    </div>
+  </body>
 </html>
