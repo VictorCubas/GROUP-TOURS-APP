@@ -4,4 +4,10 @@ from django.http import HttpResponse
 # Create your views here.
 
 def index(request):
-    return render(request, 'index.html')
+    mensaje = request.GET.get('mensaje', '')
+    # print(request.path)
+    return render(request, 'index.html', {'mensaje': mensaje})
+
+
+# def iniciarSesion(request):
+#     return render(request, 'home.html')
