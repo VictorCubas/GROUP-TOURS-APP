@@ -148,3 +148,18 @@ a.sidebar-link:hover{
     margin-left: 0.5rem !important; */
     border-radius: 0.375rem !important;
 }
+
+.formulario{
+    display: flex;
+    flex-direction: column
+}
+
+.formulario-campos{
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-evenly;
+}
+
+.text-black{
+    color: #000;
+}

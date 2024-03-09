@@ -4,7 +4,7 @@
 
 
 {% block body %}
-<h1>MODULO PERMISOS</h1>
+<h1 class="pt-2">MODULO PERMISOS</h1>
     <h4 id="email">{{email}}</h4>
 	<!--<h4>Permisos sobre "Permiso": &nbsp;
 		{% if permisosPorPantalla == None %}
@@ -17,74 +17,76 @@
 	</h4>-->
     <br>
     <div class="row">
-		<div class="col-sm-12 col-md-6 col-lg-4 col-xl-4">
-			<h3>Registrar Permiso</h3>
+        <div class="col-sm-12 col-md-12 col-lg-12 col-xl-12">
+			<h3 class="text-black">Registrar Permiso</h3>
 			<div class="card">
 				<div class="card-body">
-					<form id='url' action='' method="POST"> {% csrf_token%}
-						<div class="form-group py-2">
-							<input type="text" id="txtNombrePermiso" name='txtNombre' 
-								class="form-control" placeholder="Nombre del Permiso" 
-								maxlength="50" required>
-						</div>
-						<div class="form-group py-2">
-							<!--<input type="text" id="txtTipoPermiso" name='txtTipo' 
-								class="form-control" placeholder="Tipo: C-R-U-D" 
-							    required>-->
-                                <select class="form-select select-tipo" aria-label="Default select example" required>
-                                    <option selected disabled value="">Selecciona el tipo</option>
-                                    <option value="C">Creacion</option>
-                                    <option value="R">Lectura</option>
-                                    <option value="U">Modificacion</option>
-                                    <option value="D">Eliminacion</option>
-                                  </select>
-						</div>
-                        <div class="form-group py-2">
-							<input type="text" id="txtDescripcionPermiso" name='txtDescripcion' 
-								class="form-control" placeholder="Descripcion" 
-							    required> 
-                               
+					<form class="formulario" id='url' action='' method="POST"> {% csrf_token%}
+						<div class="formulario-campos">
+							<div class="form-group py-2">
+								<input type="text" id="txtNombrePermiso" name='txtNombre' 
+									class="form-control" placeholder="Nombre del Permiso" 
+									maxlength="50" required>
+							</div>
+							<div class="form-group py-2">
+								<!--<input type="text" id="txtTipoPermiso" name='txtTipo' 
+									class="form-control" placeholder="Tipo: C-R-U-D" 
+									required>-->
+									<select class="form-select select-tipo" aria-label="Default select example" required>
+										<option selected disabled value="">Selecciona el tipo</option>
+										<option value="C">Creacion</option>
+										<option value="R">Lectura</option>
+										<option value="U">Modificacion</option>
+										<option value="D">Eliminacion</option>
+									  </select>
+							</div>
+							<div class="form-group py-2">
+								<input type="text" id="txtDescripcionPermiso" name='txtDescripcion' 
+									class="form-control" placeholder="Descripcion" 
+									required> 
+								   
+							</div>
+	
+							<div class="form-group py-2">
+								<!--<ul class="navbar-nav"> 
+									<li class="nav-item dropdown"> 
+										<a id='btnDropdown' style="width: 200px;" class="btn btn-info" href="http://example.com" id="navbarDropdownMenuLink"
+											data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+											Lista de formularios
+											<i class="fa fa-angle-down"></i>
+										</a>
+										<div class="dropdown-menu" aria-labelledby="navbarDropdownMenuLink"
+											style="position: absolute; top: 100px;" > 
+											{% for formulario in formularios %}
+												<a class="dropdown-item"
+													href='javascript:cambiarValorDropdown("{{formulario}}")'>{{formulario}}</a> 
+												
+											{% endfor %}
+										</div> 
+									</li>
+								</ul>-->
+								<select class="form-select select-pantalla" aria-label="Default select example" required>
+									<option selected disabled value="">Selecciona el formulario</option>
+									<option value="Paquetes">Paquetes</option>
+									<option value="Usuarios">Usuarios</option>
+									<option value="Pasajeros">Pasajeros</option>
+									<option value="Roles">Roles</option>
+									<option value="Permisos">Permisos</option>
+									<option value="Compras">Compras</option>
+									<option value="Ventas">Ventas</option>
+									<option value="Documentos">Documentos</option>
+								  </select>
+							</div>
+	
+							<!--
+							<div class="form-group py-2">
+								<input type="text" id="txtFormulario" name='txtFormulario' 
+									class="form-control" placeholder="Formulario" 
+									required>
+							</div>-->
 						</div>
 
-						<div class="form-group py-2">
-							<!--<ul class="navbar-nav"> 
-								<li class="nav-item dropdown"> 
-									<a id='btnDropdown' style="width: 200px;" class="btn btn-info" href="http://example.com" id="navbarDropdownMenuLink"
-										data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-										Lista de formularios
-										<i class="fa fa-angle-down"></i>
-									</a>
-									<div class="dropdown-menu" aria-labelledby="navbarDropdownMenuLink"
-										style="position: absolute; top: 100px;" > 
-										{% for formulario in formularios %}
-											<a class="dropdown-item"
-												href='javascript:cambiarValorDropdown("{{formulario}}")'>{{formulario}}</a> 
-											
-										{% endfor %}
-									</div> 
-								</li>
-							</ul>-->
-                            <select class="form-select select-pantalla" aria-label="Default select example" required>
-                                <option selected disabled value="">Selecciona el formulario</option>
-                                <option value="Paquetes">Paquetes</option>
-                                <option value="Usuarios">Usuarios</option>
-                                <option value="Pasajeros">Pasajeros</option>
-                                <option value="Roles">Roles</option>
-                                <option value="Permisos">Permisos</option>
-                                <option value="Compras">Compras</option>
-                                <option value="Ventas">Ventas</option>
-                                <option value="Documentos">Documentos</option>
-                              </select>
-						</div>
-
-						<!--
-						<div class="form-group py-2">
-							<input type="text" id="txtFormulario" name='txtFormulario' 
-								class="form-control" placeholder="Formulario" 
-							    required>
-						</div>-->
-
-						<div class="form-group py-2">
+						<div class="formulario-guardar form-group pt-4 px-5 mx-3">
 							<button type="submit" class="btn btn-success btn-block text-white btnGuardarPermiso">Guardar</button>
 						</div>
 					</form>
@@ -93,7 +95,7 @@
 		</div>
 
         
-		<div id="divListadoPermiso" class="col-sm-12 col-md-6 col-lg-8 col-xl-8">
+		<div id="divListadoPermiso" class="col-sm-12 col-md-12 col-lg-12 col-xl-12">
 			<h3>Listado de permisos</h3>
 			<div class="table-responsive py-2">
 				<table class='table table-striped'>
@@ -147,5 +149,6 @@
 			}
 
 		</script>
+    </div>    
 {% endblock%}
 
