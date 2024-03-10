@@ -163,3 +163,13 @@ a.sidebar-link:hover{
 .text-black{
     color: #000;
 }
+
+.margin-guardar-boton{
+    margin-left: 3.4rem !important;
+    transition: margin-left 0.5s ease;
+}
+
+.formulario-guardar{
+    margin-left: 0;
+    transition: margin-left 0.5s ease;
+}

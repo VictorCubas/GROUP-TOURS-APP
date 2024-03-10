@@ -99,7 +99,7 @@
                                         </div>-->
                                     </div>
             
-                                    <div class="formulario-guardar form-group pt-4 px-5 mx-3">
+                                    <div class="formulario-guardar form-group pt-4 px-5">
                                         <button type="submit" class="btn btn-success btn-block text-white btnGuardarPermiso">Guardar</button>
                                     </div>
                                 </form>
@@ -127,7 +127,7 @@
 							<!-- <th>id</th> -->
 							<th>Descripcion</th>
 							<th>Formulario</th>
-							<th colspan="2">Opciones</th>
+							<th class="text-center" colspan="2">Opciones</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -149,9 +149,13 @@
 							<!-- <td>{{p.idPermiso}}</td> -->
 							<td>{{p.descripcion}}</td>
 							<td>{{p.formulario}}</td>
-							<td><a href="/edicionPermiso/{{email}}/{{p.idPermiso}}" class="btn btn-info btnEditarPermiso">Editar</a></td>
+							<td class="text-end"><a href="/edicionPermiso/{{email}}/{{p.idPermiso}}" class="btn btn-info btnEditarPermiso">
+                                <i class="fa fa-edit"></i>
+                            </a></td>
 							<td><a href="/eliminarPermiso/{{email}}/{{p.idPermiso}}" class="btn btn-danger 
-								btnEliminarPermiso btnEliminacion">Eliminar</a></td>
+								btnEliminarPermiso btnEliminacion">
+                                <i class="fa fa-trash-o"></i>
+                            </a></td>
 						</tr>
 						{% endfor %}
 					</tbody>
