@@ -61,7 +61,7 @@
                                 <a href="#" class="sidebar-link item-menu">Roles</a>
                             </li>
                             <li class="sidebar-item">
-                                <a href="#" class="sidebar-link item-menu">Permisos</a>
+                                <a href="/permiso" class="sidebar-link item-menu">Permisos</a>
                             </li>
                         </ul>
                     </li>
@@ -137,7 +137,7 @@
         <div class="main">
             <nav class="navbar navbar-expand px-3 border-bottom d-flex justify-content-between">
                 <!-- Button for sidebar toggle -->
-                <button class="btn" type="button" data-bs-theme="dark">
+                <button class="btn burger-btn" onclick="menuLateralToggle()" type="button" data-bs-theme="dark">
                     <span class="navbar-toggler-icon"></span>
                 </button>
 				<div class="d-flex gap-3">
@@ -166,5 +166,12 @@
         crossorigin="anonymous"></script>
 	
      <script src="{% static 'js/sideBar.js' %}"></script>
+     <script>
+        function menuLateralToggle(){
+            const guardarBoton = document.querySelector('.formulario-guardar');
+
+            guardarBoton.classList.toggle('margin-guardar-boton');
+        }
+     </script>
 </body>
 </html>	
