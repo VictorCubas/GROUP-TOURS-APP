@@ -23,3 +23,14 @@ def registrarPermiso(request):
     listaPermiso = Permiso.objects.all().order_by('id')
 
     return render(request, 'permiso.html',{'listaPermisos':listaPermiso} )
+
+def eliminar(request, id):
+    try:
+        permiso = Permiso.objects.get(id=id)
+        permiso.delete()
+    except:
+        pass
+
+    listaPermiso = Permiso.objects.all().order_by('id')
+
+    return render(request, 'permiso.html', {'listaPermisos':listaPermiso})
