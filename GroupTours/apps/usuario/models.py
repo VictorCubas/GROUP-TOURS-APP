@@ -12,7 +12,7 @@ class Usuario(models.Model):
     telefono = models.CharField(max_length=15)
     correo = models.CharField(max_length=100)
     direccion = models.CharField(max_length=200)
-    estado = models.CharField(max_length=1, default='')
+    estado = models.CharField(max_length=1, default='A')
     formulario = models.CharField(max_length=50, default='')
     
     #personalizamos la tabla en postgres
@@ -22,7 +22,7 @@ class Usuario(models.Model):
 
     
     def _str_(self):
-        texto = '{} {} {}'
+        texto = '{} {} {} {} {} {} {} {}'
         return texto.format(self.documento,
                             self.nombre, 
                             self.apellido,

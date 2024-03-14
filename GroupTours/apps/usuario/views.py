@@ -13,6 +13,7 @@ def registrarUsuario(request):
     #se recupera los datos del formulario
     documento = request.POST.get('txtDocumento')
     nombre = request.POST.get('txtNombre')
+    apellido = request.POST.get('txtApellido')
     telefono = request.POST.get('txtTelefono')
     correo = request.POST.get('txtCorreo')
     direccion = request.POST.get('txtDireccion')
@@ -22,6 +23,7 @@ def registrarUsuario(request):
     #se crea un usuario
     Usuario.objects.create(documento = documento,
                            nombre = nombre,
+                           apellido = apellido,
                            telefono = telefono,
                            correo = correo,
                            direccion = direccion,
