@@ -14,7 +14,7 @@
                 <div class="accordion-item">
                   <h2 class="accordion-header" id="headingOne">
                     <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="true" aria-controls="collapseOne">
-                        Registrar Permiso
+                        Registrar Usuario
                     </button>
                   </h2>
                   <div id="collapseOne" class="accordion-collapse collapse show" aria-labelledby="headingOne" data-bs-parent="#accordionExample">
@@ -22,18 +22,15 @@
                         <div class="card">
                             <div class="card-body">
                                 
-                                <form class="formulario" id='url' action='/permiso/registrarPermiso' method="POST"> {% csrf_token%}
+                                <form class="formulario" id='url' action='/usuario/registrarUsuario' method="POST"> {% csrf_token%}
                                     <div class="formulario-campos">
                                         <div class="form-group py-2">
 
-                                            <input type="text" id="txtNombrePermiso" name='txtNombre' 
-                                                class="form-control" placeholder="Nombre del Permiso" 
+                                            <input type="text" id="txtNombreUsuario" name='txtNombre' 
+                                                class="form-control" placeholder="Nombre del Usuario" 
                                                 maxlength="50" required>
                                         </div>
                                         <div class="form-group py-2">
-                                            <!--<input type="text" id="txtTipoPermiso" name='txtTipo' 
-                                                class="form-control" placeholder="Tipo: C-R-U-D" 
-                                                required>-->
                                                 <select class="form-select select-tipo" aria-label="Default select example"
                                                     name="txtTipo" required>
                                                     <option selected disabled value="">Selecciona el tipo</option>
@@ -44,7 +41,7 @@
                                                   </select>
                                         </div>
                                         <div class="form-group py-2">
-                                            <input type="text" id="txtDescripcionPermiso" name='txtDescripcion' 
+                                            <input type="text" id="txtDescripcionUsuario" name='txtDescripcion' 
                                                 class="form-control" placeholder="Descripcion" 
                                                 required> 
                                                

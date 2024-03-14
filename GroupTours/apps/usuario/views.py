@@ -19,7 +19,7 @@ def registrarUsuario(request):
     estado = request.POST.get('txtEstado')
     formulario = request.POST.get('txtFormulario')
    
-    #se crea un permiso
+    #se crea un usuario
     Usuario.objects.create(documento = documento,
                            nombre = nombre,
                            telefono = telefono,
@@ -28,7 +28,7 @@ def registrarUsuario(request):
                            estado = estado,
                            formulario = formulario)
 
-    #se recupera toda la lista de permiso
+    #se recupera toda la lista de usuarios
     listaUsuario = Usuario.objects.all().order_by('id')
 
     return render(request, 'usuario.html', {'listaUsuarios':listaUsuario} )

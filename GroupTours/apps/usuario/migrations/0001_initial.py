@@ -12,10 +12,20 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.CreateModel(
-            name='Usuario',
-            fields=[
+            name = 'Usuario',
+            fields = [
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('documento', models.CharField(max_length=8)),
                 ('nombre', models.CharField(max_length=100)),
+                ('apellido',  models.CharField(max_length=100)),
+                ('telefono',  models.CharField(max_length=15)),
+                ('correo',  models.CharField(max_length=100)),
+                ('direccion',  models.CharField(max_length=200)),
+                ('estado', models.CharField(max_length=1, default=''))
             ],
+            options = {
+                'verbose_name': 'Usuario',
+                'db_table': 'Usuario',
+            },
         ),
     ]
