@@ -46,9 +46,13 @@ INSTALLED_APPS = [
     
     'apps.login',
     'apps.usuario',
+<<<<<<< HEAD
     'apps.home',
     'apps.logout',
     'apps.permiso',
+=======
+    'apps.users',
+>>>>>>> 6cb9efa5c264a4d9814222c04185d6a2bf212cfe
 ]
 
 MIDDLEWARE = [

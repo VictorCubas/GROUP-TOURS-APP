@@ -20,7 +20,12 @@ from django.conf.urls import include
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('apps.login.urls')),
+<<<<<<< HEAD
     path('home', include('apps.home.urls')),
     path('logout', include('apps.logout.urls')),
     path('permiso', include('apps.permiso.urls')),
+=======
+    path('', include('apps.usuario.urls')),
+    path('usuarios/', include('apps.users.urls')),
+>>>>>>> 6cb9efa5c264a4d9814222c04185d6a2bf212cfe
 ]
