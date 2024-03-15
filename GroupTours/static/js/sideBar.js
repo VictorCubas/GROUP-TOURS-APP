@@ -18,3 +18,6 @@ toggler.addEventListener("click",function(){
        opcion.classList.add("activo");
    });
  });
+
+
+ $('.selectpicker').selectpicker();
