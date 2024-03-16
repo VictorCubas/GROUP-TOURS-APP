@@ -20,4 +20,55 @@ toggler.addEventListener("click",function(){
  });
 
 
+//Boostrap select
  $('.selectpicker').selectpicker();
+
+
+ //SWEET ALER, ELMINACION EXITOSA
+ window.onload = function() { dispararModalEliminacionExitosa(); };
+
+function dispararModalEliminacionExitosa(){
+    eliminacionExitosaEl = document.getElementById('eliminacionExitosa');
+    console.log('eliminacionExitosaEl.value: ', eliminacionExitosaEl.value);
+
+    if(eliminacionExitosaEl.value === 'True'){
+        Swal.fire({
+            title: "Eliminado!",
+            text: "Se ha realizado la eliminación.",
+            icon: "success"
+            });
+    }
+}
+
+//EVENTO PARA DETECTAR CADA VEZ QUE SE QUIERA ELIMINAR
+(function () {
+
+    const btnEliminacion = document.querySelectorAll(".btnEliminacion");
+
+    btnEliminacion.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const enlace = document.getElementById('enlace-eliminacion');
+            this.confirmarElimnacion(enlace.href)
+            e.preventDefault();
+            
+        });
+    });
+    
+})();
+
+
+function confirmarElimnacion(url){
+    Swal.fire({
+        title: "Estás seguro de que quieres eliminar?",
+        text: "No se podrá revertir la acción!",
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonColor: "#3085d6",
+        cancelButtonColor: "#d33",
+        confirmButtonText: "Sí, elimnalo!"
+      }).then((result) => {
+        if (result.isConfirmed) {
+            window.location.href = url;
+        }
+      });
+}

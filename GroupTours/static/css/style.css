@@ -202,3 +202,7 @@ a.sidebar-link:hover{
     background-color: rgb(173, 199, 239);
     width: 28.1%;
 }
+
+tr{
+    vertical-align: middle;
+}

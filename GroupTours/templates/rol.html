@@ -5,7 +5,9 @@
 
 {% block body %}
 <h1 class="pt-2">MODULO ROLES</h1>
-    <h4 id="email">{{email}}</h4>
+
+    <input id="eliminacionExitosa" name="eliminacionExitosa" type="hidden" value="{{eliminacionExitosa}}">
+    <!-- <h4 id="email">{{email}}</h4> -->
 	<!--<h4>Permisos sobre "Permiso": &nbsp;
 		{% if permisosPorPantalla == None %}
 			Niguno
@@ -31,7 +33,7 @@
                         <div class="card">
                             <div class="card-body">
                                 
-                                <form class="formulario" id='form-rol' action='/rol/agregar' method="POST"> {% csrf_token%}
+                                <form class="formulario" id='form-rol' action='/rol/agregar' method="POST"> {% csrf_token %}
                                     <div class="formulario-campos">
                                         <div class="form-group py-2">
 
@@ -114,12 +116,11 @@
 						</tr>
 					</thead>
 					<tbody>
-						{% for r in rolesPermisosDic %}
+						{% for r in listaRolesPermisos %}
 						<tr>
 							<td>{{forloop.counter}}</td>
 							<td class="permiso-columna-width">{{r.rol.nombre}}</td>
 
-							<!-- <td>{{p.idPermiso}}</td> -->
 							<td class="permiso-columna-width">{{r.rol.descripcion}}</td>
 							<td>
                                 <div class="accordion accordion-permiso" id="accordionPermiso-{{r.rol.id}}">
@@ -164,37 +165,18 @@
 							<td class="text-end"><a href="/edicionPermiso/{{email}}/{{r.id}}" class="btn btn-info btnEditarPermiso">
                                 <i class="fa fa-edit"></i>
                             </a></td>
-							<td><a href="/rol/eliminar/{{r.id}}" class="btn btn-danger 
+							<td>
+                                <a id="enlace-eliminacion" href="/rol/eliminar/{{r.rol.id}}" class="btn btn-danger 
 								btnEliminarPermiso btnEliminacion">
-                                <i class="fa fa-trash-o"></i>
-                            </a></td>
+                                    <i class="fa fa-trash-o"></i>
+                                </a>
+                            </td>
 						</tr>
 						{% endfor %}
 					</tbody>
 				</table>
 			</div>
 		</div>
-    </div>    
-    <script>
-        /*function agregarPermisoSelect(){
-            let permisoListEl = document.querySelector('.permisos-list');
-
-            permisoListEl.innerHTML += `<div class="permisos-list-item">
-                                        <div class="form-group py-2">
-                                            <select class="selectpicker border rounded" data-live-search="true" 
-                                                name="txtPermiso2" data-width="100%" required>
-                                                <option data-tokens="" value="" selected disabled>Seleccione el permiso</option>
-                                                <option data-tokens="more">More food here</option>
-                                                <option data-tokens="more1">More food here</option>
-
-                                            </select>
-                                        </div>
-
-                                        <button type="button" onclick="agregarPermisoSelect()"
-                                            class="agregar-permiso btn btn-primary"><i class="fa fa-plus"></i></button>
-                                    </div>`
-        }
-        */
-    </script>
+    </div>
 {% endblock%}
 
