@@ -5,9 +5,4 @@ from django.http import HttpResponse
 
 def index(request):
     mensaje = request.GET.get('mensaje', '')
-    # print(request.path)
     return render(request, 'index.html', {'mensaje': mensaje})
-
-
-# def iniciarSesion(request):
-#     return render(request, 'home.html')

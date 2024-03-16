@@ -162,27 +162,6 @@
 				</table>
 			</div>
 		</div>
-
-		<script>
-			this.bandera = false;
-			function cambiarValorDropdown(formulario){
-				btnDropdown = document.getElementById('btnDropdown');
-				btnDropdown .innerHTML = formulario
-				btnDropdown.style.width = 200;
-				btnDropdown.innerHTML += "   <i class='fa fa-angle-down'></i>";
-
-
-				let urlNuevo = 'http://' + "{{ request.get_host }}" + "/registrarPermiso/";
-				//console.log("{{ request.get_absolute_url }}");
-				email = document.getElementById('email');
-				urlNuevo += email.innerHTML;
-				//console.log(urlNuevo);
-
-				url.action = urlNuevo + '/' + formulario;
-				console.log(url.action)
-			}
-
-		</script>
     </div>    
 {% endblock%}
 
