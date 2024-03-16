@@ -37,7 +37,7 @@
 
                                             <input type="text" id="txtNombrePermiso" name='txtNombre' 
                                                 class="form-control" placeholder="Nombre del Permiso" 
-                                                maxlength="50" required>
+                                                maxlength="50" required >
                                         </div>
                                         <div class="form-group py-2">
                                             <!--<input type="text" id="txtTipoPermiso" name='txtTipo' 
@@ -149,7 +149,7 @@
 							<!-- <td>{{p.idPermiso}}</td> -->
 							<td>{{p.descripcion}}</td>
 							<td>{{p.formulario}}</td>
-							<td class="text-end"><a href="/edicionPermiso/{{email}}/{{p.idPermiso}}" class="btn btn-info btnEditarPermiso">
+							<td class="text-end"><a href="/permiso/edicionPermiso/{{p.id}}" class="btn btn-info btnEditarPermiso">
                                 <i class="fa fa-edit"></i>
                             </a></td>
 							<td><a href="/permiso/eliminar/{{p.id}}" class="btn btn-danger 

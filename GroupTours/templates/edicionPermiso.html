@@ -33,13 +33,13 @@
                     <div class="card">
                         <div class="card-body">
                             
-                            <form class="formulario" id='url' action='/permiso/editar' method="POST"> {% csrf_token%}
+                            <form class="formulario" id='url' action='/permiso/editarPermiso/{{permiso.id}}' method="POST"> {% csrf_token%}
                                 <div class="formulario-campos">
                                     <div class="form-group py-2">
 
                                         <input type="text" id="txtNombrePermiso" name='txtNombre' 
                                             class="form-control" placeholder="Nombre del Permiso" 
-                                            maxlength="50" required>
+                                            maxlength="50" required value="{{permiso.nombre}}">
                                     </div>
                                     <div class="form-group py-2">
                                         <!--<input type="text" id="txtTipoPermiso" name='txtTipo' 
@@ -47,16 +47,37 @@
                                             required>-->
                                             <select class="form-select select-tipo" aria-label="Default select example"
                                                 name="txtTipo" required>
-                                                <option selected disabled value="">Selecciona el tipo</option>
-                                                <option value="C">Creacion</option>
-                                                <option value="R">Lectura</option>
-                                                <option value="U">Modificacion</option>
-                                                <option value="D">Eliminacion</option>
+                                                <option disabled value="">Selecciona el tipo</option>
+                                                {% if permiso.tipo == "C" %}
+                                                    <option selected value="C">Creacion</option>
+                                                {% else %}
+                                                    <option value="C">Creacion</option>
+                                                {% endif %}
+
+                                                {% if permiso.tipo == "R" %}
+                                                    <option selected value="R">Lectura</option>
+                                                {% else %}
+                                                    <option value="R">Lectura</option>
+                                                {% endif %}
+
+                                                {% if permiso.tipo == "U" %}
+                                                    <option selected value="U">Modificacion</option>
+                                                {% else %}
+                                                    <option value="U">Modificacion</option>
+                                                {% endif %}
+
+                                                {% if permiso.tipo == "D" %}
+                                                    <option selected value="D">Eliminacion</option>
+                                                {% else %}
+                                                    <option value="D">Eliminacion</option>
+                                                {% endif %}
+                                                
+                                                
                                               </select>
                                     </div>
                                     <div class="form-group py-2">
                                         <input type="text" id="txtDescripcionPermiso" name='txtDescripcion' 
-                                            class="form-control" placeholder="Descripcion" 
+                                            class="form-control" placeholder="Descripcion" value="{{permiso.descripcion}}"
                                             required> 
                                            
                                     </div>
@@ -81,15 +102,56 @@
                                         </ul>-->
                                         <select class="form-select select-pantalla" aria-label="Default select example" 
                                         name="txtFormulario" required>
-                                            <option selected disabled value="">Selecciona el formulario</option>
-                                            <option value="Paquetes">Paquetes</option>
-                                            <option value="Usuarios">Usuarios</option>
-                                            <option value="Pasajeros">Pasajeros</option>
-                                            <option value="Roles">Roles</option>
-                                            <option value="Permisos">Permisos</option>
-                                            <option value="Compras">Compras</option>
-                                            <option value="Ventas">Ventas</option>
-                                            <option value="Documentos">Documentos</option>
+
+                                            {% if permiso.formulario == "Paquetes" %}
+                                                    <option selected value="Paquetes">Paquetes</option>
+                                            {% else %}
+                                                <option value="Paquetes">Paquetes</option>
+                                            {% endif %}
+
+
+                                            {% if permiso.formulario == "Usuarios" %}
+                                                <option selected value="Usuarios">Usuarios</option>
+                                            {% else %}
+                                                <option value="Usuarios">Usuarios</option>
+                                            {% endif %}
+
+                                            {% if permiso.formulario == "Pasajeros" %}
+                                                <option selected value="Pasajeros">Pasajeros</option>
+                                            {% else %}
+                                                <option value="Pasajeros">Pasajeros</option>
+                                            {% endif %}
+
+                                            {% if permiso.formulario == "Roles" %}
+                                                <option selected value="Roles">Roles</option>
+                                            {% else %}
+                                                <option value="Roles">Roles</option>
+                                            {% endif %}
+
+                                            {% if permiso.formulario == "Permisos" %}
+                                                <option selected value="Permisos">Permisos</option>
+                                            {% else %}
+                                                <option value="Permisos">Permisos</option>
+                                            {% endif %}
+
+                                            {% if permiso.formulario == "Compras" %}
+                                                <option selected value="Compras">Compras</option>
+                                            {% else %}
+                                                <option value="Compras">Compras</option>
+                                            {% endif %}
+
+                                            {% if permiso.formulario == "Ventas" %}
+                                                <option selected value="Ventas">Ventas</option>
+                                            {% else %}
+                                                <option value="Ventas">Ventas</option>
+                                            {% endif %}
+
+                                            {% if permiso.formulario == "Documentos" %}
+                                                <option selected value="Documentos">Documentos</option>
+                                            {% else %}
+                                                <option value="Documentos">Documentos</option>
+                                            {% endif %}
+
                                           </select>
                                     </div>
             
