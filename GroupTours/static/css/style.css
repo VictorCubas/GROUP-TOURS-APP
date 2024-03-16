@@ -177,3 +177,13 @@ a.sidebar-link:hover{
 .dropdown.bootstrap-select.border.rounded{
     width: 290px !important;
 }
+
+.permisos-list-item{
+    display: flex;
+    column-gap: 0.5rem;
+}
+
+.agregar-permiso{
+    margin-top: 0.4rem;
+    height: 2.5rem;
+}

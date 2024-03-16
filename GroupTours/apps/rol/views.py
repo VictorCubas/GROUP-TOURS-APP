@@ -1,29 +1,46 @@
 from django.shortcuts import render
 from django.http import HttpResponse
+
+from apps.permiso.models import Permiso
 from .models import Rol
+from .models import RolesPermisos
 # Create your views here.
 
 def index(request):
     # print(request.path)
     listaRoles = Rol.objects.all().order_by('id')
-    return render(request, 'rol.html', {'listaRoles':listaRoles})
+    listaPermisos = Permiso.objects.all().order_by('id')
+    return render(request, 'rol.html', {'listaRoles':listaRoles,
+                                        'listaPermisos':listaPermisos})
 
-'''
-def registrarPermiso(request):
+
+def agregar(request):
     #se recupera los datos del formulario
     nombre = request.POST.get('txtNombre')
     descripcion = request.POST.get('txtDescripcion')
-    tipo = request.POST.get('txtTipo')
-    formulario = request.POST.get('txtFormulario')
+    permiso_ids = request.POST.getlist('txtPermisos')
+    
+    print(f'{nombre}, {descripcion}, {permiso_ids}')
+    rol = Rol.objects.create(nombre=nombre, descripcion=descripcion)
    
-    #se crea un permiso
-    Permiso.objects.create(nombre=nombre, descripcion=descripcion, tipo=tipo, formulario=formulario)
+    permisoList = []
+    for p in permiso_ids:
+        permiso = Permiso.objects.get(id=int(p))
+        permisoList.append(permiso)
+        rolPermiso = RolesPermisos.objects.create(rol=rol, permiso=permiso)
+    
+    # print(f'permiso devuelto: {permiso}')
+    
+    #se crea un rol
+    # Rol.objects.create(nombre=nombre, descripcion=descripcion, formulario=formulario)
 
     #se recupera toda la lista de permiso
-    listaPermiso = Permiso.objects.all().order_by('id')
+    listaRoles = Rol.objects.all().order_by('id')
+    listaPermisos = Permiso.objects.all().order_by('id')
+    return render(request, 'rol.html', {'listaRoles':listaRoles,
+                                        'listaPermisos':listaPermisos})
 
-    return render(request, 'permiso.html',{'listaPermisos':listaPermiso} )
-
+'''
 def eliminar(request, id):
     try:
         permiso = Permiso.objects.get(id=id)
