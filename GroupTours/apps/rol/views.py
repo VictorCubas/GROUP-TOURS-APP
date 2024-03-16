@@ -10,8 +10,36 @@ def index(request):
     # print(request.path)
     listaRoles = Rol.objects.all().order_by('id')
     listaPermisos = Permiso.objects.all().order_by('id')
+    
+    listaRolesPermisos = []
+    
+    rolesPermisosDic = []
+    
+    for rol in listaRoles:
+        listaPermisosAsignados = []
+        listaAux = {}
+        
+        listaAux['rol'] = rol
+        rolPermiso = RolesPermisos.objects.filter(rol_id=rol.id)
+        print(f'rolPermiso: {rolPermiso}')
+        
+        for rp in rolPermiso:
+            # permiso = Permiso.objects.get(id=int(rp.permiso_id))
+            listaPermisosAsignados.append(rp.permiso)
+            
+        
+        listaAux['permisos'] = listaPermisosAsignados
+        rolesPermisosDic.append(listaAux)
+    
+    # print(f'listaAux: {listaAux}')
+    # print(f'rolesPermisosDic: {rolesPermisosDic}')
+    for p in rolesPermisosDic:
+        print(f'nombre: {p}')
+    
     return render(request, 'rol.html', {'listaRoles':listaRoles,
-                                        'listaPermisos':listaPermisos})
+                                        'listaPermisos':listaPermisos,
+                                        'listaRolesPermisos':listaRolesPermisos,
+                                        'rolesPermisosDic': rolesPermisosDic})
 
 
 def agregar(request):

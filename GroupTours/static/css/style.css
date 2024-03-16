@@ -187,3 +187,18 @@ a.sidebar-link:hover{
     margin-top: 0.4rem;
     height: 2.5rem;
 }
+
+.accordion-permiso{
+    width: 27rem;
+}
+
+.permiso-columna-width{
+    width: 24%;
+}
+
+.dropdown-custom{
+    position: absolute;
+    z-index: 1;
+    background-color: rgb(173, 199, 239);
+    width: 28.1%;
+}

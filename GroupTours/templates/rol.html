@@ -36,7 +36,7 @@
                                         <div class="form-group py-2">
 
                                             <input type="text" id="txtNombrePermiso" name='txtNombre' 
-                                                class="form-control" placeholder="Nombre del Permiso" 
+                                                class="form-control" placeholder="Nombre del Rol" 
                                                 maxlength="50" required>
                                         </div>
                                         
@@ -114,14 +114,53 @@
 						</tr>
 					</thead>
 					<tbody>
-						{% for r in listaRoles %}
+						{% for r in rolesPermisosDic %}
 						<tr>
 							<td>{{forloop.counter}}</td>
-							<td>{{r.nombre}}</td>
+							<td class="permiso-columna-width">{{r.rol.nombre}}</td>
 
 							<!-- <td>{{p.idPermiso}}</td> -->
-							<td>{{r.descripcion}}</td>
-							<td>{{r.permisos}}</td>
+							<td class="permiso-columna-width">{{r.rol.descripcion}}</td>
+							<td>
+                                <div class="accordion accordion-permiso" id="accordionPermiso-{{r.rol.id}}">
+
+                                    <div class="accordion-item">
+                                        <h2 class="accordion-header" id="headingPermiso-{{r.rol.id}}">
+                                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapsePermiso-{{r.rol.id}}" 
+                                                    zaria-expanded="false" aria-controls="collapsePermiso-{{r.rol.id}}">
+                                            Ver permisos
+                                            </button>
+                                        </h2>
+                                        <div id="collapsePermiso-{{r.rol.id}}" class="accordion-collapse collapse dropdown-custom" aria-labelledby="headingPermiso-{{r.rol.id}}" data-bs-parent="#accordionPermiso-{{r.rol.id}}">
+                                            <div class="accordion-body">
+                                            <table class='table'>
+                                                <tbody>
+                                                    {% for permiso in r.permisos %}
+                                                        <tr>
+                                                            <td>{{permiso.nombre}} | 
+
+                                                                {% if permiso.tipo == 'R' %}
+                                                                    Lectura
+                                                                {% elif permiso.tipo == 'C' %}
+                                                                    Creacion
+                                                                {% elif permiso.tipo == 'U' %}
+                                                                    Modificacion
+                                                                {% else %}
+                                                                    Eliminacion
+                                                                {% endif %}
+                                                            
+                                                                | {{permiso.formulario}}
+                                                            </td>
+                                                        </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                     
+                                </div>
+                            </td>
 							<td class="text-end"><a href="/edicionPermiso/{{email}}/{{r.id}}" class="btn btn-info btnEditarPermiso">
                                 <i class="fa fa-edit"></i>
                             </a></td>
