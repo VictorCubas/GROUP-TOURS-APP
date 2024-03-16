@@ -24,6 +24,10 @@ def registrarPermiso(request):
 
     return render(request, 'permiso.html',{'listaPermisos':listaPermiso} )
 
+def edicionPermiso(request, codigo):
+    permiso = Permiso.objects.get(id=id)
+    return render(request, "edicionPermiso.html", {"permiso": permiso })
+
 def eliminar(request, id):
     try:
         permiso = Permiso.objects.get(id=id)
