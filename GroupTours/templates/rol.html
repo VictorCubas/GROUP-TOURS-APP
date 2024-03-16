@@ -1,0 +1,182 @@
+{%extends './base.html'%}
+
+{% block title %} GROUP TOURS APP {% endblock %}
+
+
+{% block body %}
+<h1 class="pt-2">MODULO ROLES</h1>
+
+    <input id="eliminacionExitosa" name="eliminacionExitosa" type="hidden" value="{{eliminacionExitosa}}">
+    <!-- <h4 id="email">{{email}}</h4> -->
+	<!--<h4>Permisos sobre "Permiso": &nbsp;
+		{% if permisosPorPantalla == None %}
+			Niguno
+		{% else %}
+			{% for p in permisosPorPantalla %}
+				{{p}}
+			{% endfor %}
+		{% endif %}
+	</h4>-->
+    <br>
+    <div class="row">
+        <div class="col-sm-12 col-md-12 col-lg-12 col-xl-12">
+			
+            <div class="accordion" id="accordionExample">
+                <div class="accordion-item">
+                  <h2 class="accordion-header" id="headingOne">
+                    <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="true" aria-controls="collapseOne">
+                        Registrar Rol
+                    </button>
+                  </h2>
+                  <div id="collapseOne" class="accordion-collapse collapse show" aria-labelledby="headingOne" data-bs-parent="#accordionExample">
+                    <div class="accordion-body">
+                        <div class="card">
+                            <div class="card-body">
+                                
+                                <form class="formulario" id='form-rol' action='/rol/agregar' method="POST"> {% csrf_token %}
+                                    <div class="formulario-campos">
+                                        <div class="form-group py-2">
+
+                                            <input type="text" id="txtNombrePermiso" name='txtNombre' 
+                                                class="form-control" placeholder="Nombre del Rol" 
+                                                maxlength="50" required>
+                                        </div>
+                                        
+                                        <div class="form-group py-2">
+                                            <input type="text" id="txtDescripcionPermiso" name='txtDescripcion' 
+                                                class="form-control" placeholder="Descripcion" 
+                                                required> 
+                                               
+                                        </div>
+
+                                        
+                                        <div class="permisos-list">
+                                            <div class="permisos-list-item">
+                                                <div class="form-group py-2">
+                                                    <select class="selectpicker border rounded" data-live-search="true" 
+                                                        name="txtPermisos" data-width="100%" multiple required>
+                                                        <option data-tokens="" value="" disabled>Seleccione el permiso</option>
+
+                                                        {% for permiso in listaPermisos %}
+                                                            <option onclick='marcarSeleccionado("{{permiso.id}}")' data-tokens="{{permiso.id}}" value="{{permiso.id}}">{{permiso.nombre}}</option>
+                                                        {% endfor %}
+                                                    </select>
+
+                                                    <!-- <select class="form-select" multiple aria-label="multiple select example"
+                                                                name="txtPermisos" required>
+                                                    
+                                                        <option data-tokens="" value="" selected disabled>Seleccione el permiso</option>
+
+                                                        {% for permiso in listaPermisos %}
+                                                            <option data-tokens="{{permiso.id}}" value="{{permiso.id}}">{{permiso.nombre}}</option>
+                                                        {% endfor %}
+                                                    </select> -->
+                                                </div>
+
+                                                <!-- <button type="button" onclick="agregarPermisoSelect()"
+                                                    class="agregar-permiso btn btn-primary"><i class="fa fa-plus"></i></button> -->
+                                            </div>
+                                        </div>
+                
+                                        <!--
+                                        <div class="form-group py-2">
+                                            <input type="text" id="txtFormulario" name='txtFormulario' 
+                                                class="form-control" placeholder="Formulario" 
+                                                required>
+                                        </div>-->
+                                    </div>
+            
+                                    <div class="formulario-guardar form-group pt-4 px-5">
+                                        <button type="submit" class="btn btn-success btn-block text-white btnGuardarPermiso">Guardar</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                  </div>
+                </div>
+ 
+              </div>
+
+		
+		</div>
+
+        
+		<div id="divListadoPermiso" class="col-sm-12 col-md-12 col-lg-12 col-xl-12">
+			<h3>Listado de permisos</h3>
+			<div class="table-responsive py-2">
+				<table class='table table-striped'>
+					<thead>
+						<tr>
+							<th>#</th>
+							<th>Nombre</th>
+							<th>Descripcion</th>
+                            <th>Permisos</th>
+							<th class="text-center" colspan="2">Opciones</th>
+						</tr>
+					</thead>
+					<tbody>
+						{% for r in listaRolesPermisos %}
+						<tr>
+							<td>{{forloop.counter}}</td>
+							<td class="permiso-columna-width">{{r.rol.nombre}}</td>
+
+							<td class="permiso-columna-width">{{r.rol.descripcion}}</td>
+							<td>
+                                <div class="accordion accordion-permiso" id="accordionPermiso-{{r.rol.id}}">
+
+                                    <div class="accordion-item">
+                                        <h2 class="accordion-header" id="headingPermiso-{{r.rol.id}}">
+                                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapsePermiso-{{r.rol.id}}" 
+                                                    zaria-expanded="false" aria-controls="collapsePermiso-{{r.rol.id}}">
+                                            Ver permisos
+                                            </button>
+                                        </h2>
+                                        <div id="collapsePermiso-{{r.rol.id}}" class="accordion-collapse collapse dropdown-custom" aria-labelledby="headingPermiso-{{r.rol.id}}" data-bs-parent="#accordionPermiso-{{r.rol.id}}">
+                                            <div class="accordion-body">
+                                            <table class='table'>
+                                                <tbody>
+                                                    {% for permiso in r.permisos %}
+                                                        <tr>
+                                                            <td>{{permiso.nombre}} | 
+
+                                                                {% if permiso.tipo == 'R' %}
+                                                                    Lectura
+                                                                {% elif permiso.tipo == 'C' %}
+                                                                    Creacion
+                                                                {% elif permiso.tipo == 'U' %}
+                                                                    Modificacion
+                                                                {% else %}
+                                                                    Eliminacion
+                                                                {% endif %}
+                                                            
+                                                                | {{permiso.formulario}}
+                                                            </td>
+                                                        </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                     
+                                </div>
+                            </td>
+							<td class="text-end"><a href="/edicionPermiso/{{email}}/{{r.id}}" class="btn btn-info btnEditarPermiso">
+                                <i class="fa fa-edit"></i>
+                            </a></td>
+							<td>
+                                <a id="enlace-eliminacion" href="/rol/eliminar/{{r.rol.id}}" class="btn btn-danger 
+								btnEliminarPermiso btnEliminacion">
+                                    <i class="fa fa-trash-o"></i>
+                                </a>
+                            </td>
+						</tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			</div>
+		</div>
+    </div>
+{% endblock%}
+
