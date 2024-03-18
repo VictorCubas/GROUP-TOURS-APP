@@ -5,7 +5,9 @@
 
 {% block body %}
 <h1 class="pt-2">MODULO PERMISOS</h1>
-    <h4 id="email">{{email}}</h4>
+
+<input id="eliminacionExitosa" name="eliminacionExitosa" type="hidden" value="{{eliminacionExitosa}}">
+
 	<!--<h4>Permisos sobre "Permiso": &nbsp;
 		{% if permisosPorPantalla == None %}
 			Niguno
@@ -37,7 +39,7 @@
 
                                             <input type="text" id="txtNombrePermiso" name='txtNombre' 
                                                 class="form-control" placeholder="Nombre del Permiso" 
-                                                maxlength="50" required>
+                                                maxlength="50" required >
                                         </div>
                                         <div class="form-group py-2">
                                             <!--<input type="text" id="txtTipoPermiso" name='txtTipo' 
@@ -149,10 +151,10 @@
 							<!-- <td>{{p.idPermiso}}</td> -->
 							<td>{{p.descripcion}}</td>
 							<td>{{p.formulario}}</td>
-							<td class="text-end"><a href="/edicionPermiso/{{email}}/{{p.idPermiso}}" class="btn btn-info btnEditarPermiso">
+							<td class="text-end"><a href="/permiso/edicionPermiso/{{p.id}}" class="btn btn-info btnEditarPermiso">
                                 <i class="fa fa-edit"></i>
                             </a></td>
-							<td><a href="/permiso/eliminar/{{p.id}}" class="btn btn-danger 
+							<td><a id="enlace-eliminacion" href="/permiso/eliminar/{{p.id}}" class="btn btn-danger 
 								btnEliminarPermiso btnEliminacion">
                                 <i class="fa fa-trash-o"></i>
                             </a></td>
