@@ -51,7 +51,7 @@
                                         </div>
                                         <div class="form-group py-2">
                                             <input type="text" id="txtDireccionUsuario" name='txtDireccion'
-                                                class="form-control" placeholder="Correo Dirección" maxlength="200"
+                                                class="form-control" placeholder="Dirección" maxlength="200"
                                                 required>
                                         </div>
                                         <div class="form-group py-2">
@@ -90,7 +90,7 @@
                         <th class="text-center" colspan="2">Opciones</th>
                     </tr>
                 </thead>
-                <!-- <tbody>
+                <tbody>
                     {% for p in listaUsuarios %}
                     <tr>
                         <td>{{forloop.counter}}</td>
@@ -100,7 +100,6 @@
                         <td>{{p.correo}}</td>
                         <td>{{p.direccion}}</td>
                         <td>{{p.estado}}</td>
-                        <td>{{p.formulario}}</td>
                         <td class="text-end">
                             <a href="/edicionUsuario/{{email}}/{{p.idUsuario}}"
                                 class="btn btn-info btnEditarUsuario">
@@ -115,7 +114,7 @@
                         </td>
                     </tr>
                     {% endfor %}
-                </tbody> -->
+                </tbody>
             </table>
         </div>
     </div>

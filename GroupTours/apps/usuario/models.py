@@ -13,7 +13,6 @@ class Usuario(models.Model):
     correo = models.CharField(max_length=100)
     direccion = models.CharField(max_length=200)
     estado = models.CharField(max_length=1, default='A')
-    formulario = models.CharField(max_length=50, default='')
     
     #personalizamos la tabla en postgres
     class Meta:
@@ -22,12 +21,11 @@ class Usuario(models.Model):
 
     
     def _str_(self):
-        texto = '{} {} {} {} {} {} {} {}'
+        texto = '{} {} {} {} {} {} {}'
         return texto.format(self.documento,
                             self.nombre, 
                             self.apellido,
                             self.telefono,
                             self.correo,
                             self.direccion,
-                            self.estado,
-                            self.formulario) 
+                            self.estado) 

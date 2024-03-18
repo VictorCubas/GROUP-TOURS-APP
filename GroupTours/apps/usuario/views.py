@@ -18,7 +18,6 @@ def registrarUsuario(request):
     correo = request.POST.get('txtCorreo')
     direccion = request.POST.get('txtDireccion')
     estado = request.POST.get('txtEstado')
-    formulario = request.POST.get('txtFormulario')
    
     #se crea un usuario
     Usuario.objects.create(documento = documento,
@@ -27,8 +26,7 @@ def registrarUsuario(request):
                            telefono = telefono,
                            correo = correo,
                            direccion = direccion,
-                           estado = estado,
-                           formulario = formulario)
+                           estado = estado)
 
     #se recupera toda la lista de usuarios
     listaUsuario = Usuario.objects.all().order_by('id')
