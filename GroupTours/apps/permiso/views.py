@@ -49,12 +49,16 @@ def editarPermiso(request, id):
     return render(request, 'permiso.html',{'listaPermisos':listaPermiso} )
 
 def eliminar(request, id):
+    eliminacionExitosa = False
+
     try:
         permiso = Permiso.objects.get(id=id)
         permiso.delete()
+        eliminacionExitosa = True
     except:
         pass
 
     listaPermiso = Permiso.objects.all().order_by('id')
 
-    return render(request, 'permiso.html', {'listaPermisos':listaPermiso})
+    return render(request, 'permiso.html', {'listaPermisos':listaPermiso,
+                                            'eliminacionExitosa' : eliminacionExitosa})

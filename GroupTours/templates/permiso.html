@@ -5,7 +5,9 @@
 
 {% block body %}
 <h1 class="pt-2">MODULO PERMISOS</h1>
-    <h4 id="email">{{email}}</h4>
+
+<input id="eliminacionExitosa" name="eliminacionExitosa" type="hidden" value="{{eliminacionExitosa}}">
+
 	<!--<h4>Permisos sobre "Permiso": &nbsp;
 		{% if permisosPorPantalla == None %}
 			Niguno
@@ -152,7 +154,7 @@
 							<td class="text-end"><a href="/permiso/edicionPermiso/{{p.id}}" class="btn btn-info btnEditarPermiso">
                                 <i class="fa fa-edit"></i>
                             </a></td>
-							<td><a href="/permiso/eliminar/{{p.id}}" class="btn btn-danger 
+							<td><a id="enlace-eliminacion" href="/permiso/eliminar/{{p.id}}" class="btn btn-danger 
 								btnEliminarPermiso btnEliminacion">
                                 <i class="fa fa-trash-o"></i>
                             </a></td>
