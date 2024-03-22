@@ -64,6 +64,43 @@ def eliminar(request, id):
                                         'listaPermisos':listaPermisos,
                                         'listaRolesPermisos':listaRolesPermisos,
                                         'eliminacionExitosa': eliminacionExitosa})
+    
+
+def edicion(request, id):
+    rol = None
+    listaPermisos = []
+    rolesPermisos = []
+    permisosDelRol = []
+    
+    try:
+        rol = Rol.objects.get(id=id)
+        print(f'rol: {rol.nombre}')
+        print(f'rol: {rol.descripcion}')
+        #recupera todos los permisos
+        listaPermisos = Permiso.objects.all().order_by('id')
+        
+        #recupera solo los permisos del rol
+        rolesPermisos = RolesPermisos.objects.filter(rol_id=rol.id)
+        
+        #se busca en la lista de permisos, los permisos que corresponde al rol para listar en el html
+        for p in listaPermisos:
+            selected = 'no'
+            for rp in rolesPermisos:
+                if rp.permiso.id == p.id:
+                    selected = 'si'
+                    break
+            
+            #
+            permisosDelRol.append({'permiso': p, 'selected': selected})
+        
+    except:
+        pass
+
+    
+    return render(request, 'edicionRol.html', {
+                                        'rol':rol,
+                                        'listaPermisos':listaPermisos,
+                                        'permisosDelRol':permisosDelRol})
 
 
 def getRolesPermisos(listaRoles):
