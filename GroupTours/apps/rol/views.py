@@ -74,8 +74,8 @@ def edicion(request, id):
     
     try:
         rol = Rol.objects.get(id=id)
-        print(f'rol: {rol.nombre}')
-        print(f'rol: {rol.descripcion}')
+        # print(f'rol: {rol.nombre}')
+        # print(f'rol: {rol.descripcion}')
         #recupera todos los permisos
         listaPermisos = Permiso.objects.all().order_by('id')
         
@@ -90,7 +90,6 @@ def edicion(request, id):
                     selected = 'si'
                     break
             
-            #
             permisosDelRol.append({'permiso': p, 'selected': selected})
         
     except:
@@ -101,6 +100,44 @@ def edicion(request, id):
                                         'rol':rol,
                                         'listaPermisos':listaPermisos,
                                         'permisosDelRol':permisosDelRol})
+    
+    
+    
+def editar(request, id):
+    #se recupera los datos del formulario
+    nombre = request.POST.get('txtNombre')
+    descripcion = request.POST.get('txtDescripcion')
+    permiso_ids = request.POST.getlist('txtPermisos')
+    
+    rol = Rol.objects.get(id=int(id))
+    rol.nombre = nombre
+    rol.descripcion = descripcion
+    rol.save()
+   
+    #recupero los permisos seleccionados despues de la edicion
+    listaPermisosSeleccionados = []
+    for p in permiso_ids:
+        permiso = Permiso.objects.get(id=int(p))
+        listaPermisosSeleccionados.append(permiso)
+        
+        
+    #recupera solo los permisos del rol
+    rolesPermisos = RolesPermisos.objects.filter(rol_id=rol.id)
+    
+    #se busca en la lista de permisos, los permisos que corresponde al rol para listar en el html
+    for rp in rolesPermisos:
+        rp.delete()
+    
+    for permiso in listaPermisosSeleccionados:
+        rolPermiso = RolesPermisos.objects.create(rol=rol, permiso=permiso)
+    
+    listaRoles = Rol.objects.all().order_by('id')
+    listaPermisos = Permiso.objects.all().order_by('id')
+    listaRolesPermisos = getRolesPermisos(listaRoles)
+    
+    return render(request, 'rol.html', {'listaRoles':listaRoles,
+                                        'listaPermisos':listaPermisos,
+                                        'listaRolesPermisos':listaRolesPermisos,})
 
 
 def getRolesPermisos(listaRoles):

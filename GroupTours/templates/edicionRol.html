@@ -33,7 +33,7 @@
                         <div class="card">
                             <div class="card-body">
                                 
-                                <form class="formulario" id='form-rol' action='/rol/agregar' method="POST"> {% csrf_token %}
+                                <form class="formulario" id='form-rol' action='/rol/editar/{{rol.id}}' method="POST"> {% csrf_token %}
                                     <div class="formulario-campos">
                                         <div class="form-group py-2">
 
@@ -58,17 +58,12 @@
                                                         <option data-tokens="" value="" disabled>Seleccione el permiso</option>
 
                                                         {% for p in  permisosDelRol%}
-                                                        
-                                                            {% comment %} {% for permiso in listaPermisos %} {% endcomment %}
                                                             
                                                                 {% if p.selected == 'si' %}
-                                                                    <option data-tokens="{{p.permiso.id}}" selected value="{{permiso.id}}">{{p.permiso.nombre}}</option>
-                                                                    {% comment %} {% break %} {% endcomment %}
+                                                                    <option data-tokens="{{p.permiso.id}}" selected value="{{p.permiso.id}}">{{p.permiso.nombre}}</option>
                                                                 {% else %}
-                                                                    <option data-tokens="{{p.permiso.id}}" value="{{permiso.id}}">{{p.permiso.nombre}}</option>
+                                                                    <option data-tokens="{{p.permiso.id}}" value="{{p.permiso.id}}">{{p.permiso.nombre}}</option>
                                                                 {% endif %}
-                                                                    
-                                                            {% comment %} {% endfor %} {% endcomment %}
                                                                 
                                                         {% endfor %}
                                                     </select>
