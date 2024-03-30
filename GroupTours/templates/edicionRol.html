@@ -4,7 +4,12 @@
 
 
 {% block body %}
-<h1 class="pt-2">EDITAR ROL</h1>
+    <div class="d-flex align-items-center">
+        <a href="/rol" class="btn go-back-btn text-center d-flex justify-content-center align-items-center" title="Volver atrás">
+            <i class="fa fa-arrow-left fa-lg"></i>
+        </a>
+        <h1 class="title pt-2">EDITAR ROL</h1>
+    </div>
 
     <input id="eliminacionExitosa" name="eliminacionExitosa" type="hidden" value="{{eliminacionExitosa}}">
     <!-- <h4 id="email">{{email}}</h4> -->
@@ -53,16 +58,17 @@
                                         <div class="permisos-list">
                                             <div class="permisos-list-item">
                                                 <div class="form-group py-2">
-                                                    <select class="selectpicker border rounded" data-live-search="true" 
-                                                        name="txtPermisos" data-width="100%" multiple required>
-                                                        <option data-tokens="" value="" disabled>Seleccione el permiso</option>
-
+                                                    <select class="selectpicker border rounded" data-live-search="true" name="txtPermisos"
+                                                         data-width="100%" multiple required 
+                                                         data-actions-box="true" data-none-selected-text="Seleccione los permisos"
+                                                         data-select-all-text="Marcar todos" data-deselect-all-text="Quitar todos">
+                                                         
                                                         {% for p in  permisosDelRol%}
                                                             
                                                                 {% if p.selected == 'si' %}
-                                                                    <option data-tokens="{{p.permiso.id}}" selected value="{{p.permiso.id}}">{{p.permiso.nombre}}</option>
+                                                                    <option class="options-permisos" data-tokens="{{p.permiso.id}}" selected value="{{p.permiso.id}}">{{p.permiso.nombre}}</option>
                                                                 {% else %}
-                                                                    <option data-tokens="{{p.permiso.id}}" value="{{p.permiso.id}}">{{p.permiso.nombre}}</option>
+                                                                    <option class="options-permisos" data-tokens="{{p.permiso.id}}" value="{{p.permiso.id}}">{{p.permiso.nombre}}</option>
                                                                 {% endif %}
                                                                 
                                                         {% endfor %}

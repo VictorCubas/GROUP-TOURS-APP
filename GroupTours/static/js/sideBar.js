@@ -72,3 +72,25 @@ function confirmarElimnacion(url){
         }
       });
 }
+
+// const opcionTodos = document.getElementById('opcion_todos');
+// console.log(opcionTodos)
+const selectpicker = document.querySelector('.selectpicker');
+
+var valorAnterior = null
+
+selectpicker.addEventListener('change', function(event) {
+        const selectedOption = event.target.value;
+        if (selectedOption === '*') {
+            // Desmarcar todas las opciones excepto la opción "Marcar todos"
+            let options = selectpicker.querySelectorAll('.options-permisos');
+            options.forEach(option => {
+                console.log('options: ', options)
+                // option.removeAttribute('selected'); // Cambiar selected a false
+            });
+        }
+
+        valorAnterior = event.target.value
+    });
+//     valorAnterior = event.target.value
+// });

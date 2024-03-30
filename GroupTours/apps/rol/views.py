@@ -16,19 +16,21 @@ def index(request):
     
     operaciones = ['add-success', 'add-error', 'add-warning', 'delete-success', 'delete-error', 'edit-success', 'edit-error']
     
+    #se verifica cual de las operaciones se ejecuta para mostrar los mensajes de exitos y/o errores
     query_value = None
     query = None
     for operacion in operaciones:
         query = operacion
         query_value = request.GET.get(operacion, '')
+        # print(f'query: {query}, query_value: {query_value}')
         
-        if query_value == 'true':
+        if query_value.lower() == 'true':
             query_value = True
-            print(f'query: {query}, query_value: {query_value}')
+            break
+        elif query_value.lower() == 'false':
+            query_value = False
             break
     
-    # params = request.GET.get('success', '')
-    # print(f'params: {params}')
     
     resultadosAPaginar = listaRolesPermisos
     cantidad_de_resultados = len(resultadosAPaginar)
@@ -43,17 +45,25 @@ def index(request):
                 }
     
     mensaje = ''
+    tipo = ''
     if query == 'delete-success' and query_value:
         context['eliminacionExitosa'] = query_value
+        
     elif query == 'add-success':
-        mensaje = 'El rol se ha guardado con exito'
-        context['success'] = query_value
-    else:
+        if query_value:
+            mensaje = 'El rol se ha guardado con exito'
+            tipo = 'success'
+        else:    
+            mensaje = 'Rol ya existente'
+            tipo = 'warning'
+            
+        context['tipo'] = tipo
+    elif query == 'edit-success':
         mensaje = 'El rol se ha editado con exito'
-        context['success'] = query_value
+        context['tipo'] = 'success'
     
     context['mensaje'] = mensaje
-    
+
     print(f'context: {context}')
     
     return render(request, 'rol.html', context)
@@ -71,16 +81,14 @@ def agregar(request):
         print('ES VALIDO!')
         # print(f'{nombre}, {descripcion}, {permiso_ids}')
         rol = Rol.objects.create(nombre=nombre, descripcion=descripcion)
-    
-        permisoList = []
+        
         for p in permiso_ids:
             permiso = Permiso.objects.get(id=int(p))
-            permisoList.append(permiso)
             rolPermiso = RolesPermisos.objects.create(rol=rol, permiso=permiso)
     else:
         print('ES INVALIDO!')
         
-    return redirect(f'/rol?add-success=true', name='index-roles')    
+    return redirect(f'/rol?add-success={esValido}', name='index-roles')    
 
 
 def validarRepetido(nombre):
@@ -120,15 +128,6 @@ def eliminar(request, id):
         eliminacionExitosa = True
     except:
         pass
-
-    # listaRoles = Rol.objects.all().order_by('id')
-    # listaPermisos = Permiso.objects.all().order_by('id')
-    # listaRolesPermisos = getRolesPermisos(listaRoles)
-    
-    # return render(request, 'rol.html', {'listaRoles':listaRoles,
-    #                                     'listaPermisos':listaPermisos,
-    #                                     'listaRolesPermisos':listaRolesPermisos,
-    #                                     'eliminacionExitosa': eliminacionExitosa})
     
     return redirect(f'/rol?delete-success=true', name='index-roles')
     
@@ -198,7 +197,44 @@ def editar(request, id):
         rolPermiso = RolesPermisos.objects.create(rol=rol, permiso=permiso)
     
     # return redirect(f'/rol', name='index-roles')    
-    return redirect(f'/rol?edit-success=true', name='index-roles')    
+    return redirect(f'/rol?edit-success=true', name='index-roles')
+
+
+def buscar(request):
+    query = request.GET.get('q')  # Obtener el término de búsqueda del parámetro 'q'
+    resultados_roles = []
+    context = {}
+    
+    if query:
+        query_normalized = normalize('NFKD', query).encode('ASCII', 'ignore').decode('ASCII')
+        
+        print('1')
+        resultados_roles = Rol.objects.annotate(
+            nombre_normalized=Func(F('nombre'), function='unaccent'),
+        ).filter(
+            Q(nombre_normalized__icontains=query_normalized)
+        )
+        
+        print('2')
+        for res in resultados_roles:
+            print(f'nombre: {res.nombre}')
+            
+        listaPermisos = Permiso.objects.all().order_by('id')
+        listaRolesPermisos = getRolesPermisos(resultados_roles)
+        resultadosAPaginar = listaRolesPermisos
+        cantidad_de_resultados = len(resultadosAPaginar)
+        paginator = Paginator(resultadosAPaginar, per_page=5)  # 5 resultados por página
+        page_number = request.GET.get('page')  # Obtén el número de página de la URL
+        page: Page = paginator.get_page(page_number)
+        
+        context = {
+                    'listaPermisos':listaPermisos,
+                    'cantidad_de_resultados': cantidad_de_resultados,
+                    'page': page,
+                    'query': query
+                    }
+        
+    return render(request, 'rol.html', context)
 
 
 def getRolesPermisos(listaRoles):
