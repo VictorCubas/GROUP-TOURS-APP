@@ -57,7 +57,7 @@ def index(request):
         mensaje = 'El permiso se ha editado con exito'
         context['tipo'] = 'success'
     
-    elif query == 'add-error':
+    elif query == 'add-error' or query == 'edit-error':
         mensaje = 'Error: Ocurrio algo inesperado. Vuelva a intentarlo'
         context['tipo'] = 'danger'  
 
@@ -98,6 +98,8 @@ def editarPermiso(request, id):
     tipo = request.POST.get('txtTipo')
     formulario = request.POST.get('txtFormulario')
 
+    parametro = "success"
+
     try:
         permiso = Permiso.objects.get(id=id)
         permiso.nombre = nombre
@@ -107,9 +109,10 @@ def editarPermiso(request, id):
         permiso.save()
 
     except:
+        parametro = "error"
         pass
     
-    return redirect(f'/permiso?edit-success=true', name='index-permiso' )
+    return redirect(f'/permiso?edit-{parametro}=true', name='index-permiso' )
 
 def eliminar(request, id):
     eliminacionExitosa = False
