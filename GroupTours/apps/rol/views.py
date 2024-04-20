@@ -22,15 +22,18 @@ def index(request):
     for operacion in operaciones:
         query = operacion
         query_value = request.GET.get(operacion, '')
-        # print(f'query: {query}, query_value: {query_value}')
+        print(f'query: {query}, query_value: {query_value.lower()}')
         
         if query_value.lower() == 'true':
+            print('a')
             query_value = True
             break
         elif query_value.lower() == 'false':
+            print('b')
             query_value = False
             break
         else:
+            print('c')
             query = ''
     
     
@@ -49,8 +52,7 @@ def index(request):
     mensaje = ''
     tipo = ''
     
-    print(f'query: {query}')
-    if query == 'delete-success' and query_value:
+    if query == 'delete-success':
         context['eliminacionExitosa'] = query_value
         
     elif query == 'add-success':
@@ -122,7 +124,12 @@ def validarRepetido(nombre, rol):
     resultados_roles = None
     
     if rol:
-        #significa que un rol se esta editando 
+        #significa que un rol se esta editando y no agregando uno nuevo
+        # rolesPermisos = RolesPermisos.objects.filter(permiso_id=permiso.id)
+        # if len(rolesPermisos) != 0:
+        #     #es invalido, existe roles usando este permiso. No se puede editar
+        #     return False
+        
         resultados_roles = Rol.objects.annotate(
             nombre_normalized=Func(F('nombre'), function='unaccent'),
         ).filter(
@@ -144,19 +151,8 @@ def validarRepetido(nombre, rol):
 
 def eliminar(request, id):
     eliminacionExitosa = False
-    try:
-        rolesPermisos = RolesPermisos.objects.filter(rol_id=id)
-        
-        for r in rolesPermisos:
-            r.delete()
-            
-        rol = Rol.objects.get(id=id)
-        rol.delete()
-        
-        eliminacionExitosa = True
-    except:
-        eliminacionExitosa = False
-        pass
+    
+    
     
     return redirect(f'/rol?delete-success={eliminacionExitosa}', name='index-roles')
     
