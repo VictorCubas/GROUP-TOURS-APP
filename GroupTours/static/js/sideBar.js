@@ -38,6 +38,13 @@ function dispararModalEliminacionExitosa(){
             icon: "success"
             });
     }
+    else if(eliminacionExitosaEl.value === 'False'){
+        Swal.fire({
+        icon: "error",
+        title: "Oops...",
+        text: "¡Algo salio! Vuelva a intentarlo",
+        });
+    }
 }
 
 //EVENTO PARA DETECTAR CADA VEZ QUE SE QUIERA ELIMINAR

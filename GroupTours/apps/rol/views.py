@@ -14,7 +14,7 @@ def index(request):
     listaPermisos = Permiso.objects.all().order_by('id')
     listaRolesPermisos = getRolesPermisos(listaRoles)
     
-    operaciones = ['add-success', 'add-error', 'add-warning', 'delete-success', 'delete-error', 'edit-success', 'edit-error']
+    operaciones = ['add-success', 'add-error', 'add-warning', 'delete-success', 'delete-error', 'edit-success', 'edit-error', 'edit-warning']
     
     #se verifica cual de las operaciones se ejecuta para mostrar los mensajes de exitos y/o errores
     query_value = None
@@ -58,7 +58,7 @@ def index(request):
             mensaje = 'El rol se ha guardado con exito'
             tipo = 'success'
         else:    
-            mensaje = 'Rol ya existente'
+            mensaje = 'Rol ya existente. Verifique que el nombre no sea repetido'
             tipo = 'warning'
             
         context['tipo'] = tipo
@@ -66,6 +66,10 @@ def index(request):
     elif query == 'edit-success':
         mensaje = 'El rol se ha editado con exito'
         context['tipo'] = 'success'
+    
+    elif query == 'edit-warning':
+        mensaje = 'Rol ya existente. Verifique que el nombre no sea repetido'
+        context['tipo'] = 'warning'
         
     elif query == 'add-error' or query == 'edit-error' or query == 'delete-error':
         mensaje = 'Error: Ocurrio algo inesperado. Vuelva a intentarlo'
@@ -85,7 +89,7 @@ def agregar(request):
     descripcion = request.POST.get('txtDescripcion').strip()
     permiso_ids = request.POST.getlist('txtPermisos')
     
-    esValido = validarRepetido(nombre)
+    esValido = validarRepetido(nombre, None)
     
     parametro = 'success'
     
@@ -96,7 +100,8 @@ def agregar(request):
             rol = Rol.objects.create(nombre=nombre, descripcion=descripcion)
         
             for p in permiso_ids:
-                permiso = Permiso.objects.get(id=int(x))
+                permiso = Permiso.objects.get(id=int(p))
+                print('me creo......')
                 rolPermiso = RolesPermisos.objects.create(rol=rol, permiso=permiso)
         except:
             parametro = 'error'
@@ -105,7 +110,7 @@ def agregar(request):
     return redirect(f'/rol?add-{parametro}={esValido}', name='index-roles')    
 
 
-def validarRepetido(nombre):
+def validarRepetido(nombre, rol):
     '''
     Este metodo valida que si hay algun rol con el mismo nombre
     Se puede hacer de manera mas simple, solo reutilice lo que ya tenia
@@ -113,15 +118,29 @@ def validarRepetido(nombre):
     
     # print('validar repetido')
     query_normalized = normalize('NFKD', nombre).encode('ASCII', 'ignore').decode('ASCII')
-        
-    resultados_roles = Rol.objects.annotate(
-        nombre_normalized=Func(F('nombre'), function='unaccent'),
-    ).filter(
-        Q(nombre_normalized=query_normalized)
-    )
     
-    # print(f'resultados_roles: {resultados_roles}')
-    # print(f'len resultados_roles: {len(resultados_roles)}')
+    resultados_roles = None
+    
+    if rol:
+        #significa que un rol se esta editando y no agregando uno nuevo
+        # rolesPermisos = RolesPermisos.objects.filter(permiso_id=permiso.id)
+        # if len(rolesPermisos) != 0:
+        #     #es invalido, existe roles usando este permiso. No se puede editar
+        #     return False
+        
+        resultados_roles = Rol.objects.annotate(
+            nombre_normalized=Func(F('nombre'), function='unaccent'),
+        ).filter(
+            Q(nombre_normalized=query_normalized)
+        ).exclude(
+            id=rol.id  # Excluyendo el rol actual basado en su id
+        )
+    else:
+        resultados_roles = Rol.objects.annotate(
+            nombre_normalized=Func(F('nombre'), function='unaccent'),
+        ).filter(
+            Q(nombre_normalized=query_normalized)
+        )
     
     if len(resultados_roles) == 0:
         return True
@@ -130,6 +149,7 @@ def validarRepetido(nombre):
 
 def eliminar(request, id):
     eliminacionExitosa = False
+    
     try:
         rolesPermisos = RolesPermisos.objects.filter(rol_id=id)
         
@@ -144,7 +164,7 @@ def eliminar(request, id):
         eliminacionExitosa = False
         pass
     
-    return redirect(f'/rol?delete-success=${eliminacionExitosa}', name='index-roles')
+    return redirect(f'/rol?delete-success={eliminacionExitosa}', name='index-roles')
     
 
 def edicion(request, id):
@@ -190,30 +210,41 @@ def editar(request, id):
     permiso_ids = request.POST.getlist('txtPermisos')
     
     rol = Rol.objects.get(id=int(id))
-    rol.nombre = nombre
-    rol.descripcion = descripcion
-    rol.save()
    
+    esValido = validarRepetido(nombre, rol)
+    print(f'esValido: {esValido}')
+    print(f'esValido: {type(esValido)}')
+    
     parametro = 'success'
-    try:
-        #recupero los permisos seleccionados despues de la edicion
-        listaPermisosSeleccionados = []
-        for p in permiso_ids:
-            permiso = Permiso.objects.get(id=int(p))
-            listaPermisosSeleccionados.append(permiso)
-            
-            
-        #recupera solo los permisos del rol
-        rolesPermisos = RolesPermisos.objects.filter(rol_id=rol.id)
+    
+    if esValido:
+        print('entro aca????')
         
-        #se busca en la lista de permisos, los permisos que corresponde al rol para listar en el html
-        for rp in rolesPermisos:
-            rp.delete()
-        
-        for permiso in listaPermisosSeleccionados:
-            rolPermiso = RolesPermisos.objects.create(rol=rol, permiso=permiso)
-    except:
-        parametro = 'error'
+        rol.nombre = nombre
+        rol.descripcion = descripcion
+        rol.save()
+        try:
+            #recupero los permisos seleccionados despues de la edicion
+            listaPermisosSeleccionados = []
+            for p in permiso_ids:
+                permiso = Permiso.objects.get(id=int(p))
+                listaPermisosSeleccionados.append(permiso)
+                
+                
+            #recupera solo los permisos del rol
+            rolesPermisos = RolesPermisos.objects.filter(rol_id=rol.id)
+            
+            #se busca en la lista de permisos, los permisos que corresponde al rol para listar en el html
+            for rp in rolesPermisos:
+                rp.delete()
+            
+            for permiso in listaPermisosSeleccionados:
+                rolPermiso = RolesPermisos.objects.create(rol=rol, permiso=permiso)
+        except:
+            parametro = 'error'
+    else:
+        print(f'error: invalido')
+        parametro = 'warning'
     
     # return redirect(f'/rol', name='index-roles')    
     return redirect(f'/rol?edit-{parametro}=true', name='index-roles')
