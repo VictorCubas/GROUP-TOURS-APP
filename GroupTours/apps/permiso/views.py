@@ -12,7 +12,7 @@ def index(request):
     # print(request.path)
     listaPermiso = Permiso.objects.all().order_by('-id')
 
-    operaciones = ['add-success', 'add-error', 'add-warning', 'delete-success', 'delete-error', 'edit-success', 'edit-error']
+    operaciones = ['add-success', 'add-error', 'add-warning', 'delete-success', 'delete-error', 'edit-success', 'edit-error', 'edit-warning']
     
     #se verifica cual de las operaciones se ejecuta para mostrar los mensajes de exitos y/o errores
     query_value = None
@@ -28,6 +28,8 @@ def index(request):
         elif query_value.lower() == 'false':
             query_value = False
             break
+        else:
+            query = ''
     
     resultadosAPaginar = listaPermiso
     cantidad_de_resultados = len(resultadosAPaginar)
