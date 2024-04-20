@@ -22,18 +22,15 @@ def index(request):
     for operacion in operaciones:
         query = operacion
         query_value = request.GET.get(operacion, '')
-        print(f'query: {query}, query_value: {query_value.lower()}')
+        # print(f'query: {query}, query_value: {query_value}')
         
         if query_value.lower() == 'true':
-            print('a')
             query_value = True
             break
         elif query_value.lower() == 'false':
-            print('b')
             query_value = False
             break
         else:
-            print('c')
             query = ''
     
     
@@ -52,7 +49,8 @@ def index(request):
     mensaje = ''
     tipo = ''
     
-    if query == 'delete-success':
+    print(f'query: {query}')
+    if query == 'delete-success' and query_value:
         context['eliminacionExitosa'] = query_value
         
     elif query == 'add-success':
@@ -152,7 +150,19 @@ def validarRepetido(nombre, rol):
 def eliminar(request, id):
     eliminacionExitosa = False
     
-    
+    try:
+        rolesPermisos = RolesPermisos.objects.filter(rol_id=id)
+        
+        for r in rolesPermisos:
+            r.delete()
+            
+        rol = Rol.objects.get(id=id)
+        rol.delete()
+        
+        eliminacionExitosa = True
+    except:
+        eliminacionExitosa = False
+        pass
     
     return redirect(f'/rol?delete-success={eliminacionExitosa}', name='index-roles')
     
