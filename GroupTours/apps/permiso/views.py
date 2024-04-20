@@ -1,5 +1,7 @@
 from django.shortcuts import render, redirect
 from django.http import HttpResponse
+
+from apps.rol.models import RolesPermisos
 from .models import Permiso
 from django.core.paginator import Paginator, Page
 from django.db.models import Q, Func, F
@@ -41,7 +43,7 @@ def index(request):
     
     mensaje = ''
     tipo = ''
-    if query == 'delete-success' and query_value:
+    if query == 'delete-success':
         context['eliminacionExitosa'] = query_value
         
     elif query == 'add-success':
@@ -56,7 +58,11 @@ def index(request):
     elif query == 'edit-success':
         mensaje = 'El permiso se ha editado con exito'
         context['tipo'] = 'success'
-    
+        
+    elif query == 'edit-warning':
+        mensaje = 'Permiso ya existente, verifique que el nombre no sea repetido'
+        context['tipo'] = 'warning'
+        
     elif query == 'add-error' or query == 'edit-error':
         mensaje = 'Error: Ocurrio algo inesperado. Vuelva a intentarlo'
         context['tipo'] = 'danger'  
@@ -73,7 +79,7 @@ def registrarPermiso(request):
     tipo = request.POST.get('txtTipo')
     formulario = request.POST.get('txtFormulario')
 
-    esValido = validarRepetido(nombre)
+    esValido = validarRepetido(nombre, None)
     parametro = "success"
 
     if esValido:
@@ -97,17 +103,22 @@ def editarPermiso(request, id):
     descripcion = request.POST.get('txtDescripcion').strip()
     tipo = request.POST.get('txtTipo')
     formulario = request.POST.get('txtFormulario')
+    esValido = False
 
     parametro = "success"
 
     try:
         permiso = Permiso.objects.get(id=id)
-        permiso.nombre = nombre
-        permiso.descripcion = descripcion
-        permiso.tipo = tipo
-        permiso.formulario = formulario
-        permiso.save()
 
+        esValido = validarRepetido(nombre, permiso)
+        if esValido:
+            permiso.nombre = nombre
+            permiso.descripcion = descripcion
+            permiso.tipo = tipo
+            permiso.formulario = formulario
+            permiso.save()
+        else: 
+            parametro = "warning"
     except:
         parametro = "error"
         pass
@@ -122,12 +133,13 @@ def eliminar(request, id):
         permiso.delete()
         eliminacionExitosa = True
     except:
+        eliminacionExitosa = False
         pass
 
-    return redirect(f'/permiso', name='index-permiso' )
+    return redirect(f'/permiso?delete-success={eliminacionExitosa}', name='index-permiso' )
 
 
-def validarRepetido(nombre):
+def validarRepetido(nombre, permiso):
     '''
     Este metodo valida que si hay algun permiso con el mismo nombre
     Se puede hacer de manera mas simple, solo reutilice lo que ya tenia
@@ -135,12 +147,27 @@ def validarRepetido(nombre):
     
     # print('validar repetido')
     query_normalized = normalize('NFKD', nombre).encode('ASCII', 'ignore').decode('ASCII')
-        
-    resultados_permisos = Permiso.objects.annotate(
-        nombre_normalized=Func(F('nombre'), function='unaccent'),
-    ).filter(
-        Q(nombre_normalized=query_normalized)
-    )
+    resultados_permisos= None
+    
+    if permiso:
+        rolesPermisos = RolesPermisos.objects.filter(permiso_id = permiso.id)
+        if len(rolesPermisos) > 0:
+            return False
+
+        resultados_permisos = Permiso.objects.annotate(
+            nombre_normalized=Func(F('nombre'), function='unaccent'),
+        ).filter(
+            Q(nombre_normalized=query_normalized)
+        ).exclude(
+            id=permiso.id  # Excluyendo el permiso actual basado en su id
+        )
+
+    else:    
+        resultados_permisos = Permiso.objects.annotate(
+            nombre_normalized=Func(F('nombre'), function='unaccent'),
+        ).filter(
+            Q(nombre_normalized=query_normalized)
+        )
     
     # print(f'resultados_roles: {resultados_roles}')
     # print(f'len resultados_roles: {len(resultados_roles)}')
