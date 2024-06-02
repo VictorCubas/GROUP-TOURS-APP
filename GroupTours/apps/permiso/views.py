@@ -98,7 +98,14 @@ def registrarPermiso(request):
 
 def edicionPermiso(request, codigo):
     permiso = Permiso.objects.get(id=int(codigo))
-    return render(request, "edicionPermiso.html", {"permiso": permiso })
+    
+    rolesPermisos = RolesPermisos.objects.filter(permiso_id = permiso.id)
+    
+    habilitarEdicion = True
+    if len(rolesPermisos) > 0:
+        habilitarEdicion = False
+        
+    return render(request, "edicionPermiso.html", {"permiso": permiso, "habilitarEdicion": habilitarEdicion })
 
 def editarPermiso(request, id):
     nombre = request.POST.get('txtNombre').strip()
@@ -152,9 +159,9 @@ def validarRepetido(nombre, permiso):
     resultados_permisos= None
     
     if permiso:
-        rolesPermisos = RolesPermisos.objects.filter(permiso_id = permiso.id)
-        if len(rolesPermisos) > 0:
-            return False
+        # rolesPermisos = RolesPermisos.objects.filter(permiso_id = permiso.id)
+        # if len(rolesPermisos) > 0:
+        #     return False
 
         resultados_permisos = Permiso.objects.annotate(
             nombre_normalized=Func(F('nombre'), function='unaccent'),
