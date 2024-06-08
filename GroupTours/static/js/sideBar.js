@@ -45,23 +45,37 @@ function dispararModalEliminacionExitosa(){
         text: "¡Algo salio! Vuelva a intentarlo",
         });
     }
+    else if(eliminacionExitosaEl.value === 'warning'){
+        Swal.fire({
+        icon: "warning",
+        title: "Oops...",
+        text: "¡Permiso en uso! No se puede eliminar.",
+        });
+    }
 }
 
-//EVENTO PARA DETECTAR CADA VEZ QUE SE QUIERA ELIMINAR
-(function () {
+// EVENTO PARA DETECTAR CADA VEZ QUE SE QUIERA ELIMINAR
+// (function () {
 
-    const btnEliminacion = document.querySelectorAll(".btnEliminacion");
+//     const btnEliminacion = document.querySelectorAll(".btnEliminacion");
 
-    btnEliminacion.forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const enlace = document.getElementById('enlace-eliminacion');
-            this.confirmarElimnacion(enlace.href)
-            e.preventDefault();
+//     btnEliminacion.forEach(btn => {
+//         btn.addEventListener('click', (e) => {
+//             const enlace = document.getElementById('enlace-eliminacion');
+//             console.log('enlace.href: ', enlace.href);
+//             // this.confirmarElimnacion(enlace.href)
+//             e.preventDefault();
             
-        });
-    });
+//         });
+//     });
     
-})();
+// })();
+
+
+function eliminar(url, id){
+    const urlFin = window.location.origin + '/' + url + '/' + id;
+    confirmarElimnacion(urlFin);
+}
 
 
 function confirmarElimnacion(url){
@@ -76,6 +90,7 @@ function confirmarElimnacion(url){
       }).then((result) => {
         if (result.isConfirmed) {
             window.location.href = url;
+            console.log('url: ', url);
         }
       });
 }
