@@ -75,7 +75,7 @@
 
                                             <input type="text" id="txtNombrePermiso" name='txtNombre' 
                                                 class="form-control" placeholder="Nombre del Permiso" 
-                                                maxlength="50" required>
+                                                maxlength="50" required >
                                         </div>
                                         <div class="form-group py-2">
                                             <!--<input type="text" id="txtTipoPermiso" name='txtTipo' 
@@ -154,7 +154,22 @@
 
         
 		<div id="divListadoPermiso" class="col-sm-12 col-md-12 col-lg-12 col-xl-12">
-			<h3>Listado de permisos</h3>
+			<div class="d-flex justify-content-between align-items-center">
+            <h2 class="mt-4 text-dark">Listado de permisos</h2>
+
+
+                <form class="formulario-buscar mt-3" action="/permiso/buscar/" method="GET">
+                    <div class="input-group">
+                        <div class="form-outline" data-mdb-input-init>
+                            <input id="search-focus" name="q" type="search" id="form1" class="form-control" placeholder="Buscar..." required/>
+                            <!-- <label class="form-label" for="form1">Search</label> -->
+                        </div>
+                        <button type="submit" class="btn btn-primary" data-mdb-ripple-init>
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                </form>
+            </div>
 			<div class="table-responsive py-2">
 				<table class='table table-striped'>
 					<thead>
@@ -169,7 +184,7 @@
 						</tr>
 					</thead>
 					<tbody>
-						{% for p in listaPermisos %}
+						{% for p in page %}
 						<tr>
 							<td>{{forloop.counter}}</td>
 							<td>{{p.nombre}}</td>
@@ -187,10 +202,10 @@
 							<!-- <td>{{p.idPermiso}}</td> -->
 							<td>{{p.descripcion}}</td>
 							<td>{{p.formulario}}</td>
-							<td class="text-end"><a href="/edicionPermiso/{{email}}/{{p.idPermiso}}" class="btn btn-info btnEditarPermiso">
+							<td class="text-end"><a href="/permiso/edicionPermiso/{{p.id}}" class="btn btn-info btnEditarPermiso">
                                 <i class="fa fa-edit"></i>
                             </a></td>
-							<td><a href="/permiso/eliminar/{{p.id}}" class="btn btn-danger 
+							<td><a id="enlace-eliminacion" href="/permiso/eliminar/{{p.id}}" class="btn btn-danger 
 								btnEliminarPermiso btnEliminacion">
                                 <i class="fa fa-trash-o"></i>
                             </a></td>
@@ -198,6 +213,9 @@
 						{% endfor %}
 					</tbody>
 				</table>
+
+                {% include "paginator.html" %} 
+
 			</div>
 		</div>
     </div>    
