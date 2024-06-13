@@ -57,9 +57,9 @@
                             </li> -->
                         </ul>
                     </li>
-                    <li class="sidebar-item">
+                    <!-- <li class="sidebar-item">
                         <a href="#" class="sidebar-link collapsed" data-bs-toggle="collapse" data-bs-target="#dashboard"
-                            aria-expanded="false" aria-controls="dashboard">
+                            aria-expanded="true" aria-controls="dashboard">
                             <i class="fas fa-shield-alt pe-2"></i>
                             Seguridad
                         </a>
@@ -68,10 +68,27 @@
                                 <a href="/rol" class="sidebar-link item-menu">Roles</a>
                             </li>
                             <li class="sidebar-item">
-                                <a href="/permiso" class="sidebar-link item-menu">Permisos</a>
+                                <a href="/permiso" id="menu-permiso" class="sidebar-link item-menu">Permisos</a>
+                            </li>
+                        </ul>
+                    </li> -->
+
+                    <li class="sidebar-item">
+                        <a href="#" class="sidebar-link collapsed" data-bs-toggle="collapse" data-bs-target="#dashboard"
+                            aria-expanded="true" aria-controls="dashboard">
+                            <i class="fas fa-shield-alt pe-2"></i>
+                            Seguridad
+                        </a>
+                        <ul id="dashboard" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+                            <li class="sidebar-item">
+                                <a href="/rol" id="menu-rol" class="sidebar-link item-menu">Roles</a>
+                            </li>
+                            <li class="sidebar-item">
+                                <a href="/permiso" id="menu-permiso" class="sidebar-link item-menu">Permisos</a>
                             </li>
                         </ul>
                     </li>
+                    
 
                     <li class="sidebar-item">
                         <a href="#" class="sidebar-link collapsed item-menu" >
