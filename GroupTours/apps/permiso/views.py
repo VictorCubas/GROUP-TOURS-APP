@@ -12,7 +12,8 @@ def index(request):
     # print(request.path)
     listaPermiso = Permiso.objects.all().order_by('-id')
 
-    operaciones = ['add-success', 'add-error', 'add-warning', 'delete-success', 'delete-error', 'edit-success', 'edit-error', 'edit-warning']
+    operaciones = ['add-success', 'add-error', 'add-warning', 'delete-success', 'delete-error',
+                   'delete-warning', 'edit-success', 'edit-error', 'edit-warning']
     
     #se verifica cual de las operaciones se ejecuta para mostrar los mensajes de exitos y/o errores
     query_value = None
@@ -47,6 +48,10 @@ def index(request):
     tipo = ''
     if query == 'delete-success':
         context['eliminacionExitosa'] = query_value
+        
+    if query == 'delete-warning':
+        print(f'delete warning {query_value}')
+        context['eliminacionExitosa'] = 'warning'
         
     elif query == 'add-success':
         if query_value:
@@ -98,7 +103,14 @@ def registrarPermiso(request):
 
 def edicionPermiso(request, codigo):
     permiso = Permiso.objects.get(id=int(codigo))
-    return render(request, "edicionPermiso.html", {"permiso": permiso })
+    
+    rolesPermisos = RolesPermisos.objects.filter(permiso_id = permiso.id)
+    
+    habilitarEdicion = True
+    if len(rolesPermisos) > 0:
+        habilitarEdicion = False
+        
+    return render(request, "edicionPermiso.html", {"permiso": permiso, "habilitarEdicion": habilitarEdicion })
 
 def editarPermiso(request, id):
     nombre = request.POST.get('txtNombre').strip()
@@ -130,15 +142,32 @@ def editarPermiso(request, id):
 def eliminar(request, id):
     eliminacionExitosa = False
 
+    parametro = "success"
     try:
         permiso = Permiso.objects.get(id=id)
-        permiso.delete()
-        eliminacionExitosa = True
+
+        permisoEstaEnUso = permisoEnUso(id)
+        
+        print(f'permisoEnUso: {permisoEstaEnUso}')
+        
+        if not permisoEstaEnUso:
+            permiso.delete()
+            eliminacionExitosa = True
+        else:
+            parametro = "warning"
     except:
         eliminacionExitosa = False
+        parametro = "error"
         pass
 
-    return redirect(f'/permiso?delete-success={eliminacionExitosa}', name='index-permiso' )
+    return redirect(f'/permiso?delete-{parametro}={eliminacionExitosa}', name='index-permiso' )
+
+
+def permisoEnUso(id):
+    rolesPermisos = RolesPermisos.objects.filter(permiso_id = id)
+    
+    #significa que el permiso esta siendo usado por otro rol
+    return len(rolesPermisos) > 0
 
 
 def validarRepetido(nombre, permiso):
@@ -152,9 +181,9 @@ def validarRepetido(nombre, permiso):
     resultados_permisos= None
     
     if permiso:
-        rolesPermisos = RolesPermisos.objects.filter(permiso_id = permiso.id)
-        if len(rolesPermisos) > 0:
-            return False
+        # rolesPermisos = RolesPermisos.objects.filter(permiso_id = permiso.id)
+        # if len(rolesPermisos) > 0:
+        #     return False
 
         resultados_permisos = Permiso.objects.annotate(
             nombre_normalized=Func(F('nombre'), function='unaccent'),

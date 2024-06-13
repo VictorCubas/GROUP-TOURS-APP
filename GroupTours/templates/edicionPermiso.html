@@ -21,6 +21,21 @@
         {% endfor %}
     {% endif %}
 </h4>-->
+
+
+{% if not habilitarEdicion %}
+    <div class="alert alert-warning alert-dismissible fade show" role="alert">
+        <div class="d-flex align-items-center">
+                <svg class="bi flex-shrink-0 me-2" width="24" height="24" role="img" aria-label="Warning:"><use xlink:href="#exclamation-triangle-fill"/></svg>
+            <div>
+                Permiso en uso. solo puedes editar el campo <b>descripcion</b>.
+            </div>
+        </div>
+
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+{% endif %}
+    
 <br>
 <div class="row">
     <div class="col-sm-12 col-md-12 col-lg-12 col-xl-12">
@@ -41,16 +56,30 @@
                                 <div class="formulario-campos">
                                     <div class="form-group py-2">
 
-                                        <input type="text" id="txtNombrePermiso" name='txtNombre' 
-                                            class="form-control" placeholder="Nombre del Permiso" 
-                                            maxlength="50" required value="{{permiso.nombre}}">
+                                        <input type="text" id="txtNombrePermiso" name="txtNombre"
+                                            class="form-control" placeholder="Nombre del Permiso"
+                                                maxlength="50" required value="{{ permiso.nombre }}"
+                                            {% if not habilitarEdicion %} readonly {% endif %}>
+
+                                            
                                     </div>
                                     <div class="form-group py-2">
                                         <!--<input type="text" id="txtTipoPermiso" name='txtTipo' 
                                             class="form-control" placeholder="Tipo: C-R-U-D" 
                                             required>-->
-                                            <select class="form-select select-tipo" aria-label="Default select example"
-                                                name="txtTipo" required>
+                                            {% if not habilitarEdicion %}
+                                                <input type="hidden" name="txtTipo" value="{{ permiso.tipo }}">
+                                            {% endif %}
+
+                                            {% if not habilitarEdicion %}
+                                                <select class="form-select select-tipo" aria-label="Default select example"
+                                                    name="txtTipoEditar" required
+                                                    disabled>
+                                            {% else %}
+                                                <select class="form-select select-tipo" aria-label="Default select example"
+                                                    name="txtTipo" required>
+                                            {% endif %}
+
                                                 <option disabled value="">Selecciona el tipo</option>
                                                 {% if permiso.tipo == "C" %}
                                                     <option selected value="C">Creacion</option>
@@ -104,8 +133,17 @@
                                                 </div> 
                                             </li>
                                         </ul>-->
-                                        <select class="form-select select-pantalla" aria-label="Default select example" 
-                                        name="txtFormulario" required>
+                                        {% if not habilitarEdicion %}
+                                            <input type="hidden" name="txtFormulario" value="{{ permiso.formulario }}">
+                                        {% endif %}
+
+                                        {% if not habilitarEdicion %}
+                                            <select class="form-select select-pantalla" aria-label="Default select example" 
+                                            name="txtFormularioEditar" required disabled>
+                                        {% else %}
+                                            <select class="form-select select-pantalla" aria-label="Default select example" 
+                                            name="txtFormulario" required>
+                                        {% endif %}
 
                                             {% if permiso.formulario == "Paquetes" %}
                                                     <option selected value="Paquetes">Paquetes</option>
