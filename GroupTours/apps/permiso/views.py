@@ -6,6 +6,7 @@ from .models import Permiso
 from django.core.paginator import Paginator, Page
 from django.db.models import Q, Func, F
 from unicodedata import normalize
+from django.core.paginator import Paginator, Page
 # Create your views here.
 
 def index(request):
@@ -42,6 +43,7 @@ def index(request):
                 'listaPermisos':listaPermiso,
                 'cantidad_de_resultados': cantidad_de_resultados,
                 'page': page,
+                'menu_activo': 'permiso'
                 }
     
     mensaje = ''

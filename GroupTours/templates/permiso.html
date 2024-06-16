@@ -39,7 +39,10 @@
   </div>
 {% endif %}
 
-<input id="eliminacionExitosa" name="eliminacionExitosa" type="hidden" value="{{eliminacionExitosa}}">
+    <input id="eliminacionExitosa" name="eliminacionExitosa" type="hidden" value="{{eliminacionExitosa}}">
+
+    <!-- ESTE INPUT ES NECESARIO PARA MARCA UN ITEM ACTIVO EN EL SIDE-BAR'menu_activo': 'permiso'-->
+    <input id="menu-activo" name="menu-activo" type="hidden" value="{{menu_activo}}">
 
 	<!--<h4>Permisos sobre "Permiso": &nbsp;
 		{% if permisosPorPantalla == None %}

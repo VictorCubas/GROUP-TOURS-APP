@@ -44,6 +44,7 @@ def index(request):
                 'listaPermisos':listaPermisos,
                 'cantidad_de_resultados': cantidad_de_resultados,
                 'page': page,
+                'menu_activo': 'rol'
                 }
     
     mensaje = ''

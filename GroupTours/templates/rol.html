@@ -39,6 +39,9 @@
     {% endif %}
 
     <input id="eliminacionExitosa" name="eliminacionExitosa" type="hidden" value="{{eliminacionExitosa}}">
+
+    <!-- ESTE INPUT ES NECESARIO PARA MARCA UN ITEM ACTIVO EN EL SIDE-BAR'menu_activo': 'permiso'-->
+    <input id="menu-activo" name="menu-activo" type="hidden" value="{{menu_activo}}">
     <!-- <h4 id="email">{{email}}</h4> -->
 	<!--<h4>Permisos sobre "Permiso": &nbsp;
 		{% if permisosPorPantalla == None %}
@@ -222,12 +225,11 @@
 							<td class="text-end"><a href="/rol/edicion/{{r.rol.id}}" class="btn btn-info btnEditarPermiso">
                                 <i class="fa fa-edit"></i>
                             </a></td>
-							<td>
-                                <a id="enlace-eliminacion" href="/rol/eliminar/{{r.rol.id}}" class="btn btn-danger 
+
+							<td><a id="enlace-eliminacion" href="javascript:eliminar('rol/eliminar', {{r.rol.id}})" class="btn btn-danger 
 								btnEliminarPermiso btnEliminacion">
-                                    <i class="fa fa-trash-o"></i>
-                                </a>
-                            </td>
+                                <i class="fa fa-trash-o"></i>
+                            </a></td>
 						</tr>
 						{% endfor %}
 

@@ -4,20 +4,43 @@ toggler.addEventListener("click",function(){
 });
 
 
- // Resaltar ítem activo
- var itemActivo = null;
- const menuItems = document.querySelectorAll(".item-menu");
- menuItems.forEach(function (opcion) {
-   opcion.addEventListener("click", function (event) {
-       if(itemActivo && itemActivo !== opcion){
-           
-           itemActivo.classList.remove('activo');
-       }
+ // RESALTAR ITEM ACTIVO EN EL SIDEBAR
+const menuActivo = document.getElementById("menu-activo");
+console.log('menuActivo: ', menuActivo.value);
+if(menuActivo){
+    const menuActivoNav = `menu-${menuActivo.value}`;
+    let itemActive =  document.getElementById(menuActivoNav);
 
-       itemActivo = opcion;
-       opcion.classList.add("activo");
-   });
- });
+    itemActive.classList.add("activo");
+    console.log('itemActive: ', itemActive);
+    
+
+    let parentElement = itemActive.parentElement;
+    while (parentElement && !parentElement.classList.contains('sidebar-dropdown')) {
+        parentElement = parentElement.parentElement;
+    }
+
+    if (parentElement) {
+        parentElement.classList.add("show");
+        console.log('parentElement: ', parentElement);
+    }
+
+}
+
+var itemActivo = null;
+const menuItems = document.querySelectorAll(".item-menu");
+menuItems.forEach(function (opcion) {
+    opcion.addEventListener("click", function (event) {
+        if(itemActivo && itemActivo !== opcion){
+            
+            itemActivo.classList.remove('activo');
+        }
+
+        itemActivo = opcion;
+        opcion.classList.add("activo");
+    });
+});
+
 
 
 //Boostrap select
