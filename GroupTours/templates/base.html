@@ -81,8 +81,11 @@
                         </a>
                         <ul id="dashboard" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
                             <li class="sidebar-item">
-                                <!-- <a href="/usuario" id="menu-rol" class="sidebar-link item-menu">Usuarios</a> -->
+                                <!-- <a href="/usuario" id="menu-usuario" class="sidebar-link item-menu">Usuarios</a> -->
                                 <a href="#" id="menu-usuario" class="sidebar-link item-menu">Usuarios</a>
+                            </li>
+                            <li class="sidebar-item">
+                                <a href="#" id="menu-empleado" class="sidebar-link item-menu">Empleados</a>
                             </li>
                             <li class="sidebar-item">
                                 <a href="/rol" id="menu-rol" class="sidebar-link item-menu">Roles</a>
@@ -221,7 +224,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
         
 	
-     <script src="{% static 'js/sideBar.js' %}"></script>
+     <script src="{% static 'js/base.js' %}"></script>
      <script>
         function menuLateralToggle(){
             const guardarBoton = document.querySelector('.formulario-guardar');

@@ -9,6 +9,13 @@ from unicodedata import normalize
 from django.core.paginator import Paginator, Page
 # Create your views here.
 
+editado = False
+agregado = False
+eliminado = False
+elimninacion_no_permitida = False
+nombre_repetido = False
+operacion = None
+
 def index(request):
     # print(request.path)
     listaPermiso = Permiso.objects.all().order_by('-id')
@@ -19,9 +26,9 @@ def index(request):
     #se verifica cual de las operaciones se ejecuta para mostrar los mensajes de exitos y/o errores
     query_value = None
     query = None
-    for operacion in operaciones:
-        query = operacion
-        query_value = request.GET.get(operacion, '')
+    for ope in operaciones:
+        query = ope
+        query_value = request.GET.get(ope, '')
         # print(f'query: {query}, query_value: {query_value}')
         
         if query_value.lower() == 'true':
@@ -33,6 +40,8 @@ def index(request):
         else:
             query = ''
     
+    global editado, operacion, agregado, eliminado
+    print(f'EDITADO: {editado}')
     resultadosAPaginar = listaPermiso
     cantidad_de_resultados = len(resultadosAPaginar)
     paginator = Paginator(resultadosAPaginar, per_page=5)  # 5 resultados por página
@@ -48,34 +57,49 @@ def index(request):
     
     mensaje = ''
     tipo = ''
-    if query == 'delete-success':
-        context['eliminacionExitosa'] = query_value
+    
+    if operacion == 'editar':
+        context['editado'] = True
+        context['operacion'] = operacion
+        print(f'context: {context}')
+        tipo = 'success'
+        editado = False
+        mensaje = 'El permiso se ha editado con exito'
         
-    if query == 'delete-warning':
-        print(f'delete warning {query_value}')
-        context['eliminacionExitosa'] = 'warning'
+    elif operacion == 'agregar':
+        context['operacion'] = operacion
         
-    elif query == 'add-success':
-        if query_value:
-            mensaje = 'El permiso se ha guardado con exito'
+        if agregado:
+            context['agregado'] = True
             tipo = 'success'
-        else:    
+            mensaje = 'El permiso se ha guardado con exito'
+            
+            agregado = False
+        else:
+            context['agregado'] = False
             mensaje = 'Permiso ya existente'
             tipo = 'warning'
+    elif operacion == 'eliminar':
+        context['operacion'] = operacion
+        print(f'eliminado 2: {eliminado}')
+        
+        context['eliminacionExitosa'] = eliminado
+        
+        if eliminado:
+            context['eliminado'] = True
+            tipo = 'success'
             
-        context['tipo'] = tipo
-    elif query == 'edit-success':
-        mensaje = 'El permiso se ha editado con exito'
-        context['tipo'] = 'success'
-        
-    elif query == 'edit-warning':
-        mensaje = 'Permiso ya existente, verifique que el nombre no sea repetido'
-        context['tipo'] = 'warning'
-        
-    elif query == 'add-error' or query == 'edit-error':
-        mensaje = 'Error: Ocurrio algo inesperado. Vuelva a intentarlo'
-        context['tipo'] = 'danger'  
-
+        else:
+            context['eliminado'] = False
+            tipo = 'warning'
+            
+            if elimninacion_no_permitida:
+                context['eliminacionExitosa'] = 'warning'
+            
+        eliminado = False
+            
+    context['tipo'] = tipo
+    operacion = None
     context['mensaje'] = mensaje
 
     return render(request, 'permiso.html', context)
@@ -90,18 +114,23 @@ def registrarPermiso(request):
 
     esValido = validarRepetido(nombre, None)
     parametro = "success"
+    
+    global agregado, nombre_repetido, operacion
+    nombre_repetido = esValido
+    agregado = False
+    operacion = 'agregar'
 
     if esValido:
 
         try: 
             #se crea un permiso
             Permiso.objects.create(nombre=nombre, descripcion=descripcion, tipo=tipo, formulario=formulario)
-
+            agregado = True
         except:
             parametro = "error"
 
 
-    return redirect(f'/permiso?add-{parametro}={ esValido }', name='index-permiso' )
+    return redirect(f'/permiso', name='index-permiso' )
 
 def edicionPermiso(request, codigo):
     permiso = Permiso.objects.get(id=int(codigo))
@@ -121,6 +150,9 @@ def editarPermiso(request, id):
     formulario = request.POST.get('txtFormulario')
     esValido = False
 
+    global editado, operacion
+    editado = False
+    operacion = 'editar'
     parametro = "success"
 
     try:
@@ -133,18 +165,24 @@ def editarPermiso(request, id):
             permiso.tipo = tipo
             permiso.formulario = formulario
             permiso.save()
+            
+            editado = True
         else: 
             parametro = "warning"
     except:
         parametro = "error"
         pass
     
-    return redirect(f'/permiso?edit-{parametro}=true', name='index-permiso' )
+    return redirect(f'/permiso', name='index-permiso' )
 
 def eliminar(request, id):
     eliminacionExitosa = False
+    
+    global eliminado, operacion, elimninacion_no_permitida
+    eliminado = False
+    elimninacion_no_permitida = False
+    operacion = 'eliminar'
 
-    parametro = "success"
     try:
         permiso = Permiso.objects.get(id=id)
 
@@ -154,15 +192,13 @@ def eliminar(request, id):
         
         if not permisoEstaEnUso:
             permiso.delete()
-            eliminacionExitosa = True
+            eliminado = True
         else:
-            parametro = "warning"
+            elimninacion_no_permitida = True
     except:
-        eliminacionExitosa = False
-        parametro = "error"
         pass
 
-    return redirect(f'/permiso?delete-{parametro}={eliminacionExitosa}', name='index-permiso' )
+    return redirect(f'/permiso', name='index-permiso' )
 
 
 def permisoEnUso(id):
