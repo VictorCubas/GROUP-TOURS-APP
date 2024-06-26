@@ -23,25 +23,8 @@ def index(request):
     operaciones = ['add-success', 'add-error', 'add-warning', 'delete-success', 'delete-error',
                    'delete-warning', 'edit-success', 'edit-error', 'edit-warning']
     
-    #se verifica cual de las operaciones se ejecuta para mostrar los mensajes de exitos y/o errores
-    query_value = None
-    query = None
-    for ope in operaciones:
-        query = ope
-        query_value = request.GET.get(ope, '')
-        # print(f'query: {query}, query_value: {query_value}')
-        
-        if query_value.lower() == 'true':
-            query_value = True
-            break
-        elif query_value.lower() == 'false':
-            query_value = False
-            break
-        else:
-            query = ''
     
     global editado, operacion, agregado, eliminado
-    print(f'EDITADO: {editado}')
     resultadosAPaginar = listaPermiso
     cantidad_de_resultados = len(resultadosAPaginar)
     paginator = Paginator(resultadosAPaginar, per_page=5)  # 5 resultados por página
@@ -113,7 +96,6 @@ def registrarPermiso(request):
     formulario = request.POST.get('txtFormulario')
 
     esValido = validarRepetido(nombre, None)
-    parametro = "success"
     
     global agregado, nombre_repetido, operacion
     nombre_repetido = esValido
@@ -167,16 +149,12 @@ def editarPermiso(request, id):
             permiso.save()
             
             editado = True
-        else: 
-            parametro = "warning"
     except:
-        parametro = "error"
         pass
     
     return redirect(f'/permiso', name='index-permiso' )
 
 def eliminar(request, id):
-    eliminacionExitosa = False
     
     global eliminado, operacion, elimninacion_no_permitida
     eliminado = False
