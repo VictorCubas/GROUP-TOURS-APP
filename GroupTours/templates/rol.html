@@ -222,13 +222,16 @@
                      
                                 </div>
                             </td>
-							<td class="text-end"><a href="/rol/edicion/{{r.rol.id}}" class="btn btn-info btnEditarPermiso">
+							<td class="text-end"><a href="/rol/edicion/{{r.rol.id}}" class="btn btn-info btnEditarPermiso hover-text">
                                 <i class="fa fa-edit"></i>
+                                <span class="tooltip-text" id="left">Editar</span>
                             </a></td>
 
-							<td><a id="enlace-eliminacion" href="javascript:eliminar('rol/eliminar', {{r.rol.id}})" class="btn btn-danger 
+							<td><a id="enlace-eliminacion" href="javascript:eliminar('rol/eliminar', {{r.rol.id}})" class="btn btn-danger hover-text
 								btnEliminarPermiso btnEliminacion">
-                                <i class="fa fa-trash-o"></i>
+                                    <i class="fa fa-close"></i>
+                                    <!-- <span class="tooltip-text" id="top">I'm a tooltip!</span> -->
+                                    <span class="tooltip-text" id="left">Desactivar</span>
                             </a></td>
 						</tr>
 						{% endfor %}
