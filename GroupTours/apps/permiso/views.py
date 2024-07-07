@@ -18,7 +18,7 @@ operacion = None
 
 def index(request):
     # print(request.path)
-    listaPermiso = Permiso.objects.all().order_by('-id')
+    listaPermiso = Permiso.objects.filter(activo=True).order_by('-id')
 
     operaciones = ['add-success', 'add-error', 'add-warning', 'delete-success', 'delete-error',
                    'delete-warning', 'edit-success', 'edit-error', 'edit-warning']
@@ -169,7 +169,9 @@ def eliminar(request, id):
         print(f'permisoEnUso: {permisoEstaEnUso}')
         
         if not permisoEstaEnUso:
-            permiso.delete()
+            # permiso.delete()
+            permiso.activo = False
+            permiso.save()
             eliminado = True
         else:
             elimninacion_no_permitida = True

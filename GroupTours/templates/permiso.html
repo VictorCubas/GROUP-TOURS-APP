@@ -205,16 +205,18 @@
 							<!-- <td>{{p.idPermiso}}</td> -->
 							<td>{{p.descripcion}}</td>
 							<td>{{p.formulario}}</td>
-							<td class="text-end"><a href="/permiso/edicionPermiso/{{p.id}}" class="btn btn-info btnEditarPermiso">
+							<td class="text-end"><a href="/permiso/edicionPermiso/{{p.id}}" class="btn btn-info btnEditarPermiso hover-text">
                                 <i class="fa fa-edit"></i>
+                                <span class="tooltip-text" id="left">Editar</span>
                             </a></td>
 							<!-- <td><a id="enlace-eliminacion-{{p.id}}" href="/permiso/eliminar/{{p.id}}" class="btn btn-danger 
 								btnEliminarPermiso btnEliminacion">
                                 <i class="fa fa-trash-o"></i>
                             </a></td> -->
-							<td><a id="enlace-eliminacion" href="javascript:eliminar('permiso/eliminar', {{p.id}})" class="btn btn-danger 
+							<td><a id="enlace-eliminacion" href="javascript:eliminar('permiso/eliminar', {{p.id}})" class="btn btn-danger hover-text 
 								btnEliminarPermiso btnEliminacion">
-                                <i class="fa fa-trash-o"></i>
+                                <i class="fa fa-close"></i>
+                                <span class="tooltip-text" id="left">Desactivar</span>
                             </a></td>
 						</tr>
 						{% endfor %}

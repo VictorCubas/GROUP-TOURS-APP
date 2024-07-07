@@ -56,8 +56,8 @@ function dispararModalEliminacionExitosa(){
 
     if(eliminacionExitosaEl.value === 'True'){
         Swal.fire({
-            title: "Eliminado!",
-            text: "Se ha realizado la eliminación.",
+            title: "Desactivado!",
+            text: "Se ha realizado la desactivación.",
             icon: "success"
             });
     }
@@ -72,7 +72,7 @@ function dispararModalEliminacionExitosa(){
         Swal.fire({
         icon: "warning",
         title: "Oops...",
-        text: "¡Permiso en uso! No se puede eliminar.",
+        text: "¡Permiso en uso! No se puede desactivar.",
         });
     }
 }
@@ -103,13 +103,13 @@ function eliminar(url, id){
 
 function confirmarElimnacion(url){
     Swal.fire({
-        title: "Estás seguro de que quieres eliminar?",
-        text: "No se podrá revertir la acción!",
+        title: "Estás seguro de que quieres desactivar?",
+        // text: "No se podrá revertir la acción!",
         icon: "warning",
         showCancelButton: true,
         confirmButtonColor: "#3085d6",
         cancelButtonColor: "#d33",
-        confirmButtonText: "Sí, elimnalo!"
+        confirmButtonText: "Sí, desactivarlo!"
       }).then((result) => {
         if (result.isConfirmed) {
             window.location.href = url;
