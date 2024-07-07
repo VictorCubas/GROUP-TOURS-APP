@@ -14,7 +14,8 @@ def index(request):
     listaPermisos = Permiso.objects.all().order_by('id')
     listaRolesPermisos = getRolesPermisos(listaRoles)
     
-    operaciones = ['add-success', 'add-error', 'add-warning', 'delete-success', 'delete-error', 'edit-success', 'edit-error', 'edit-warning']
+    operaciones = ['add-success', 'add-error', 'add-warning', 'delete-success', 'delete-error',
+                   'delete-warning', 'edit-success', 'edit-error', 'edit-warning']
     
     #se verifica cual de las operaciones se ejecuta para mostrar los mensajes de exitos y/o errores
     query_value = None
@@ -44,6 +45,7 @@ def index(request):
                 'listaPermisos':listaPermisos,
                 'cantidad_de_resultados': cantidad_de_resultados,
                 'page': page,
+                'menu_activo': 'rol'
                 }
     
     mensaje = ''
@@ -190,8 +192,14 @@ def edicion(request, id):
                     selected = 'si'
                     break
             
-            permisosDelRol.append({'permiso': p, 'selected': selected})
+        permisosDelRol.append({'permiso': p, 'selected': selected})
         
+        #DESCOMENTAR ESTE CODIGO PARA HABILITAR EDICION 
+        # usuarioRoles = UsuarioRoles.objects.filter(rol_id = rol.id)
+    
+        # habilitarEdicion = True
+        # if len(usuarioRoles) > 0:
+        #     habilitarEdicion = False
     except:
         pass
 

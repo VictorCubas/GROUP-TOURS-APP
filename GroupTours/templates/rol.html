@@ -39,6 +39,9 @@
     {% endif %}
 
     <input id="eliminacionExitosa" name="eliminacionExitosa" type="hidden" value="{{eliminacionExitosa}}">
+
+    <!-- ESTE INPUT ES NECESARIO PARA MARCA UN ITEM ACTIVO EN EL SIDE-BAR'menu_activo': 'permiso'-->
+    <input id="menu-activo" name="menu-activo" type="hidden" value="{{menu_activo}}">
     <!-- <h4 id="email">{{email}}</h4> -->
 	<!--<h4>Permisos sobre "Permiso": &nbsp;
 		{% if permisosPorPantalla == None %}
@@ -219,15 +222,17 @@
                      
                                 </div>
                             </td>
-							<td class="text-end"><a href="/rol/edicion/{{r.rol.id}}" class="btn btn-info btnEditarPermiso">
+							<td class="text-end"><a href="/rol/edicion/{{r.rol.id}}" class="btn btn-info btnEditarPermiso hover-text">
                                 <i class="fa fa-edit"></i>
+                                <span class="tooltip-text" id="left">Editar</span>
                             </a></td>
-							<td>
-                                <a id="enlace-eliminacion" href="/rol/eliminar/{{r.rol.id}}" class="btn btn-danger 
+
+							<td><a id="enlace-eliminacion" href="javascript:eliminar('rol/eliminar', {{r.rol.id}})" class="btn btn-danger hover-text
 								btnEliminarPermiso btnEliminacion">
-                                    <i class="fa fa-trash-o"></i>
-                                </a>
-                            </td>
+                                    <i class="fa fa-close"></i>
+                                    <!-- <span class="tooltip-text" id="top">I'm a tooltip!</span> -->
+                                    <span class="tooltip-text" id="left">Desactivar</span>
+                            </a></td>
 						</tr>
 						{% endfor %}
 

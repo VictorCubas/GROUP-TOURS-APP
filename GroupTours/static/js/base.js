@@ -4,20 +4,43 @@ toggler.addEventListener("click",function(){
 });
 
 
- // Resaltar ítem activo
- var itemActivo = null;
- const menuItems = document.querySelectorAll(".item-menu");
- menuItems.forEach(function (opcion) {
-   opcion.addEventListener("click", function (event) {
-       if(itemActivo && itemActivo !== opcion){
-           
-           itemActivo.classList.remove('activo');
-       }
+ // RESALTAR ITEM ACTIVO EN EL SIDEBAR
+const menuActivo = document.getElementById("menu-activo");
+console.log('menuActivo: ', menuActivo.value);
+if(menuActivo){
+    const menuActivoNav = `menu-${menuActivo.value}`;
+    let itemActive =  document.getElementById(menuActivoNav);
 
-       itemActivo = opcion;
-       opcion.classList.add("activo");
-   });
- });
+    itemActive.classList.add("activo");
+    console.log('itemActive: ', itemActive);
+    
+
+    let parentElement = itemActive.parentElement;
+    while (parentElement && !parentElement.classList.contains('sidebar-dropdown')) {
+        parentElement = parentElement.parentElement;
+    }
+
+    if (parentElement) {
+        parentElement.classList.add("show");
+        console.log('parentElement: ', parentElement);
+    }
+
+}
+
+var itemActivo = null;
+const menuItems = document.querySelectorAll(".item-menu");
+menuItems.forEach(function (opcion) {
+    opcion.addEventListener("click", function (event) {
+        if(itemActivo && itemActivo !== opcion){
+            
+            itemActivo.classList.remove('activo');
+        }
+
+        itemActivo = opcion;
+        opcion.classList.add("activo");
+    });
+});
+
 
 
 //Boostrap select
@@ -33,8 +56,8 @@ function dispararModalEliminacionExitosa(){
 
     if(eliminacionExitosaEl.value === 'True'){
         Swal.fire({
-            title: "Eliminado!",
-            text: "Se ha realizado la eliminación.",
+            title: "Desactivado!",
+            text: "Se ha realizado la desactivación.",
             icon: "success"
             });
     }
@@ -49,7 +72,7 @@ function dispararModalEliminacionExitosa(){
         Swal.fire({
         icon: "warning",
         title: "Oops...",
-        text: "¡Permiso en uso! No se puede eliminar.",
+        text: "¡Permiso en uso! No se puede desactivar.",
         });
     }
 }
@@ -80,13 +103,13 @@ function eliminar(url, id){
 
 function confirmarElimnacion(url){
     Swal.fire({
-        title: "Estás seguro de que quieres eliminar?",
-        text: "No se podrá revertir la acción!",
+        title: "Estás seguro de que quieres desactivar?",
+        // text: "No se podrá revertir la acción!",
         icon: "warning",
         showCancelButton: true,
         confirmButtonColor: "#3085d6",
         cancelButtonColor: "#d33",
-        confirmButtonText: "Sí, elimnalo!"
+        confirmButtonText: "Sí, desactivarlo!"
       }).then((result) => {
         if (result.isConfirmed) {
             window.location.href = url;

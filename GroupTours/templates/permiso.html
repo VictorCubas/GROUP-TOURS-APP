@@ -18,28 +18,35 @@
     </symbol>
 </svg>
 
-{% if tipo and tipo != '' %}
-    <div class="alert alert-{{tipo}} alert-dismissible fade show" role="alert">
-        <div class="d-flex align-items-center">
-            
-            {% if tipo == 'success' %}
-                <svg class="bi flex-shrink-0 me-2" width="24" height="24" role="img" aria-label="Success:"><use xlink:href="#check-circle-fill"/></svg>
-            {% elif tipo == 'warning'%}
-                <svg class="bi flex-shrink-0 me-2" width="24" height="24" role="img" aria-label="Warning:"><use xlink:href="#exclamation-triangle-fill"/></svg>
-            {% elif tipo == 'danger'%}
-                <svg class="bi flex-shrink-0 me-2" width="24" height="24" role="img" aria-label="Danger:"><use xlink:href="#exclamation-triangle-fill"/></svg>
-            {% endif %}
-                
-            <div>
-                {{mensaje}}
-            </div>
+
+{% if operacion == 'editar' or operacion == 'agregar' %}
+<div class="alert alert-{{tipo}} alert-dismissible fade show" role="alert">
+    <div class="d-flex align-items-center">
+        
+        <!-- <svg class="bi flex-shrink-0 me-2" width="24" height="24" role="img" aria-label="Success:"><use xlink:href="#check-circle-fill"/></svg>     -->
+        
+        {% if tipo == 'success' %}
+            <svg class="bi flex-shrink-0 me-2" width="24" height="24" role="img" aria-label="Success:"><use xlink:href="#check-circle-fill"/></svg>
+        {% elif tipo == 'warning'%}
+            <svg class="bi flex-shrink-0 me-2" width="24" height="24" role="img" aria-label="Warning:"><use xlink:href="#exclamation-triangle-fill"/></svg>
+        {% elif tipo == 'danger'%}
+            <svg class="bi flex-shrink-0 me-2" width="24" height="24" role="img" aria-label="Danger:"><use xlink:href="#exclamation-triangle-fill"/></svg>
+        {% endif %}
+
+        <div>
+            {{mensaje}}
         </div>
+    </div>
 
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-  </div>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
 {% endif %}
+    
 
-<input id="eliminacionExitosa" name="eliminacionExitosa" type="hidden" value="{{eliminacionExitosa}}">
+    <input id="eliminacionExitosa" name="eliminacionExitosa" type="hidden" value="{{eliminacionExitosa}}">
+
+    <!-- ESTE INPUT ES NECESARIO PARA MARCA UN ITEM ACTIVO EN EL SIDE-BAR'menu_activo': 'permiso'-->
+    <input id="menu-activo" name="menu-activo" type="hidden" value="{{menu_activo}}">
 
 	<!--<h4>Permisos sobre "Permiso": &nbsp;
 		{% if permisosPorPantalla == None %}
@@ -154,7 +161,6 @@
 			<div class="d-flex justify-content-between align-items-center">
             <h2 class="mt-4 text-dark">Listado de permisos</h2>
 
-
                 <form class="formulario-buscar mt-3" action="/permiso/buscar/" method="GET">
                     <div class="input-group">
                         <div class="form-outline" data-mdb-input-init>
@@ -199,16 +205,18 @@
 							<!-- <td>{{p.idPermiso}}</td> -->
 							<td>{{p.descripcion}}</td>
 							<td>{{p.formulario}}</td>
-							<td class="text-end"><a href="/permiso/edicionPermiso/{{p.id}}" class="btn btn-info btnEditarPermiso">
+							<td class="text-end"><a href="/permiso/edicionPermiso/{{p.id}}" class="btn btn-info btnEditarPermiso hover-text">
                                 <i class="fa fa-edit"></i>
+                                <span class="tooltip-text" id="left">Editar</span>
                             </a></td>
 							<!-- <td><a id="enlace-eliminacion-{{p.id}}" href="/permiso/eliminar/{{p.id}}" class="btn btn-danger 
 								btnEliminarPermiso btnEliminacion">
                                 <i class="fa fa-trash-o"></i>
                             </a></td> -->
-							<td><a id="enlace-eliminacion" href="javascript:eliminar('permiso/eliminar', {{p.id}})" class="btn btn-danger 
+							<td><a id="enlace-eliminacion" href="javascript:eliminar('permiso/eliminar', {{p.id}})" class="btn btn-danger hover-text 
 								btnEliminarPermiso btnEliminacion">
-                                <i class="fa fa-trash-o"></i>
+                                <i class="fa fa-close"></i>
+                                <span class="tooltip-text" id="left">Desactivar</span>
                             </a></td>
 						</tr>
 						{% endfor %}

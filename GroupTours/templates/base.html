@@ -21,9 +21,11 @@
 	<!--JQuery-->
 	<script src="https://code.jquery.com/jquery-3.6.0.js" integrity="sha256-H+K7U5CnXl1h5ywQfKtSj8PCmoN9aaq30gDh27Xc0jk=" crossorigin="anonymous"></script>
 
-
 	<!-- agregamos el css/style.css -->
 	<link rel="stylesheet" href="{% static 'css/style.css' %}">
+
+    <!-- icono -->
+    <link rel="icon" type="image/x-icon" href="{% static 'images/favicon.ico' %}">
 </head>
 <body>
 	<!--Navegador-->
@@ -57,9 +59,9 @@
                             </li> -->
                         </ul>
                     </li>
-                    <li class="sidebar-item">
+                    <!-- <li class="sidebar-item">
                         <a href="#" class="sidebar-link collapsed" data-bs-toggle="collapse" data-bs-target="#dashboard"
-                            aria-expanded="false" aria-controls="dashboard">
+                            aria-expanded="true" aria-controls="dashboard">
                             <i class="fas fa-shield-alt pe-2"></i>
                             Seguridad
                         </a>
@@ -68,10 +70,34 @@
                                 <a href="/rol" class="sidebar-link item-menu">Roles</a>
                             </li>
                             <li class="sidebar-item">
-                                <a href="/permiso" class="sidebar-link item-menu">Permisos</a>
+                                <a href="/permiso" id="menu-permiso" class="sidebar-link item-menu">Permisos</a>
+                            </li>
+                        </ul>
+                    </li> -->
+
+                    <li class="sidebar-item">
+                        <a href="#" class="sidebar-link collapsed" data-bs-toggle="collapse" data-bs-target="#dashboard"
+                            aria-expanded="true" aria-controls="dashboard">
+                            <i class="fas fa-shield-alt pe-2"></i>
+                            Seguridad
+                        </a>
+                        <ul id="dashboard" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+                            <li class="sidebar-item">
+                                <!-- <a href="/usuario" id="menu-usuario" class="sidebar-link item-menu">Usuarios</a> -->
+                                <a href="#" id="menu-usuario" class="sidebar-link item-menu">Usuarios</a>
+                            </li>
+                            <li class="sidebar-item">
+                                <a href="#" id="menu-empleado" class="sidebar-link item-menu">Empleados</a>
+                            </li>
+                            <li class="sidebar-item">
+                                <a href="/rol" id="menu-rol" class="sidebar-link item-menu">Roles</a>
+                            </li>
+                            <li class="sidebar-item">
+                                <a href="/permiso" id="menu-permiso" class="sidebar-link item-menu">Permisos</a>
                             </li>
                         </ul>
                     </li>
+                    
 
                     <li class="sidebar-item">
                         <a href="#" class="sidebar-link collapsed item-menu" >
@@ -80,12 +106,12 @@
                         </a>
                     </li>
 
-                    <li class="sidebar-item">
+                    <!-- <li class="sidebar-item">
                         <a href="#" class="sidebar-link collapsed item-menu" >
 							<i class="fa-regular fa-user pe-2"></i>
                             Usuarios
                         </a>
-                    </li>
+                    </li> -->
 
 					<li class="sidebar-item">
                         <a href="#" class="sidebar-link collapsed" data-bs-toggle="collapse" data-bs-target="#reportes"
@@ -200,7 +226,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
         
 	
-     <script src="{% static 'js/sideBar.js' %}"></script>
+     <script src="{% static 'js/base.js' %}"></script>
      <script>
         function menuLateralToggle(){
             const guardarBoton = document.querySelector('.formulario-guardar');
