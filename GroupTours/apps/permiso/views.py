@@ -15,6 +15,7 @@ eliminado = False
 elimninacion_no_permitida = False
 nombre_repetido = False
 operacion = None
+activo = True
 
 def index(request):
     # print(request.path)
@@ -84,6 +85,7 @@ def index(request):
     context['tipo'] = tipo
     operacion = None
     context['mensaje'] = mensaje
+    context['activo'] = activo
 
     return render(request, 'permiso.html', context)
 
@@ -227,35 +229,48 @@ def validarRepetido(nombre, permiso):
     return False
 
 
+from django.db.models import Q, Func, F
+from django.core.paginator import Paginator, Page
+from unicodedata import normalize
+from .models import Permiso
+
 def buscar(request):
-    print('hola.....')
-    query = request.GET.get('q').strip()  # Obtener el término de búsqueda del parámetro 'q'
-    resultados = []
+    activoTemp = request.GET.get('activo')
+    query = request.GET.get('q', '').strip()  # Obtener el término de búsqueda del parámetro 'q'
     context = {}
+
+    # Filtrar por el estado de 'activo'
+    if activoTemp is not None:
+        permisos = Permiso.objects.filter(activo=True)
+        activoTemp = True
+    else:
+        permisos = Permiso.objects.filter(activo=False)
+        activoTemp = False
     
+    # Filtrar por el término de búsqueda 'q' si no está vacío
     if query:
         query_normalized = normalize('NFKD', query).encode('ASCII', 'ignore').decode('ASCII')
-        
-        resultados = Permiso.objects.annotate(
-            nombre_normalized=Func(F('nombre'), function='unaccent'),
+        permisos = permisos.annotate(
+            nombre_normalized=Func(F('nombre'), function='unaccent')
         ).filter(
             Q(nombre_normalized__icontains=query_normalized)
         )
-        
-        print(resultados) 
-        listaPermisos = Permiso.objects.all().order_by('id')
 
-        resultadosAPaginar = resultados
-        cantidad_de_resultados = len(resultadosAPaginar)
-        paginator = Paginator(resultadosAPaginar, per_page=5)  # 5 resultados por página
-        page_number = request.GET.get('page')  # Obtén el número de página de la URL
-        page: Page = paginator.get_page(page_number)
-        
-        context = {
-                    'listaPermisos':listaPermisos,
-                    'cantidad_de_resultados': cantidad_de_resultados,
-                    'page': page,
-                    'query': query
-                    }
-        
+    
+    listaPermisos = Permiso.objects.all().order_by('id')
+
+    resultadosAPaginar = permisos
+    cantidad_de_resultados = len(resultadosAPaginar)
+    paginator = Paginator(resultadosAPaginar, per_page=5)  # 5 resultados por página
+    page_number = request.GET.get('page')  # Obtén el número de página de la URL
+    page: Page = paginator.get_page(page_number)
+    
+    context = {
+        'listaPermisos': listaPermisos,
+        'cantidad_de_resultados': cantidad_de_resultados,
+        'page': page,
+        'query': query,
+        'activo': activoTemp  # Incluye el valor de activo en el contexto
+    }
+
     return render(request, 'permiso.html', context)
