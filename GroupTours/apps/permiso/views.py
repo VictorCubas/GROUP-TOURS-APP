@@ -269,3 +269,21 @@ def buscar(request):
     }
 
     return render(request, 'permiso.html', context)
+
+def activar(request, id):
+    
+    global eliminado, operacion, elimninacion_no_permitida
+    eliminado = False
+    elimninacion_no_permitida = False
+    
+    operacion = 'activar'
+
+    try:
+        permiso = Permiso.objects.get(id=id)
+
+        permiso.activo = True
+        permiso.save()
+    except:
+        pass
+
+    return redirect(f'/permiso', name='index-permiso' )
