@@ -102,14 +102,24 @@ function eliminar(url, id){
 
 
 function confirmarElimnacion(url){
+    console.log('confirmarElimnacion: ', url);
+    let operacion = 'activar';
+    let confirmButtonText = 'Sí, activarlo!';
+
+    if(url.includes('eliminar')){
+        operacion = 'desactivar';
+        confirmButtonText = 'Sí, desactivarlo!';
+    }
+
+
     Swal.fire({
-        title: "Estás seguro de que quieres desactivar?",
+        title: `Estás seguro de que quieres ${operacion}?`,
         // text: "No se podrá revertir la acción!",
         icon: "warning",
         showCancelButton: true,
         confirmButtonColor: "#3085d6",
         cancelButtonColor: "#d33",
-        confirmButtonText: "Sí, desactivarlo!"
+        confirmButtonText: confirmButtonText
       }).then((result) => {
         if (result.isConfirmed) {
             window.location.href = url;

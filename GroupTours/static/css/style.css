@@ -281,3 +281,18 @@ tr{
     font-family: Arial;
     text-align: center;
   }
+
+  .filtro{
+    display: flex;
+    align-items: center;
+    column-gap: 0.65rem;
+  }
+
+  .estado{
+    border-radius: 50%;
+    width: 0.8rem;
+    height: 1.5rem;
+    font-size: 12px;
+    display: flex;
+    justify-content: center;
+  }
