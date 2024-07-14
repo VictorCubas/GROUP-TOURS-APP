@@ -90,9 +90,8 @@ def index(request):
 
     elif operacion == 'activar':
         context['operacion'] = operacion
-
-        
-        #context['eliminacionExitosa'] = eliminado
+    
+        context['activacionExitosa'] = activado
         
         if activado:
             context['activado'] = True

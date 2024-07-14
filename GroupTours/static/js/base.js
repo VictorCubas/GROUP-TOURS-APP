@@ -77,6 +77,32 @@ function dispararModalEliminacionExitosa(){
     }
 }
 
+
+
+window.onload = function() { dispararModalActivacionExitosa(); };
+
+function dispararModalActivacionExitosa(){
+    activacionExitosaEl = document.getElementById('activacionExitosa');
+    console.log('activacionExitosaEl.value: ', activacionExitosaEl.value);
+
+    if(activacionExitosaEl.value === 'True'){
+        Swal.fire({
+            title: "Activado!",
+            text: "Se ha realizado la activación.",
+            icon: "success"
+            });
+    }
+    else if(activacionExitosaEl.value === 'False'){
+        Swal.fire({
+        icon: "error",
+        title: "Oops...",
+        text: "¡Algo salio! Vuelva a intentarlo",
+        });
+    }
+}
+
+
+
 // EVENTO PARA DETECTAR CADA VEZ QUE SE QUIERA ELIMINAR
 // (function () {
 
