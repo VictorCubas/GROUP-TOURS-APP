@@ -229,18 +229,13 @@ def validarRepetido(nombre, permiso):
     return False
 
 
-from django.db.models import Q, Func, F
-from django.core.paginator import Paginator, Page
-from unicodedata import normalize
-from .models import Permiso
-
 def buscar(request):
     activoTemp = request.GET.get('activo')
     query = request.GET.get('q', '').strip()  # Obtener el término de búsqueda del parámetro 'q'
     context = {}
 
     # Filtrar por el estado de 'activo'
-    if activoTemp is not None:
+    if activoTemp is not None and activoTemp != 'False':
         permisos = Permiso.objects.filter(activo=True)
         activoTemp = True
     else:
