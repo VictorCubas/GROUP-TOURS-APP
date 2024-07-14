@@ -16,16 +16,22 @@ elimninacion_no_permitida = False
 nombre_repetido = False
 operacion = None
 activo = True
+activado = False
 
 def index(request):
     # print(request.path)
-    listaPermiso = Permiso.objects.filter(activo=True).order_by('-id')
+    listaPermiso = None
+    global editado, operacion, agregado, eliminado, activado 
+    if operacion == "activar": 
+        listaPermiso = Permiso.objects.filter(activo=False).order_by('-id')
+
+    else: 
+        listaPermiso = Permiso.objects.filter(activo=True).order_by('-id')
 
     operaciones = ['add-success', 'add-error', 'add-warning', 'delete-success', 'delete-error',
                    'delete-warning', 'edit-success', 'edit-error', 'edit-warning']
     
     
-    global editado, operacion, agregado, eliminado
     resultadosAPaginar = listaPermiso
     cantidad_de_resultados = len(resultadosAPaginar)
     paginator = Paginator(resultadosAPaginar, per_page=5)  # 5 resultados por página
@@ -81,6 +87,22 @@ def index(request):
                 context['eliminacionExitosa'] = 'warning'
             
         eliminado = False
+
+    elif operacion == 'activar':
+        context['operacion'] = operacion
+
+        
+        #context['eliminacionExitosa'] = eliminado
+        
+        if activado:
+            context['activado'] = True
+            tipo = 'success'
+            
+        else:
+            context['activado'] = False
+            tipo = 'warning'
+            
+        activado = False
             
     context['tipo'] = tipo
     operacion = None
@@ -158,10 +180,11 @@ def editarPermiso(request, id):
 
 def eliminar(request, id):
     
-    global eliminado, operacion, elimninacion_no_permitida
+    global eliminado, operacion, elimninacion_no_permitida, activo 
     eliminado = False
     elimninacion_no_permitida = False
     operacion = 'eliminar'
+    activo = True
 
     try:
         permiso = Permiso.objects.get(id=id)
@@ -272,16 +295,16 @@ def buscar(request):
 
 def activar(request, id):
     
-    global eliminado, operacion, elimninacion_no_permitida
-    eliminado = False
-    elimninacion_no_permitida = False
-    
+    global activado, operacion, activo 
+    activado= False
+    activo= False
     operacion = 'activar'
 
     try:
         permiso = Permiso.objects.get(id=id)
 
         permiso.activo = True
+        activado = True
         permiso.save()
     except:
         pass
