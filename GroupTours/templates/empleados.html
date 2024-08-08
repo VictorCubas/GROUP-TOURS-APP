@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+
+{% block title %}
+MODULO ROLES
+{% endblock %}
+
+{% block body %}
+<div class="container">
+    <h1>MODULO EMPLEADOS</h1>
+    
+    <!-- Formulario para registrar un nuevo rol -->
+    <div class="card mt-4">
+        <div class="card-header bg-primary text-white">
+            Registrar Empleado
+        </div>
+        <div class="card-body">
+            <form>
+                <div class="row mb-3">
+                    <div class="col">
+                        <input type="text" class="form-control" placeholder="Nombre del Rol">
+                    </div>
+                    <div class="col">
+                        <input type="text" class="form-control" placeholder="Descripción">
+                    </div>
+                    <div class="col">
+                        <select class="form-select">
+                            <option selected>Seleccione los empleados</option>
+                            <!-- Aquí podrías cargar los permisos dinámicamente -->
+                        </select>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-success">Guardar</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Listado de roles -->
+    <h2 class="mt-5">Listado de Empleados</h2>
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Nombre</th>
+                <th>Apellido</th>
+                <th>Descripcion</th>
+                <th>Opciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Aquí podrías cargar los roles dinámicamente -->
+            <tr>
+                <td>1</td>
+                <td>Administrador</td>
+                <td>Acceso total</td>
+                <td>Ver, Editar, Eliminar</td>
+                <td>
+                    <button class="btn btn-warning">Editar</button>
+                    <button class="btn btn-danger">Eliminar</button>
+                </td>
+            </tr>
+            <!-- Más filas según sea necesario -->
+        </tbody>
+    </table>
+
+    <!-- Paginador -->
+    <nav aria-label="Page navigation example">
+        <ul class="pagination">
+            <li class="page-item"><a class="page-link" href="#">1</a></li>
+            <!-- Más elementos de paginación según sea necesario -->
+        </ul>
+    </nav>
+</div>
+{% endblock %}
