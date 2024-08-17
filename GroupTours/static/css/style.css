@@ -296,3 +296,10 @@ tr{
     display: flex;
     justify-content: center;
   }
+
+  #enlace-eliminacion, .btnEditarPermiso {
+    margin: 0px;
+    padding: 0px;
+    width: 2.65rem;
+    padding-top: 5px;
+  }
