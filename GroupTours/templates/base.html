@@ -11,8 +11,15 @@
         integrity="sha384-KK94CHFLLe+nY2dmCWGMq91rCGa5gtU4mk92HdvYe+M/SXH301p5ILy+dN9+nJOZ" crossorigin="anonymous">
 	<!-- <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"> -->
 
+    <!-- MATERIAL ICONS -->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons"
+      rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+
     <!-- iconos de fontawesome -->
-	<script src="https://kit.fontawesome.com/ae360af17e.js" crossorigin="anonymous"></script>
+	<!-- <script src="https://kit.fontawesome.com/ae360af17e.js" crossorigin="anonymous"></script> -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+
 
     <!-- Boostrap select CSS -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-select@1.14.0-beta3/dist/css/bootstrap-select.min.css">
@@ -21,9 +28,11 @@
 	<!--JQuery-->
 	<script src="https://code.jquery.com/jquery-3.6.0.js" integrity="sha256-H+K7U5CnXl1h5ywQfKtSj8PCmoN9aaq30gDh27Xc0jk=" crossorigin="anonymous"></script>
 
-
 	<!-- agregamos el css/style.css -->
 	<link rel="stylesheet" href="{% static 'css/style.css' %}">
+
+    <!-- icono -->
+    <link rel="icon" type="image/x-icon" href="{% static 'images/favicon.ico' %}">
 </head>
 <body>
 	<!--Navegador-->
@@ -40,9 +49,12 @@
                         Tools & Components
                     </li> -->
                     <li class="sidebar-item">
-                        <a href="#" class="sidebar-link collapsed" data-bs-toggle="collapse" data-bs-target="#pages"
+                        <a href="#" class="sidebar-link collapsed d-flex" data-bs-toggle="collapse" data-bs-target="#pages"
                             aria-expanded="false" aria-controls="pages">
-                            <i class="fas fa-box pe-2"></i>
+                            <!-- <i class="fas fa-box pe-2"></i> -->
+                            <span class="material-symbols-outlined">
+                                travel
+                                </span>
                             Paquetes de viajes
                         </a>
                         <ul id="pages" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
@@ -57,9 +69,9 @@
                             </li> -->
                         </ul>
                     </li>
-                    <li class="sidebar-item">
+                    <!-- <li class="sidebar-item">
                         <a href="#" class="sidebar-link collapsed" data-bs-toggle="collapse" data-bs-target="#dashboard"
-                            aria-expanded="false" aria-controls="dashboard">
+                            aria-expanded="true" aria-controls="dashboard">
                             <i class="fas fa-shield-alt pe-2"></i>
                             Seguridad
                         </a>
@@ -68,14 +80,39 @@
                                 <a href="/rol" class="sidebar-link item-menu">Roles</a>
                             </li>
                             <li class="sidebar-item">
-                                <a href="/permiso" class="sidebar-link item-menu">Permisos</a>
+                                <a href="/permiso" id="menu-permiso" class="sidebar-link item-menu">Permisos</a>
+                            </li>
+                        </ul>
+                    </li> -->
+
+                    <li class="sidebar-item">
+                        <a href="#" class="sidebar-link collapsed d-flex" data-bs-toggle="collapse" data-bs-target="#dashboard"
+                            aria-expanded="true" aria-controls="dashboard">
+                            <!-- <i class="fas fa-shield-alt pe-2"></i> -->
+                            <span class="material-icons">security</span>
+                            Seguridad
+                        </a>
+                        <ul id="dashboard" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+                            <li class="sidebar-item">
+                                <!-- <a href="/usuario" id="menu-usuario" class="sidebar-link item-menu">Usuarios</a> -->
+                                <a href="#" id="menu-usuario" class="sidebar-link item-menu">Usuarios</a>
+                            </li>
+                            <li class="sidebar-item">
+                                <a href="#" id="menu-empleado" class="sidebar-link item-menu">Empleados</a>
+                            </li>
+                            <li class="sidebar-item">
+                                <a href="/rol" id="menu-rol" class="sidebar-link item-menu">Roles</a>
+                            </li>
+                            <li class="sidebar-item">
+                                <a href="/permiso" id="menu-permiso" class="sidebar-link item-menu">Permisos</a>
                             </li>
                         </ul>
                     </li>
+                    
 
                     <li class="sidebar-item">
-                        <a href="#" class="sidebar-link collapsed item-menu" >
-							<i class="fa-regular fa-user pe-2"></i>
+                        <a href="#" class="sidebar-link collapsed item-menu d-flex" >
+							<span class="material-icons">person</span>
                             Pasajeros
                         </a>
                     </li>
@@ -88,10 +125,11 @@
                     </li>
 
 					<li class="sidebar-item">
-                        <a href="#" class="sidebar-link collapsed" data-bs-toggle="collapse" data-bs-target="#reportes"
+                        <a href="#" class="sidebar-link collapsed d-flex" data-bs-toggle="collapse" data-bs-target="#reportes"
                             aria-expanded="false" aria-controls="reportes">
                             <!-- <i class="fa-solid fa-sliders pe-2"></i> -->
-                            <i class="fa-regular fa-file-lines pe-2"></i>
+                            <!-- <i class="fa-regular fa-file-lines pe-2"></i> -->
+                            <span class="material-icons">description</span>
                             Facturación
                         </a>
                         <ul id="reportes" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
@@ -105,9 +143,10 @@
                     </li>
 
                     <li class="sidebar-item">
-                        <a href="#" class="sidebar-link collapsed" data-bs-toggle="collapse" data-bs-target="#proveedores"
+                        <a href="#" class="sidebar-link collapsed d-flex" data-bs-toggle="collapse" data-bs-target="#proveedores"
                             aria-expanded="false" aria-controls="reportes">
-                            <i class="fa fa-truck pe-2"></i>
+                            <!-- <i class="fa fa-truck pe-2"></i> -->
+                            <span class="material-icons">local_shipping</span>
                             Proveedores
                         </a>
                         <ul id="proveedores" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
@@ -148,15 +187,17 @@
                     </li> -->
 
                     <li class="sidebar-item">
-                        <a href="#" class="sidebar-link collapsed item-menu" >
-							<i class="fa-regular fa-file-lines pe-2"></i>
+                        <a href="#" class="sidebar-link collapsed item-menu d-flex" >
+							<!-- <i class="fa-regular fa-file-lines pe-2"></i> -->
+                            <span class="material-icons">description</span>
                             Documentos
                         </a>
                     </li>
 
 					<li class="sidebar-item">
-                        <a href="/logout" class="sidebar-link collapsed" >
-							<i class='fas fa-sign-out-alt pe-2'></i>
+                        <a href="/logout" class="sidebar-link collapsed d-flex" >
+							<!-- <i class='fas fa-sign-out-alt pe-2'></i> -->
+                            <span class="material-icons">logout</span>
                             Logout
                         </a>
                     </li>
@@ -200,7 +241,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
         
 	
-     <script src="{% static 'js/sideBar.js' %}"></script>
+     <script src="{% static 'js/base.js' %}"></script>
      <script>
         function menuLateralToggle(){
             const guardarBoton = document.querySelector('.formulario-guardar');

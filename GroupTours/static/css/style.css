@@ -97,6 +97,10 @@ a.sidebar-link {
     border-radius: 0.375rem;
 }
 
+a.sidebar-link .material-icons, a.sidebar-link .material-symbols-outlined{
+    padding-right: 0.4rem;
+}
+
 a.sidebar-link:hover{
     background-color: rgb(55 65 81);
 }
@@ -206,3 +210,100 @@ a.sidebar-link:hover{
 tr{
     vertical-align: middle;
 }
+
+.title{
+    margin-left: 1rem;
+}
+  
+  .go-back-btn {
+    width: 24px;
+    height: 43px;
+    border-radius: 50% !important;
+    background-color: rgba(255, 255, 255, 0.2);
+    /* color: white; */
+    border: none !important;
+    padding: 10px 20px !important;
+    -webkit-transition: background-color 1s, color 1s, -webkit-transform 0.5s;
+       transition: background-color 1s, transform 0.5s;
+  }
+  
+  .go-back-btn:hover {
+    background-color: rgba(255, 255, 255, 0.8);
+    color: black;
+    -webkit-transform: translateX(-5px);
+    -webkit-box-shadow: 5px 0px 18px 0px rgba(105,105,105,0.8);
+    -moz-box-shadow: 5px 0px 18px 0px rgba(105,105,105,0.8);
+    box-shadow: 5px 0px 18px 0px rgba(105,105,105,0.8);
+  }
+
+.disabled-options {
+    cursor: not-allowed; /* Cambia el cursor */
+    opacity: 0.5; /* Cambia la opacidad */
+    pointer-events: none; /* Deshabilita eventos de puntero */
+}
+
+.tooltip-text {
+    visibility: hidden;
+    position: absolute;
+    z-index: 1;
+    width: 100px;
+    color: white;
+    font-size: 12px;
+    background-color: #192733;
+    border-radius: 10px;
+    padding: 10px 15px 10px 15px;
+  }
+  
+  .hover-text:hover .tooltip-text {
+    visibility: visible;
+  }
+  
+  #top {
+    top: -40px;
+    left: -50%;
+  }
+  
+  #bottom {
+    top: 25px;
+    left: -50%;
+  }
+  
+  #left {
+    top: -8px;
+    right: 120%;
+  }
+  
+  #right {
+    top: -8px;
+    left: 120%;
+  }
+  
+  .hover-text {
+    position: relative;
+    display: inline-block;
+    /* margin: 40px; */
+    font-family: Arial;
+    text-align: center;
+  }
+
+  .filtro{
+    display: flex;
+    align-items: center;
+    column-gap: 0.65rem;
+  }
+
+  .estado{
+    border-radius: 50%;
+    width: 0.8rem;
+    height: 1.5rem;
+    font-size: 12px;
+    display: flex;
+    justify-content: center;
+  }
+
+  #enlace-eliminacion, .btnEditarPermiso {
+    margin: 0px;
+    padding: 0px;
+    width: 2.65rem;
+    padding-top: 5px;
+  }

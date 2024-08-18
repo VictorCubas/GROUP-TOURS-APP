@@ -1,0 +1,67 @@
+<div class="pagination justify-content-center mt-4">
+    <ul class="pagination">
+        {% if page.has_previous %}
+            <li class="page-item">
+                <a class="page-link" href="?activo={{activo}}&q={{ query }}&page=1" data-toggle="tooltip" title="Primera página">
+                  <i class="fa fa-angle-double-left"></i>
+                </a>
+            </li>
+            <li class="page-item">
+                <a class="page-link" href="?q={{ query }}&page={{ page.previous_page_number }}" title="Página anterior">
+                  <i class="fa fa-angle-left"></i>
+                </a>
+            </li>
+        {% endif %}
+
+        {% for p in page.paginator.page_range %}
+            {% if page.number == p %}
+                <li class="page-item active">
+                    <span class="page-link">{{ p }}</span>
+                </li>
+            {% elif p > page.number|add:'-3' and p < page.number|add:'3' %}
+                <li class="page-item">
+                    {% if query or activo %}
+                        <a class="page-link" href="?activo={{activo}}&q={{query}}&page={{ p }}">{{ p }}</a>
+                    {% else %}
+                        <a class="page-link" href="?page={{ p }}">{{ p }}</a>
+                    {% endif %}
+                </li>
+            {% elif p == page.paginator.page_range|first %}
+                <li class="page-item">
+                    {% if query or activo %}
+                        <a class="page-link" href="?activo={{activo}}&q={{query}}&page={{ p }}">{{ p }}</a>
+                    {% else %}
+                        <a class="page-link" href="?page={{ p }}">{{ p }}</a>
+                    {% endif %}
+                </li>
+                <li class="page-item disabled">
+                    <span class="page-link">...</span>
+                </li>
+            {% elif p == page.paginator.page_range|last %}
+                <li class="page-item disabled">
+                    <span class="page-link">...</span>
+                </li>
+                <li class="page-item">
+                    {% if query or activo %}
+                        <a class="page-link" href="?activo={{activo}}&q={{query}}&page={{ p }}">{{ p }}</a>
+                    {% else %}
+                        <a class="page-link" href="?page={{ p }}">{{ p }}</a>
+                    {% endif %}
+                </li>
+            {% endif %}
+        {% endfor %}
+
+        {% if page.has_next %}
+            <li class="page-item">
+                <a class="page-link" href="?activo={{activo}}&q={{ query }}&page={{ page.next_page_number }}" title="Página siguiente">
+                  <i class="fa fa-angle-right"></i>
+                </a>
+            </li>
+            <li class="page-item">
+                <a class="page-link" href="?activo={{activo}}&q={{ query }}&page={{ page.paginator.num_pages }}" data-toggle="tooltip" title="Última página">
+                  <i class="fa fa-angle-double-right"></i>
+                </a>
+            </li>
+        {% endif %}
+    </ul>
+</div>
