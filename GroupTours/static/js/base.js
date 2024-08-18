@@ -47,12 +47,14 @@ menuItems.forEach(function (opcion) {
  $('.selectpicker').selectpicker();
 
 
- //SWEET ALER, ELMINACION EXITOSA
- window.onload = function() { dispararModalEliminacionExitosa(); };
+//  window.onload = function() { dispararModalEliminacionExitosa(); };
 
+//SWEET ALER, ELMINACION EXITOSA
 function dispararModalEliminacionExitosa(){
+    console.log('andrea.....')
     eliminacionExitosaEl = document.getElementById('eliminacionExitosa');
-    console.log('eliminacionExitosaEl.value: ', eliminacionExitosaEl.value);
+    console.log('eliminacionExitosaEl: ', eliminacionExitosaEl);
+    console.log('eliminacionExitosaEl.value 1: ', eliminacionExitosaEl.value);
 
     if(eliminacionExitosaEl.value === 'True'){
         Swal.fire({
@@ -79,11 +81,11 @@ function dispararModalEliminacionExitosa(){
 
 
 
-window.onload = function() { dispararModalActivacionExitosa(); };
+window.onload = function() { dispararModalActivacionExitosa(); dispararModalEliminacionExitosa(); };
 
 function dispararModalActivacionExitosa(){
     activacionExitosaEl = document.getElementById('activacionExitosa');
-    console.log('activacionExitosaEl.value: ', activacionExitosaEl.value);
+    console.log('activacionExitosaEl.value 2: ', activacionExitosaEl.value);
 
     if(activacionExitosaEl.value === 'True'){
         Swal.fire({
