@@ -97,6 +97,10 @@ a.sidebar-link {
     border-radius: 0.375rem;
 }
 
+a.sidebar-link .material-icons, a.sidebar-link .material-symbols-outlined{
+    padding-right: 0.4rem;
+}
+
 a.sidebar-link:hover{
     background-color: rgb(55 65 81);
 }

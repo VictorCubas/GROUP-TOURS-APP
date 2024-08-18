@@ -158,7 +158,7 @@
                             <!-- <label class="form-label" for="form1">Search</label> -->
                         </div>
                         <button type="submit" class="btn btn-primary" data-mdb-ripple-init>
-                            <i class="fas fa-search"></i>
+                            <i class="fa fa-search"></i>
                         </button>
                     </div>
                 </form>
@@ -223,13 +223,15 @@
                                 </div>
                             </td>
 							<td class="text-end"><a href="/rol/edicion/{{r.rol.id}}" class="btn btn-info btnEditarPermiso hover-text">
-                                <i class="fa fa-edit"></i>
+                                <!-- <i class="fa fa-edit"></i> -->
+                                <span class="material-icons">edit</span>
                                 <span class="tooltip-text" id="left">Editar</span>
                             </a></td>
 
 							<td><a id="enlace-eliminacion" href="javascript:eliminar('rol/eliminar', {{r.rol.id}})" class="btn btn-danger hover-text
 								btnEliminarPermiso btnEliminacion">
-                                    <i class="fa fa-close"></i>
+                                    <!-- <i class="fa fa-close"></i> -->
+                                    <span class="material-icons">cancel</span>
                                     <!-- <span class="tooltip-text" id="top">I'm a tooltip!</span> -->
                                     <span class="tooltip-text" id="left">Desactivar</span>
                             </a></td>
