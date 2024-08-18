@@ -51,10 +51,11 @@ menuItems.forEach(function (opcion) {
 
 //SWEET ALER, ELMINACION EXITOSA
 function dispararModalEliminacionExitosa(){
-    console.log('andrea.....')
     eliminacionExitosaEl = document.getElementById('eliminacionExitosa');
-    console.log('eliminacionExitosaEl: ', eliminacionExitosaEl);
-    console.log('eliminacionExitosaEl.value 1: ', eliminacionExitosaEl.value);
+
+    if(!eliminacionExitosaEl){
+        return;
+    }
 
     if(eliminacionExitosaEl.value === 'True'){
         Swal.fire({
@@ -85,7 +86,12 @@ window.onload = function() { dispararModalActivacionExitosa(); dispararModalElim
 
 function dispararModalActivacionExitosa(){
     activacionExitosaEl = document.getElementById('activacionExitosa');
-    console.log('activacionExitosaEl.value 2: ', activacionExitosaEl.value);
+
+    if(!activacionExitosaEl){
+        return;
+    }
+
+    console.log('activacionExitosaEl.value: ', activacionExitosaEl.value);
 
     if(activacionExitosaEl.value === 'True'){
         Swal.fire({
