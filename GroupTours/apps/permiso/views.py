@@ -87,6 +87,9 @@ def index(request):
                 context['eliminacionExitosa'] = 'warning'
             
         eliminado = False
+        
+        
+        print(f"eliminacionExitosa: {context['eliminacionExitosa']}")
 
     elif operacion == 'activar':
         context['operacion'] = operacion
