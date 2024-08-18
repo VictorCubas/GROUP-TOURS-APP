@@ -12,7 +12,7 @@ class Usuario(models.Model):
     telefono = models.CharField(max_length=15)
     correo = models.CharField(max_length=100)
     direccion = models.CharField(max_length=200)
-    estado = models.CharField(max_length=1, default='A')
+    activo = models.BooleanField(default=True)
     
     #personalizamos la tabla en postgres
     class Meta:
@@ -28,4 +28,4 @@ class Usuario(models.Model):
                             self.telefono,
                             self.correo,
                             self.direccion,
-                            self.estado) 
+                            self.activo) 
