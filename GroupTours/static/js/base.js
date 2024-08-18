@@ -168,7 +168,7 @@ const selectpicker = document.querySelector('.selectpicker');
 
 var valorAnterior = null
 
-selectpicker.addEventListener('change', function(event) {
+selectpicker?.addEventListener('change', function(event) {
         const selectedOption = event.target.value;
         if (selectedOption === '*') {
             // Desmarcar todas las opciones excepto la opción "Marcar todos"
