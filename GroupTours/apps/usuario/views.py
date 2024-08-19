@@ -6,7 +6,11 @@ from .models import Usuario
 def index(request):
     # print(request.path)
     listaUsuario = Usuario.objects.all().order_by('id')
-    return render(request, 'usuario.html', {'listaUsuarios':listaUsuario})
+    
+    context = {'listaUsuarios':listaUsuario, 'menu_activo': 'usuario'}
+    
+    
+    return render(request, 'usuario.html', context)
 
 
 def registrarUsuario(request):
