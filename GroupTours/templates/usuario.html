@@ -56,11 +56,31 @@
                                                 class="form-control" placeholder="Dirección" maxlength="200"
                                                 required>
                                         </div>
-                                        <div class="form-group py-2">
+                                        <!-- <div class="form-group py-2">
                                             <input type="text" id="txtEstadoUsuario" name='txtEstado'
                                                 class="form-control" placeholder="Estado" maxlength="1"
                                                 required>
+                                        </div> -->
+                                    
+                                        <!-- ROL -->
+                                        <div class="multi-select-list">
+                                            <div class="multi-select-list-item">
+                                                <div class="form-group py-2">
+                                                    <select class="selectpicker border rounded" data-live-search="true" name="txtRoles"
+                                                         data-width="100%" multiple required 
+                                                         data-actions-box="true" data-none-selected-text="Seleccione los roles *"
+                                                         data-select-all-text="Marcar todos" data-deselect-all-text="Quitar todos">
+                                                         
+                                                        {% for rol in listaRoles %}
+                                                            <option class="options-multi-select" data-tokens="{{rol.id}}" value="{{rol.id}}">{{rol.nombre}}</option>
+                                                        {% endfor %}
+                                                    </select>
+
+                                                </div>
+                                            </div>
                                         </div>
+
+                                    
                                     <div class="formulario-guardar form-group pt-4 px-5">
                                         <button type="submit"
                                             class="btn btn-success btn-block text-white btnGuardarUsuario">Guardar</button>
@@ -100,7 +120,7 @@
                         <td>{{p.telefono}}</td>
                         <td>{{p.correo}}</td>
                         <td>{{p.direccion}}</td>
-                        <td>{{p.estado}}</td>
+                        <td>{{p.activo}}</td>
                         <td class="text-end">
                             <a href="/edicionUsuario/{{email}}/{{p.idUsuario}}"
                                 class="btn btn-info btnEditarUsuario">

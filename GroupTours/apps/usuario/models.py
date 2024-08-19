@@ -1,6 +1,6 @@
 from django.db import models
 
-# Create your models here.
+from apps.rol.models import Rol
 
 class Usuario(models.Model):
     '''
@@ -29,3 +29,15 @@ class Usuario(models.Model):
                             self.correo,
                             self.direccion,
                             self.activo) 
+        
+class UsuariosRoles(models.Model):
+    '''
+    Abstraccion de la clase UsuariosRoles
+    '''
+    
+    usuario = models.ForeignKey(Usuario, related_name='usuarios_roles', on_delete=models.SET_NULL, null=True)
+    rol = models.ForeignKey(Rol, related_name='usuarios_roles', on_delete=models.SET_NULL, null=True)
+    
+    class Meta:
+        verbose_name = 'UsuariosRoles'
+        db_table = 'UsuariosRoles'

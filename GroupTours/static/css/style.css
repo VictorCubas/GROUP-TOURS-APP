@@ -182,7 +182,7 @@ a.sidebar-link:hover{
     width: 290px !important;
 }
 
-.permisos-list-item{
+.multi-select-list-item{
     display: flex;
     column-gap: 0.5rem;
 }
