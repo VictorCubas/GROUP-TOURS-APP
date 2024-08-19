@@ -23,5 +23,6 @@ urlpatterns = [
     path('home', include('apps.home.urls')),
     path('logout', include('apps.logout.urls')),
     path('permiso', include('apps.permiso.urls')),
+    path('usuario', include('apps.usuario.urls')),
     path('rol', include('apps.rol.urls')),
 ]

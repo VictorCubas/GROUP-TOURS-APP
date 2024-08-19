@@ -1,0 +1,123 @@
+{%extends './base.html'%}
+
+{% block title %} GROUP TOURS APP {% endblock %}
+
+{% block body %}
+<h1 class="pt-2">MODULO USUARIOS</h1>
+<h4 id="email">{{email}}</h4>
+<br>
+<div class="row">
+
+    <input id="menu-activo" name="menu-activo" type="hidden" value="{{menu_activo}}">
+    <div class="col-sm-12 col-md-12 col-lg-12 col-xl-12">
+
+        <div class="accordion" id="accordionExample">
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="headingOne">
+                    <button class="accordion-button" type="button" data-bs-toggle="collapse"
+                        data-bs-target="#collapseOne" aria-expanded="true" aria-controls="collapseOne">
+                        Registrar Usuario
+                    </button>
+                </h2>
+                <div id="collapseOne" class="accordion-collapse collapse show" aria-labelledby="headingOne"
+                    data-bs-parent="#accordionExample">
+                    <div class="accordion-body">
+                        <div class="card">
+                            <div class="card-body">
+                                <form class="formulario" id='url' action='/usuario/registrarUsuario' method="POST"> {%csrf_token%}
+                                    <div class="formulario-campos">
+                                        <div class="form-group py-2">
+                                            <input type="text" id="txtDocumentoUsuario" name='txtDocumento'
+                                                class="form-control" placeholder="Documento" maxlength="8"
+                                                required>
+                                        </div>
+                                        <div class="form-group py-2">
+                                            <input type="text" id="txtNombreUsuario" name='txtNombre'
+                                                class="form-control" placeholder="Nombre" maxlength="100"
+                                                required>
+                                        </div>
+                                        <div class="form-group py-2">
+                                            <input type="text" id="txtApellidoUsuario" name='txtApellido'
+                                                class="form-control" placeholder="Apellido" maxlength="100"
+                                                required>
+                                        </div>
+                                        <div class="form-group py-2">
+                                            <input type="text" id="txtTelefonoUsuario" name='txtTelefono'
+                                                class="form-control" placeholder="Teléfono" maxlength="15"
+                                                required>
+                                        </div>
+                                        <div class="form-group py-2">
+                                            <input type="text" id="txtCorreoUsuario" name='txtCorreo'
+                                                class="form-control" placeholder="Correo electrónico" maxlength="100"
+                                                required>
+                                        </div>
+                                        <div class="form-group py-2">
+                                            <input type="text" id="txtDireccionUsuario" name='txtDireccion'
+                                                class="form-control" placeholder="Dirección" maxlength="200"
+                                                required>
+                                        </div>
+                                        <div class="form-group py-2">
+                                            <input type="text" id="txtEstadoUsuario" name='txtEstado'
+                                                class="form-control" placeholder="Estado" maxlength="1"
+                                                required>
+                                        </div>
+                                    <div class="formulario-guardar form-group pt-4 px-5">
+                                        <button type="submit"
+                                            class="btn btn-success btn-block text-white btnGuardarUsuario">Guardar</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="divListadoUsuario" class="col-sm-12 col-md-12 col-lg-12 col-xl-12">
+        <h3>Listado de Usuarios</h3>
+        <div class="table-responsive py-2">
+            <table class='table table-striped'>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Documento</th>
+                        <th>Nombre</th>
+                        <th>Apellido</th>
+                        <th>Teléfono</th>
+                        <th>Correo</th>
+                        <th>Direccion</th>
+                        <th>Estado</th>
+                        <th class="text-center" colspan="2">Opciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in listaUsuarios %}
+                    <tr>
+                        <td>{{forloop.counter}}</td>
+                        <td>{{p.nombre}}</td>
+                        <td>{{p.apellido}}</td>
+                        <td>{{p.telefono}}</td>
+                        <td>{{p.correo}}</td>
+                        <td>{{p.direccion}}</td>
+                        <td>{{p.estado}}</td>
+                        <td class="text-end">
+                            <a href="/edicionUsuario/{{email}}/{{p.idUsuario}}"
+                                class="btn btn-info btnEditarUsuario">
+                                <i class="fa fa-edit"></i>
+                            </a>
+                        </td>
+                        <td>
+                            <a href="/usuario/eliminar/{{p.id}}" class="btn btn-danger 
+								btnEliminarUsuario btnEliminacion">
+                                <i class="fa fa-trash-o"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock%}

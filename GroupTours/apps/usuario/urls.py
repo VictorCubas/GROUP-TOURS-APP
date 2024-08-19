@@ -1,7 +1,9 @@
 from django.urls import path
-from .views import UsuarioList
+from . import views
 
 urlpatterns = [
-    # path('usuarios/', UsuarioList.index, name='index'),
-    path('api/usuarios/', UsuarioList.as_view({'get':'list', 'post':'create'})),
+    path('', views.index, name='index-usuario'),
+    path('/registrarUsuario', views.registrarUsuario, name='registrar-usuario'),
+    path('/eliminar/<int:id>', views.eliminar, name='eliminar-usuario'),
+    
 ]

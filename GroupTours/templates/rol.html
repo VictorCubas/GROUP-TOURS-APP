@@ -73,13 +73,13 @@
                                         <div class="form-group py-2">
 
                                             <input type="text" id="txtNombrePermiso" name='txtNombre' 
-                                                class="form-control" placeholder="Nombre del Rol" 
+                                                class="form-control" placeholder="Nombre del Rol *" 
                                                 maxlength="50" required>
                                         </div>
                                         
                                         <div class="form-group py-2">
                                             <input type="text" id="txtDescripcionPermiso" name='txtDescripcion' 
-                                                class="form-control" placeholder="Descripcion" 
+                                                class="form-control" placeholder="Descripcion *" 
                                                 required> 
                                                
                                         </div>
@@ -90,7 +90,7 @@
                                                 <div class="form-group py-2">
                                                     <select class="selectpicker border rounded" data-live-search="true" name="txtPermisos"
                                                          data-width="100%" multiple required 
-                                                         data-actions-box="true" data-none-selected-text="Seleccione los permisos"
+                                                         data-actions-box="true" data-none-selected-text="Seleccione los permisos *"
                                                          data-select-all-text="Marcar todos" data-deselect-all-text="Quitar todos">
                                                          
                                                         {% for permiso in listaPermisos %}

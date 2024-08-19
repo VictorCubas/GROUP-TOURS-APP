@@ -207,7 +207,8 @@ def edicion(request, id):
     return render(request, 'edicionRol.html', {
                                         'rol':rol,
                                         'listaPermisos':listaPermisos,
-                                        'permisosDelRol':permisosDelRol})
+                                        'permisosDelRol':permisosDelRol,
+                                        'menu_activo': 'rol'})
     
     
     
