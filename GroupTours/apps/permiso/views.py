@@ -149,7 +149,8 @@ def edicionPermiso(request, codigo):
     if len(rolesPermisos) > 0:
         habilitarEdicion = False
         
-    return render(request, "edicionPermiso.html", {"permiso": permiso, "habilitarEdicion": habilitarEdicion })
+    return render(request, "edicionPermiso.html", {"permiso": permiso, "habilitarEdicion": habilitarEdicion,
+                                        'menu_activo': 'permiso'})
 
 def editarPermiso(request, id):
     nombre = request.POST.get('txtNombre').strip()
