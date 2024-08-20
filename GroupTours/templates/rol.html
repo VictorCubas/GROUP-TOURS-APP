@@ -145,9 +145,14 @@
 			    <h2 class="mt-4 text-dark">Listado de roles</h2>
 
                 <form class="formulario-buscar mt-3" action="/rol/buscar/" method="GET">
-                    <div class="input-group">
+                    <div class="input-group filtro">
+                        <div class="form-check form-switch form-outline mr-2 pr-2">
+                            <label class="form-check-label" for="flexSwitchCheckChecked">Activo</label>
+                            <input class="form-check-input" type="checkbox" role="switch" id="flexSwitchCheckChecked" name="activo" {% if activo %}checked{% endif %}>
+                        </div>
+
                         <div class="form-outline" data-mdb-input-init>
-                            <input id="search-focus" name="q" type="search" id="form1" class="form-control" placeholder="Buscar..." required/>
+                            <input id="search-focus" name="q" type="search" id="form1" class="form-control" placeholder="Buscar..."/>
                             <!-- <label class="form-label" for="form1">Search</label> -->
                         </div>
                         <button type="submit" class="btn btn-primary" data-mdb-ripple-init>

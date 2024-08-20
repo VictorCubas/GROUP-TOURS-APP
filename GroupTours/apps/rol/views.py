@@ -302,36 +302,51 @@ def editar(request, id):
 
 
 def buscar(request):
+    activoTemp = request.GET.get('activo')
     query = request.GET.get('q').strip()  # Obtener el término de búsqueda del parámetro 'q'
     resultados_roles = []
     context = {}
+    roles = None
+    
+    global activo
+    
+    # Filtrar por el estado de 'activo'
+    if activoTemp is not None and activoTemp == 'on':
+        roles = Rol.objects.filter(activo=True)
+        activoTemp = True
+    else:
+        roles = Rol.objects.filter(activo=False)
+        activoTemp = False
+        
+    activo = activoTemp
     
     if query:
         query_normalized = normalize('NFKD', query).encode('ASCII', 'ignore').decode('ASCII')
         
-        resultados_roles = Rol.objects.annotate(
+        roles = roles.annotate(
             nombre_normalized=Func(F('nombre'), function='unaccent'),
         ).filter(
             Q(nombre_normalized__icontains=query_normalized)
         )
         
-        for res in resultados_roles:
+        for res in roles:
             print(f'nombre: {res.nombre}')
             
-        listaPermisos = Permiso.objects.all().order_by('id')
-        listaRolesPermisos = getRolesPermisos(resultados_roles)
-        resultadosAPaginar = listaRolesPermisos
-        cantidad_de_resultados = len(resultadosAPaginar)
-        paginator = Paginator(resultadosAPaginar, per_page=5)  # 5 resultados por página
-        page_number = request.GET.get('page')  # Obtén el número de página de la URL
-        page: Page = paginator.get_page(page_number)
-        
-        context = {
-                    'listaPermisos':listaPermisos,
-                    'cantidad_de_resultados': cantidad_de_resultados,
-                    'page': page,
-                    'query': query
-                    }
+    listaPermisos = Permiso.objects.all().order_by('id')
+    listaRolesPermisos = getRolesPermisos(roles)
+    resultadosAPaginar = listaRolesPermisos
+    cantidad_de_resultados = len(resultadosAPaginar)
+    paginator = Paginator(resultadosAPaginar, per_page=5)  # 5 resultados por página
+    page_number = request.GET.get('page')  # Obtén el número de página de la URL
+    page: Page = paginator.get_page(page_number)
+    
+    context = {
+                'listaPermisos':listaPermisos,
+                'cantidad_de_resultados': cantidad_de_resultados,
+                'page': page,
+                'query': query,
+                'activo': activo
+                }
         
     return render(request, 'rol.html', context)
 
