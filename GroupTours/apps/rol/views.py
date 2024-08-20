@@ -1,6 +1,7 @@
 from django.shortcuts import redirect, render
 from django.http import HttpResponse
 
+from apps.usuario.models import UsuariosRoles
 from apps.permiso.models import Permiso
 from .models import Rol
 from .models import RolesPermisos
@@ -9,30 +10,27 @@ from django.db.models import Q, Func, F
 from unicodedata import normalize
 # Create your views here.
 
+editado = False
+agregado = False
+eliminado = False
+elimninacion_no_permitida = False
+nombre_repetido = False
+operacion = None
+activo = True
+activado = False
+
 def index(request):
-    listaRoles = Rol.objects.all().order_by('-id')
+    listaRoles = None
+    global editado, operacion, agregado, eliminado, activado 
+    
+    if operacion == "activar": 
+        listaRoles = Rol.objects.filter(activo=False).order_by('-id')
+
+    else: 
+        listaRoles = Rol.objects.filter(activo=True).order_by('-id')
+    
     listaPermisos = Permiso.objects.all().order_by('id')
     listaRolesPermisos = getRolesPermisos(listaRoles)
-    
-    operaciones = ['add-success', 'add-error', 'add-warning', 'delete-success', 'delete-error',
-                   'delete-warning', 'edit-success', 'edit-error', 'edit-warning']
-    
-    #se verifica cual de las operaciones se ejecuta para mostrar los mensajes de exitos y/o errores
-    query_value = None
-    query = None
-    for operacion in operaciones:
-        query = operacion
-        query_value = request.GET.get(operacion, '')
-        # print(f'query: {query}, query_value: {query_value}')
-        
-        if query_value.lower() == 'true':
-            query_value = True
-            break
-        elif query_value.lower() == 'false':
-            query_value = False
-            break
-        else:
-            query = ''
     
     
     resultadosAPaginar = listaRolesPermisos
@@ -51,36 +49,69 @@ def index(request):
     mensaje = ''
     tipo = ''
     
-    print(f'query: {query}')
-    if query == 'delete-success' and query_value:
-        context['eliminacionExitosa'] = query_value
+    if operacion == 'editar':
+        context['editado'] = True
+        context['operacion'] = operacion
+        print(f'context: {context}')
+        tipo = 'success'
+        editado = False
+        mensaje = 'El permiso se ha editado con exito'
         
-    elif query == 'add-success':
-        if query_value:
-            mensaje = 'El rol se ha guardado con exito'
+    elif operacion == 'agregar':
+        context['operacion'] = operacion
+        
+        if agregado:
+            context['agregado'] = True
             tipo = 'success'
-        else:    
-            mensaje = 'Rol ya existente. Verifique que el nombre no sea repetido'
+            mensaje = 'El permiso se ha guardado con exito'
+            
+            agregado = False
+        else:
+            context['agregado'] = False
+            mensaje = 'Permiso ya existente'
+            tipo = 'warning'
+    elif operacion == 'eliminar':
+        context['operacion'] = operacion
+        print(f'eliminado 2: {eliminado}')
+        
+        context['eliminacionExitosa'] = eliminado
+        
+        if eliminado:
+            context['eliminado'] = True
+            tipo = 'success'
+            
+        else:
+            context['eliminado'] = False
             tipo = 'warning'
             
-        context['tipo'] = tipo
+            if elimninacion_no_permitida:
+                context['eliminacionExitosa'] = 'warning'
+            
+        eliminado = False
         
-    elif query == 'edit-success':
-        mensaje = 'El rol se ha editado con exito'
-        context['tipo'] = 'success'
-    
-    elif query == 'edit-warning':
-        mensaje = 'Rol ya existente. Verifique que el nombre no sea repetido'
-        context['tipo'] = 'warning'
         
-    elif query == 'add-error' or query == 'edit-error' or query == 'delete-error':
-        mensaje = 'Error: Ocurrio algo inesperado. Vuelva a intentarlo'
-        context['tipo'] = 'danger'
-    
-    
-    context['mensaje'] = mensaje
+        print(f"eliminacionExitosa: {context['eliminacionExitosa']}")
 
-    print(f'context: {context}')
+    elif operacion == 'activar':
+        context['operacion'] = operacion
+    
+        context['activacionExitosa'] = activado
+        
+        if activado:
+            context['activado'] = True
+            tipo = 'success'
+            
+        else:
+            context['activado'] = False
+            tipo = 'warning'
+            
+        activado = False
+            
+    context['tipo'] = tipo
+    operacion = None
+    context['mensaje'] = mensaje
+    context['activo'] = activo
+    
     
     return render(request, 'rol.html', context)
 
@@ -150,23 +181,34 @@ def validarRepetido(nombre, rol):
     return False
 
 def eliminar(request, id):
-    eliminacionExitosa = False
+    global eliminado, operacion, elimninacion_no_permitida, activo
+    eliminado = False
+    elimninacion_no_permitida = False
+    operacion = 'eliminar'
+    activo = True
     
     try:
-        rolesPermisos = RolesPermisos.objects.filter(rol_id=id)
-        
-        for r in rolesPermisos:
-            r.delete()
-            
         rol = Rol.objects.get(id=id)
-        rol.delete()
         
-        eliminacionExitosa = True
+        rolEstaEnUso = rolEnUso(id)
+        
+        if not rolEstaEnUso:
+            rol.activo = False
+            rol.save()
+            eliminado = True
+        else:
+            elimninacion_no_permitida = True
     except:
-        eliminacionExitosa = False
         pass
     
-    return redirect(f'/rol?delete-success={eliminacionExitosa}', name='index-roles')
+    return redirect(f'/rol', name='index-roles')
+
+
+def rolEnUso(id):
+    usuariosRoles = UsuariosRoles.objects.filter(rol_id = id) 
+    
+    #significa que el permiso esta siendo usado por otro rol
+    return len(usuariosRoles) > 0
     
 
 def edicion(request, id):

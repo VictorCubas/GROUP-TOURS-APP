@@ -183,7 +183,7 @@ def editarPermiso(request, id):
 
 def eliminar(request, id):
     
-    global eliminado, operacion, elimninacion_no_permitida, activo 
+    global eliminado, operacion, elimninacion_no_permitida, activo
     eliminado = False
     elimninacion_no_permitida = False
     operacion = 'eliminar'

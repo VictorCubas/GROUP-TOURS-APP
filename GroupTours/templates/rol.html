@@ -17,9 +17,11 @@
         </symbol>
     </svg>
     
-    {% if tipo and tipo != '' %}
+    {% if operacion == 'editar' or operacion == 'agregar' %}
         <div class="alert alert-{{tipo}} alert-dismissible fade show" role="alert">
             <div class="d-flex align-items-center">
+                
+                <!-- <svg class="bi flex-shrink-0 me-2" width="24" height="24" role="img" aria-label="Success:"><use xlink:href="#check-circle-fill"/></svg>     -->
                 
                 {% if tipo == 'success' %}
                     <svg class="bi flex-shrink-0 me-2" width="24" height="24" role="img" aria-label="Success:"><use xlink:href="#check-circle-fill"/></svg>
@@ -28,31 +30,22 @@
                 {% elif tipo == 'danger'%}
                     <svg class="bi flex-shrink-0 me-2" width="24" height="24" role="img" aria-label="Danger:"><use xlink:href="#exclamation-triangle-fill"/></svg>
                 {% endif %}
-                    
+
                 <div>
                     {{mensaje}}
                 </div>
             </div>
 
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-      </div>
+        </div>
     {% endif %}
 
     <input id="eliminacionExitosa" name="eliminacionExitosa" type="hidden" value="{{eliminacionExitosa}}">
-
+    <input id="modulo" name="modulo" type="hidden" value="Rol">
+    <input id="activacionExitosa" name="activacionExitosa" type="hidden" value="{{activacionExitosa}}">
     <!-- ESTE INPUT ES NECESARIO PARA MARCA UN ITEM ACTIVO EN EL SIDE-BAR'menu_activo': 'permiso'-->
     <input id="menu-activo" name="menu-activo" type="hidden" value="{{menu_activo}}">
-    <!-- <h4 id="email">{{email}}</h4> -->
-	<!--<h4>Permisos sobre "Permiso": &nbsp;
-		{% if permisosPorPantalla == None %}
-			Niguno
-		{% else %}
-			{% for p in permisosPorPantalla %}
-				{{p}}
-			{% endfor %}
-		{% endif %}
-	</h4>-->
-    <br>
+
     <div class="row">
         <div class="col-sm-12 col-md-12 col-lg-12 col-xl-12">
 			

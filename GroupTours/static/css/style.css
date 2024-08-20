@@ -245,7 +245,7 @@ tr{
 .tooltip-text {
     visibility: hidden;
     position: absolute;
-    z-index: 1;
+    z-index: 100;
     width: 100px;
     color: white;
     font-size: 12px;

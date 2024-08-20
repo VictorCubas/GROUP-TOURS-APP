@@ -52,15 +52,17 @@ menuItems.forEach(function (opcion) {
 //SWEET ALER, ELMINACION EXITOSA
 function dispararModalEliminacionExitosa(){
     eliminacionExitosaEl = document.getElementById('eliminacionExitosa');
+    moduloEl = document.getElementById('modulo');
 
-    if(!eliminacionExitosaEl){
+
+    if(!eliminacionExitosaEl || !moduloEl){
         return;
     }
 
     if(eliminacionExitosaEl.value === 'True'){
         Swal.fire({
             title: "Desactivado!",
-            text: "Se ha realizado la desactivación.",
+            text: "Se ha realizado la operación.",
             icon: "success"
             });
     }
@@ -75,7 +77,7 @@ function dispararModalEliminacionExitosa(){
         Swal.fire({
         icon: "warning",
         title: "Oops...",
-        text: "¡Permiso en uso! No se puede desactivar.",
+        text: `¡${moduloEl.value} en uso! No se puede desactivar.`,
         });
     }
 }
