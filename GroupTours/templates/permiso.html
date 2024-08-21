@@ -180,9 +180,10 @@
 							<th>Tipo</th>
 							<!-- <th>id</th> -->
 							<th>Estado</th>
+							<th class="text-nowrap">En uso</th>
 							<th>Descripcion</th>
 							<th>Formulario</th>
-							<th class="text-center" colspan="2">Opciones</th>
+							<th class="text-center" colspan="2">Acciones</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -213,6 +214,20 @@
                                     </a>
                                 {% endif %}
                             </td>
+
+							<!-- EN USO -->
+							<td>
+                                {% if p.en_uso %}
+                                    <a class="btn btn-success tooltip-container estado">
+                                        <i class="fa fa-check"></i>
+                                    </a>
+                                {% else %}
+                                    <a class="btn btn-danger tooltip-container estado">
+                                        <i class="fa fa-close"></i>
+                                    </a>
+                                {% endif %}
+                            </td>
+
 							<td>{{p.descripcion}}</td>
 							<td>{{p.formulario}}</td>
 							<td class="text-end"><a href="/permiso/edicionPermiso/{{p.id}}" class="btn btn-info btnEditarPermiso tooltip-container">

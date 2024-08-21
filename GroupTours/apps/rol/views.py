@@ -135,6 +135,8 @@ def agregar(request):
         
             for p in permiso_ids:
                 permiso = Permiso.objects.get(id=int(p))
+                permiso.en_uso = True
+                permiso.save()
                 print('me creo......')
                 rolPermiso = RolesPermisos.objects.create(rol=rol, permiso=permiso)
         except:
