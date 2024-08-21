@@ -164,8 +164,9 @@
                                     type="search" id="form1" class="form-control" placeholder="Buscar por nombre"/>
                             <!-- <label class="form-label" for="form1">Search</label> -->
                         </div>
-                        <button type="submit" class="btn btn-primary" data-mdb-ripple-init>
+                        <button type="submit" class="btn btn-primary tooltip-container" data-mdb-ripple-init>
                             <i class="fa fa-search"></i>
+                            <span class="tooltip-text" id="left">Buscar</span>
                         </button>
                     </div>
                 </form>
@@ -203,18 +204,18 @@
 							<!-- ESTADO -->
 							<td>
                                 {% if p.activo %}
-                                    <a class="btn btn-success hover-text estado">
+                                    <a class="btn btn-success tooltip-container estado">
                                         <i class="fa fa-check"></i>
                                     </a>
                                 {% else %}
-                                    <a class="btn btn-danger hover-text estado">
+                                    <a class="btn btn-danger tooltip-container estado">
                                         <i class="fa fa-close"></i>
                                     </a>
                                 {% endif %}
                             </td>
 							<td>{{p.descripcion}}</td>
 							<td>{{p.formulario}}</td>
-							<td class="text-end"><a href="/permiso/edicionPermiso/{{p.id}}" class="btn btn-info btnEditarPermiso hover-text">
+							<td class="text-end"><a href="/permiso/edicionPermiso/{{p.id}}" class="btn btn-info btnEditarPermiso tooltip-container">
                                 <!-- <i class="fa fa-edit"></i> -->
                                 <span class="material-icons">edit</span>
                                 <span class="tooltip-text" id="left">Editar</span>
@@ -225,16 +226,16 @@
                             </a></td> -->
 							<td>
                                 {% if activo %}
-                                    <a id="enlace-eliminacion" href="javascript:eliminar('permiso/eliminar', {{p.id}})" class="btn btn-danger hover-text 
+                                    <a id="enlace-eliminacion" href="javascript:eliminar('permiso/eliminar', {{p.id}})" class="btn btn-danger tooltip-container 
                                         btnEliminarPermiso btnEliminacion">
                                         <!-- <i class="fa fa-close"></i> -->
                                         <span class="material-icons">cancel</span>
                                         <span class="tooltip-text" id="left">Desactivar</span>
                                     </a>
                                 {% else %}
-                                    <a id="enlace-eliminacion" href="javascript:eliminar('permiso/activar', {{p.id}})" class="btn btn-success hover-text 
+                                    <a id="enlace-eliminacion" href="javascript:eliminar('permiso/activar', {{p.id}})" class="btn btn-success tooltip-container 
                                         btnActivarPermiso btnActivacion">
-                                        <i class="fa fa-check"></i>
+                                        <span class="material-icons">check</span>
                                         <span class="tooltip-text" id="left">Activar</span>
                                     </a>
                                 {% endif %}

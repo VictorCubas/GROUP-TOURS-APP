@@ -254,7 +254,7 @@ tr{
     padding: 10px 15px 10px 15px;
   }
   
-  .hover-text:hover .tooltip-text {
+  .tooltip-container:hover .tooltip-text {
     visibility: visible;
   }
   
@@ -278,7 +278,7 @@ tr{
     left: 120%;
   }
   
-  .hover-text {
+  .tooltip-container {
     position: relative;
     display: inline-block;
     /* margin: 40px; */

@@ -95,6 +95,7 @@ def index(request):
     elif operacion == 'activar':
         context['operacion'] = operacion
     
+        print(f'activado: {activado}')
         context['activacionExitosa'] = activado
         
         if activado:
@@ -370,3 +371,23 @@ def getRolesPermisos(listaRoles):
         listaRolesPermisos.append(listaAux)
         
     return listaRolesPermisos
+
+
+def activar(request, id):
+    
+    global activado, operacion, activo 
+    activado= False
+    activo= False
+    operacion = 'activar'
+
+    try:
+        rol = Rol.objects.get(id=id)
+
+        rol.activo = True
+        activado = True
+        rol.save()
+    
+    except:
+        pass
+
+    return redirect(f'/rol', name='index-permiso' )
