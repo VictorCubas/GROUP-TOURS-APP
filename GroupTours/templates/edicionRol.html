@@ -76,6 +76,7 @@
                                                             
                                                                 {% if p.selected == 'si' %}
                                                                     <option selected class="options-permisos" data-tokens="{{p.permiso.id}}" value="{{p.permiso.id}}" {% if not habilitarEdicion %} disabled {% endif %}>{{p.permiso.nombre}}</option>
+                                                                    <!-- <input class="select-rol-permisos" name="txtPermisos" value="{{p.permiso.id}}"> -->
                                                                 {% else %}
                                                                     <option class="options-permisos" data-tokens="{{p.permiso.id}}" value="{{p.permiso.id}}" {% if not habilitarEdicion %} disabled {% endif %}>{{p.permiso.nombre}}</option>
                                                                 {% endif %}
@@ -83,15 +84,20 @@
                                                         {% endfor %}
                                                     </select>
 
-                                                    <!-- <select class="form-select" multiple aria-label="multiple select example"
-                                                                name="txtPermisos" required>
-                                                    
-                                                        <option data-tokens="" value="" selected disabled>Seleccione el permiso</option>
-
-                                                        {% for permiso in listaPermisos %}
-                                                            <option data-tokens="{{permiso.id}}" value="{{permiso.id}}">{{permiso.nombre}}</option>
+                                                    <!-- EN CASO DE NO HABILITAR LA EDICION
+                                                     EL BACKEND NO PERMITE OBTENER LOS VALORES DE LOS VALORES SELECCIONADOS
+                                                     YA QUE ESTA EN MODO DISABLED
+                                                     
+                                                     ASI QUE SE CREA UNA SECCION AUXILIAR PARA OBTENER ESOS VALORES
+                                                     LOS CUALES PERMANECER HIDDEN (OCULTO)-->
+                                                    {% if not habilitarEdicion %}
+                                                        {% for p in  permisosDelRol%}                                                            
+                                                            {% if p.selected == 'si' %}
+                                                                <input type="hidden" name="txtPermisos" value="{{p.permiso.id}}">
+                                                            {% endif %}
                                                         {% endfor %}
-                                                    </select> -->
+                                                    {% endif %}
+                                                        
                                                 </div>
 
                                                 <!-- <button type="button" onclick="agregarPermisoSelect()"

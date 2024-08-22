@@ -266,6 +266,8 @@ def editar(request, id):
     nombre = request.POST.get('txtNombre').strip()
     descripcion = request.POST.get('txtDescripcion').strip()
     permiso_ids = request.POST.getlist('txtPermisos')
+    
+    print(f'permiso_ids: {permiso_ids}')
 
     global editado, operacion
     editado = False

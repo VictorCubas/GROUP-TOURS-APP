@@ -307,3 +307,7 @@ tr{
     width: 2.65rem;
     padding-top: 5px;
   }
+
+  .select-rol-permisos{
+    display: none !important;
+  }
