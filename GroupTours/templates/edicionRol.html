@@ -12,18 +12,22 @@
     </div>
 
     <input id="eliminacionExitosa" name="eliminacionExitosa" type="hidden" value="{{eliminacionExitosa}}">
-
     <input id="menu-activo" name="menu-activo" type="hidden" value="{{menu_activo}}">
-    <!-- <h4 id="email">{{email}}</h4> -->
-	<!--<h4>Permisos sobre "Permiso": &nbsp;
-		{% if permisosPorPantalla == None %}
-			Niguno
-		{% else %}
-			{% for p in permisosPorPantalla %}
-				{{p}}
-			{% endfor %}
-		{% endif %}
-	</h4>-->
+    
+
+    {% if not habilitarEdicion %}
+    <div class="alert alert-warning alert-dismissible fade show" role="alert">
+        <div class="d-flex align-items-center">
+                <svg class="bi flex-shrink-0 me-2" width="24" height="24" role="img" aria-label="Warning:"><use xlink:href="#exclamation-triangle-fill"/></svg>
+            <div>
+                Rol en uso. Sólo puedes editar el campo <b>descripción</b>.
+            </div>
+        </div>
+
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    {% endif %}
+
     <br>
     <div class="row">
         <div class="col-sm-12 col-md-12 col-lg-12 col-xl-12">
@@ -44,13 +48,15 @@
                                     <div class="formulario-campos">
                                         <div class="form-group py-2">
 
-                                            <input type="text" id="txtNombrePermiso" name='txtNombre' 
-                                                class="form-control" placeholder="Nombre del Rol" 
-                                                maxlength="50" value="{{rol.nombre}}" required>
+                                            <input type="text" id="txtNombreRol" name='txtNombre' 
+                                                class="form-control {% if not habilitarEdicion %} text-secondary {% endif %}"
+                                                placeholder="Nombre del Rol" 
+                                                maxlength="50" value="{{rol.nombre}}" 
+                                                {% if not habilitarEdicion %} readonly {% endif %}>
                                         </div>
                                         
                                         <div class="form-group py-2">
-                                            <input type="text" id="txtDescripcionPermiso" name='txtDescripcion' 
+                                            <input type="text" id="txtDescripcionRol" name='txtDescripcion' 
                                                 class="form-control" placeholder="Descripcion" 
                                                 value="{{rol.descripcion}}" required> 
                                                
@@ -62,15 +68,16 @@
                                                 <div class="form-group py-2">
                                                     <select class="selectpicker border rounded" data-live-search="true" name="txtPermisos"
                                                          data-width="100%" multiple required 
-                                                         data-actions-box="true" data-none-selected-text="Seleccione los permisos"
-                                                         data-select-all-text="Marcar todos" data-deselect-all-text="Quitar todos">
+                                                         data-actions-box="true" data-none-selected-text="Ver los seleccionados"
+                                                         data-select-all-text="Marcar todos" data-deselect-all-text="Quitar todos"
+                                                         >
                                                          
                                                         {% for p in  permisosDelRol%}
                                                             
                                                                 {% if p.selected == 'si' %}
-                                                                    <option class="options-permisos" data-tokens="{{p.permiso.id}}" selected value="{{p.permiso.id}}">{{p.permiso.nombre}}</option>
+                                                                    <option selected class="options-permisos" data-tokens="{{p.permiso.id}}" value="{{p.permiso.id}}" {% if not habilitarEdicion %} disabled {% endif %}>{{p.permiso.nombre}}</option>
                                                                 {% else %}
-                                                                    <option class="options-permisos" data-tokens="{{p.permiso.id}}" value="{{p.permiso.id}}">{{p.permiso.nombre}}</option>
+                                                                    <option class="options-permisos" data-tokens="{{p.permiso.id}}" value="{{p.permiso.id}}" {% if not habilitarEdicion %} disabled {% endif %}>{{p.permiso.nombre}}</option>
                                                                 {% endif %}
                                                                 
                                                         {% endfor %}

@@ -12,15 +12,6 @@
     </a>
     <h1 class="title pt-2">EDITAR PERMISO</h1>
 </div>
-<!--<h4>Permisos sobre "Permiso": &nbsp;
-    {% if permisosPorPantalla == None %}
-        Niguno
-    {% else %}
-        {% for p in permisosPorPantalla %}
-            {{p}}
-        {% endfor %}
-    {% endif %}
-</h4>-->
 
 
 {% if not habilitarEdicion %}
@@ -59,7 +50,7 @@
                                     <div class="form-group py-2">
 
                                         <input type="text" id="txtNombrePermiso" name="txtNombre"
-                                            class="form-control" placeholder="Nombre del Permiso"
+                                            class="form-control {% if not habilitarEdicion %} text-secondary {% endif %}" placeholder="Nombre del Permiso"
                                                 maxlength="50" required value="{{ permiso.nombre }}"
                                             {% if not habilitarEdicion %} readonly {% endif %}>
 
@@ -112,7 +103,7 @@
                                     </div>
                                     <div class="form-group py-2">
                                         <input type="text" id="txtDescripcionPermiso" name='txtDescripcion' 
-                                            class="form-control" placeholder="Descripcion" value="{{permiso.descripcion}}"
+                                            class="form-control {% if not habilitarEdicion %} text-secondary {% endif %}" placeholder="Descripcion" value="{{permiso.descripcion}}"
                                             required> 
                                            
                                     </div>

@@ -55,7 +55,7 @@ def index(request):
         print(f'context: {context}')
         tipo = 'success'
         editado = False
-        mensaje = 'El permiso se ha editado con exito'
+        mensaje = 'El rol se ha editado con exito'
         
     elif operacion == 'agregar':
         context['operacion'] = operacion
@@ -63,12 +63,12 @@ def index(request):
         if agregado:
             context['agregado'] = True
             tipo = 'success'
-            mensaje = 'El permiso se ha guardado con exito'
+            mensaje = 'El rol se ha guardado con exito'
             
             agregado = False
         else:
             context['agregado'] = False
-            mensaje = 'Permiso ya existente'
+            mensaje = 'Rol ya existente'
             tipo = 'warning'
     elif operacion == 'eliminar':
         context['operacion'] = operacion
@@ -230,6 +230,7 @@ def edicion(request, id):
         rolesPermisos = RolesPermisos.objects.filter(rol_id=rol.id)
         
         #se busca en la lista de permisos, los permisos que corresponde al rol para listar en el html
+        selected = 'no'
         for p in listaPermisos:
             selected = 'no'
             for rp in rolesPermisos:
@@ -237,12 +238,14 @@ def edicion(request, id):
                     selected = 'si'
                     break
             
-        permisosDelRol.append({'permiso': p, 'selected': selected})
+            permisosDelRol.append({'permiso': p, 'selected': selected})
+        
+        print(f'permisosDelRol: {permisosDelRol}')
         
         #DESCOMENTAR ESTE CODIGO PARA HABILITAR EDICION 
         # usuarioRoles = UsuarioRoles.objects.filter(rol_id = rol.id)
     
-        # habilitarEdicion = True
+        habilitarEdicion = not rol.en_uso
         # if len(usuarioRoles) > 0:
         #     habilitarEdicion = False
     except:
@@ -253,7 +256,8 @@ def edicion(request, id):
                                         'rol':rol,
                                         'listaPermisos':listaPermisos,
                                         'permisosDelRol':permisosDelRol,
-                                        'menu_activo': 'rol'})
+                                        'menu_activo': 'rol',
+                                        "habilitarEdicion": habilitarEdicion})
     
     
     
@@ -262,22 +266,25 @@ def editar(request, id):
     nombre = request.POST.get('txtNombre').strip()
     descripcion = request.POST.get('txtDescripcion').strip()
     permiso_ids = request.POST.getlist('txtPermisos')
+
+    global editado, operacion
+    editado = False
+    operacion = 'editar'
     
-    rol = Rol.objects.get(id=int(id))
-   
-    esValido = validarRepetido(nombre, rol)
-    print(f'esValido: {esValido}')
-    print(f'esValido: {type(esValido)}')
+    try:
+        rol = Rol.objects.get(id=int(id))
     
-    parametro = 'success'
-    
-    if esValido:
-        print('entro aca????')
+        esValido = validarRepetido(nombre, rol)
+        # print(f'esValido: {esValido}')
+        # print(f'esValido: {type(esValido)}')
         
-        rol.nombre = nombre
-        rol.descripcion = descripcion
-        rol.save()
-        try:
+        parametro = 'success'
+        
+        if esValido:
+            rol.nombre = nombre
+            rol.descripcion = descripcion
+            rol.save()
+        
             #recupero los permisos seleccionados despues de la edicion
             listaPermisosSeleccionados = []
             for p in permiso_ids:
@@ -294,14 +301,17 @@ def editar(request, id):
             
             for permiso in listaPermisosSeleccionados:
                 rolPermiso = RolesPermisos.objects.create(rol=rol, permiso=permiso)
-        except:
-            parametro = 'error'
-    else:
-        print(f'error: invalido')
-        parametro = 'warning'
+                
+            editado = True
+        else:
+            print(f'error: invalido')
+            parametro = 'warning'
+    except:
+        parametro = 'error'
+    
     
     # return redirect(f'/rol', name='index-roles')    
-    return redirect(f'/rol?edit-{parametro}=true', name='index-roles')
+    return redirect(f'/rol', name='index-roles')
 
 
 def buscar(request):

@@ -149,7 +149,8 @@ def edicionPermiso(request, codigo):
     if len(rolesPermisos) > 0:
         habilitarEdicion = False
         
-    return render(request, "edicionPermiso.html", {"permiso": permiso, "habilitarEdicion": habilitarEdicion,
+    return render(request, "edicionPermiso.html", {
+                "permiso": permiso, "habilitarEdicion": habilitarEdicion,
                                         'menu_activo': 'permiso'})
 
 def editarPermiso(request, id):
@@ -162,7 +163,6 @@ def editarPermiso(request, id):
     global editado, operacion
     editado = False
     operacion = 'editar'
-    parametro = "success"
 
     try:
         permiso = Permiso.objects.get(id=id)
