@@ -54,8 +54,15 @@ def index(request):
         context['operacion'] = operacion
         print(f'context: {context}')
         tipo = 'success'
+        
+        if editado:
+            tipo = 'success'
+            mensaje = 'El rol se ha editado con exito'
+        else:
+            tipo = 'warning'
+            mensaje = 'Rol ya existente'
+            
         editado = False
-        mensaje = 'El rol se ha editado con exito'
         
     elif operacion == 'agregar':
         context['operacion'] = operacion
@@ -125,7 +132,10 @@ def agregar(request):
     
     esValido = validarRepetido(nombre, None)
     
-    parametro = 'success'
+    global agregado, nombre_repetido, operacion
+    nombre_repetido = esValido
+    agregado = False
+    operacion = 'agregar'
     
     if esValido:
         print('ES VALIDO!')
@@ -137,13 +147,11 @@ def agregar(request):
                 permiso = Permiso.objects.get(id=int(p))
                 permiso.en_uso = True
                 permiso.save()
-                print('me creo......')
                 rolPermiso = RolesPermisos.objects.create(rol=rol, permiso=permiso)
         except:
-            parametro = 'error'
             pass
         
-    return redirect(f'/rol?add-{parametro}={esValido}', name='index-roles')    
+    return redirect(f'/rol', name='index-roles')    
 
 
 def validarRepetido(nombre, rol):
@@ -153,6 +161,7 @@ def validarRepetido(nombre, rol):
     '''
     
     # print('validar repetido')
+    nombre = nombre.lower()
     query_normalized = normalize('NFKD', nombre).encode('ASCII', 'ignore').decode('ASCII')
     
     resultados_roles = None
@@ -165,7 +174,10 @@ def validarRepetido(nombre, rol):
         #     return False
         
         resultados_roles = Rol.objects.annotate(
-            nombre_normalized=Func(F('nombre'), function='unaccent'),
+            nombre_normalized=Func(
+                Func(F('nombre'), function='unaccent'), 
+                function='lower'
+            ),
         ).filter(
             Q(nombre_normalized=query_normalized)
         ).exclude(
@@ -173,7 +185,10 @@ def validarRepetido(nombre, rol):
         )
     else:
         resultados_roles = Rol.objects.annotate(
-            nombre_normalized=Func(F('nombre'), function='unaccent'),
+            nombre_normalized=Func(
+                Func(F('nombre'), function='unaccent'), 
+                function='lower'
+            ),
         ).filter(
             Q(nombre_normalized=query_normalized)
         )

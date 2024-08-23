@@ -75,10 +75,12 @@
                                                         {% for p in  permisosDelRol%}
                                                             
                                                                 {% if p.selected == 'si' %}
-                                                                    <option selected class="options-permisos" data-tokens="{{p.permiso.id}}" value="{{p.permiso.id}}" {% if not habilitarEdicion %} disabled {% endif %}>{{p.permiso.nombre}}</option>
+                                                                    <option selected class="options-permisos" data-tokens="{{p.permiso.id}}" value="{{p.permiso.id}}" 
+                                                                                    {% if not habilitarEdicion %} disabled {% endif %}>{{p.permiso.nombre}}</option>
                                                                     <!-- <input class="select-rol-permisos" name="txtPermisos" value="{{p.permiso.id}}"> -->
                                                                 {% else %}
-                                                                    <option class="options-permisos" data-tokens="{{p.permiso.id}}" value="{{p.permiso.id}}" {% if not habilitarEdicion %} disabled {% endif %}>{{p.permiso.nombre}}</option>
+                                                                    <option class="options-permisos" data-tokens="{{p.permiso.id}}" value="{{p.permiso.id}}"
+                                                                             {% if not habilitarEdicion %} disabled {% endif %}>{{p.permiso.nombre}}</option>
                                                                 {% endif %}
                                                                 
                                                         {% endfor %}
