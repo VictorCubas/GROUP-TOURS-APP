@@ -49,12 +49,23 @@ def index(request):
     tipo = ''
     
     if operacion == 'editar':
-        context['editado'] = True
+        print(f'editado: {editado}')
+        context['editado'] = editado
         context['operacion'] = operacion
         print(f'context: {context}')
-        tipo = 'success'
-        editado = False
         mensaje = 'El permiso se ha editado con exito'
+        
+        if editado:
+            tipo = 'success'
+        else:
+            tipo = 'warning'
+            mensaje = 'Permiso ya existente'
+            
+        editado = False
+        
+        
+        # if nombre_repetido:
+        #     mensaje = 'Permiso ya existente'
         
     elif operacion == 'agregar':
         context['operacion'] = operacion
@@ -123,6 +134,8 @@ def registrarPermiso(request):
 
     esValido = validarRepetido(nombre, None)
     
+    print(f'esValido: {esValido}')
+    
     global agregado, nombre_repetido, operacion
     nombre_repetido = esValido
     agregado = False
@@ -149,7 +162,8 @@ def edicionPermiso(request, codigo):
     if len(rolesPermisos) > 0:
         habilitarEdicion = False
         
-    return render(request, "edicionPermiso.html", {"permiso": permiso, "habilitarEdicion": habilitarEdicion,
+    return render(request, "edicionPermiso.html", {
+                "permiso": permiso, "habilitarEdicion": habilitarEdicion,
                                         'menu_activo': 'permiso'})
 
 def editarPermiso(request, id):
@@ -159,21 +173,22 @@ def editarPermiso(request, id):
     formulario = request.POST.get('txtFormulario')
     esValido = False
 
-    global editado, operacion
+    global editado, operacion, nombre_repetido
     editado = False
     operacion = 'editar'
-    parametro = "success"
 
     try:
         permiso = Permiso.objects.get(id=id)
 
         esValido = validarRepetido(nombre, permiso)
+        nombre_repetido = esValido
+        print(f'esValido: {esValido}')
         if esValido:
             permiso.nombre = nombre
             permiso.descripcion = descripcion
             permiso.tipo = tipo
             permiso.formulario = formulario
-            permiso.save()
+            # permiso.save()
             
             editado = True
     except:
@@ -183,7 +198,7 @@ def editarPermiso(request, id):
 
 def eliminar(request, id):
     
-    global eliminado, operacion, elimninacion_no_permitida, activo 
+    global eliminado, operacion, elimninacion_no_permitida, activo
     eliminado = False
     elimninacion_no_permitida = False
     operacion = 'eliminar'
@@ -222,26 +237,30 @@ def validarRepetido(nombre, permiso):
     Se puede hacer de manera mas simple, solo reutilice lo que ya tenia
     '''
     
-    # print('validar repetido')
-    query_normalized = normalize('NFKD', nombre).encode('ASCII', 'ignore').decode('ASCII')
-    resultados_permisos= None
-    
-    if permiso:
-        # rolesPermisos = RolesPermisos.objects.filter(permiso_id = permiso.id)
-        # if len(rolesPermisos) > 0:
-        #     return False
+    nombre = nombre.lower()
 
+    # Normalizar y convertir a minúsculas el nombre para la consulta
+    query_normalized = normalize('NFKD', nombre).encode('ASCII', 'ignore').decode('ASCII')
+
+    resultados_permisos = None
+
+    if permiso:
         resultados_permisos = Permiso.objects.annotate(
-            nombre_normalized=Func(F('nombre'), function='unaccent'),
+            nombre_normalized=Func(
+                Func(F('nombre'), function='unaccent'), 
+                function='lower'
+            ),
         ).filter(
             Q(nombre_normalized=query_normalized)
         ).exclude(
             id=permiso.id  # Excluyendo el permiso actual basado en su id
         )
-
-    else:    
+    else:
         resultados_permisos = Permiso.objects.annotate(
-            nombre_normalized=Func(F('nombre'), function='unaccent'),
+            nombre_normalized=Func(
+                Func(F('nombre'), function='unaccent'), 
+                function='lower'
+            ),
         ).filter(
             Q(nombre_normalized=query_normalized)
         )

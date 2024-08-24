@@ -24,6 +24,8 @@ class Rol(models.Model):
     nombre = models.CharField(max_length=50)
     descripcion = models.CharField(max_length=200, default='')
     permisos = models.ManyToManyField(Permiso, through=RolesPermisos, related_name='rol_permiso')
+    activo = models.BooleanField(default=True)
+    en_uso = models.BooleanField(default=False)
     
     #personalizamos la tabla en postgres
     class Meta:

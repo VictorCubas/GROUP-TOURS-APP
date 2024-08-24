@@ -1,16 +1,44 @@
 from django.shortcuts import render
 from django.http import HttpResponse
 from .models import Usuario
+from apps.rol.models import Rol
+from .models import UsuariosRoles
 # Create your views here.
 
 def index(request):
     # print(request.path)
-    listaUsuario = Usuario.objects.all().order_by('id')
+    listaUsuarios = Usuario.objects.all().order_by('id')
+    listaRoles = Rol.objects.all().order_by('id')
+    listaUsuarioRoles = getUsuariosRoles(listaUsuarios)
     
-    context = {'listaUsuarios':listaUsuario, 'menu_activo': 'usuario'}
+    context = {
+        'listaUsuarios':listaUsuarios,
+        'listaRoles': listaRoles,
+        'menu_activo': 'usuario'}
     
     
     return render(request, 'usuario.html', context)
+
+
+def getUsuariosRoles(listaUsuarios):
+    listaUsuariosRoles = []
+    
+    for usuario in listaUsuarios:
+        listaRolesAsignados = []
+        listaAux = {}
+        
+        listaAux['rol'] = usuario
+        rolPermiso = UsuariosRoles.objects.filter(rol_id=usuario.id)
+        
+        for rp in rolPermiso:
+            # permiso = Permiso.objects.get(id=int(rp.permiso_id))
+            listaRolesAsignados.append(rp.permiso)
+            
+        
+        listaAux['permisos'] = listaRolesAsignados
+        listaUsuariosRoles.append(listaAux)
+        
+    return listaUsuariosRoles
 
 
 def registrarUsuario(request):
@@ -21,7 +49,6 @@ def registrarUsuario(request):
     telefono = request.POST.get('txtTelefono')
     correo = request.POST.get('txtCorreo')
     direccion = request.POST.get('txtDireccion')
-    estado = request.POST.get('txtEstado')
    
     #se crea un usuario
     Usuario.objects.create(documento = documento,
@@ -29,8 +56,7 @@ def registrarUsuario(request):
                            apellido = apellido,
                            telefono = telefono,
                            correo = correo,
-                           direccion = direccion,
-                           estado = estado)
+                           direccion = direccion,)
 
     #se recupera toda la lista de usuarios
     listaUsuario = Usuario.objects.all().order_by('id')

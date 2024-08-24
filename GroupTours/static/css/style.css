@@ -182,7 +182,7 @@ a.sidebar-link:hover{
     width: 290px !important;
 }
 
-.permisos-list-item{
+.multi-select-list-item{
     display: flex;
     column-gap: 0.5rem;
 }
@@ -245,7 +245,7 @@ tr{
 .tooltip-text {
     visibility: hidden;
     position: absolute;
-    z-index: 1;
+    z-index: 100;
     width: 100px;
     color: white;
     font-size: 12px;
@@ -254,7 +254,7 @@ tr{
     padding: 10px 15px 10px 15px;
   }
   
-  .hover-text:hover .tooltip-text {
+  .tooltip-container:hover .tooltip-text {
     visibility: visible;
   }
   
@@ -278,7 +278,7 @@ tr{
     left: 120%;
   }
   
-  .hover-text {
+  .tooltip-container {
     position: relative;
     display: inline-block;
     /* margin: 40px; */
@@ -306,4 +306,8 @@ tr{
     padding: 0px;
     width: 2.65rem;
     padding-top: 5px;
+  }
+
+  .select-rol-permisos{
+    display: none !important;
   }
