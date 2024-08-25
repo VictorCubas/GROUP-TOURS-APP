@@ -14,6 +14,7 @@ class Permiso(models.Model):
     #formulario = models.ForeignKey(Formulario, null=True, on_delete=models.CASCADE)
     formulario = models.CharField(max_length=50, default='')
     activo = models.BooleanField(default=True)
+    en_uso = models.BooleanField(default=False)
     
     #personalizamos la tabla en posgres
     class Meta:

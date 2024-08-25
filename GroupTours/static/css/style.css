@@ -97,6 +97,10 @@ a.sidebar-link {
     border-radius: 0.375rem;
 }
 
+a.sidebar-link .material-icons, a.sidebar-link .material-symbols-outlined{
+    padding-right: 0.4rem;
+}
+
 a.sidebar-link:hover{
     background-color: rgb(55 65 81);
 }
@@ -178,7 +182,7 @@ a.sidebar-link:hover{
     width: 290px !important;
 }
 
-.permisos-list-item{
+.multi-select-list-item{
     display: flex;
     column-gap: 0.5rem;
 }
@@ -241,7 +245,7 @@ tr{
 .tooltip-text {
     visibility: hidden;
     position: absolute;
-    z-index: 1;
+    z-index: 100;
     width: 100px;
     color: white;
     font-size: 12px;
@@ -250,7 +254,7 @@ tr{
     padding: 10px 15px 10px 15px;
   }
   
-  .hover-text:hover .tooltip-text {
+  .tooltip-container:hover .tooltip-text {
     visibility: visible;
   }
   
@@ -274,7 +278,7 @@ tr{
     left: 120%;
   }
   
-  .hover-text {
+  .tooltip-container {
     position: relative;
     display: inline-block;
     /* margin: 40px; */
@@ -295,4 +299,15 @@ tr{
     font-size: 12px;
     display: flex;
     justify-content: center;
+  }
+
+  #enlace-eliminacion, .btnEditarPermiso {
+    margin: 0px;
+    padding: 0px;
+    width: 2.65rem;
+    padding-top: 5px;
+  }
+
+  .select-rol-permisos{
+    display: none !important;
   }

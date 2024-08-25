@@ -47,17 +47,22 @@ menuItems.forEach(function (opcion) {
  $('.selectpicker').selectpicker();
 
 
- //SWEET ALER, ELMINACION EXITOSA
- window.onload = function() { dispararModalEliminacionExitosa(); };
+//  window.onload = function() { dispararModalEliminacionExitosa(); };
 
+//SWEET ALER, ELMINACION EXITOSA
 function dispararModalEliminacionExitosa(){
     eliminacionExitosaEl = document.getElementById('eliminacionExitosa');
-    console.log('eliminacionExitosaEl.value: ', eliminacionExitosaEl.value);
+    moduloEl = document.getElementById('modulo');
+
+
+    if(!eliminacionExitosaEl || !moduloEl){
+        return;
+    }
 
     if(eliminacionExitosaEl.value === 'True'){
         Swal.fire({
             title: "Desactivado!",
-            text: "Se ha realizado la desactivación.",
+            text: "Se ha realizado la operación.",
             icon: "success"
             });
     }
@@ -72,17 +77,22 @@ function dispararModalEliminacionExitosa(){
         Swal.fire({
         icon: "warning",
         title: "Oops...",
-        text: "¡Permiso en uso! No se puede desactivar.",
+        text: `¡${moduloEl.value} en uso! No se puede desactivar.`,
         });
     }
 }
 
 
 
-window.onload = function() { dispararModalActivacionExitosa(); };
+window.onload = function() { dispararModalActivacionExitosa(); dispararModalEliminacionExitosa(); };
 
 function dispararModalActivacionExitosa(){
     activacionExitosaEl = document.getElementById('activacionExitosa');
+
+    if(!activacionExitosaEl){
+        return;
+    }
+
     console.log('activacionExitosaEl.value: ', activacionExitosaEl.value);
 
     if(activacionExitosaEl.value === 'True'){
@@ -160,7 +170,7 @@ const selectpicker = document.querySelector('.selectpicker');
 
 var valorAnterior = null
 
-selectpicker.addEventListener('change', function(event) {
+selectpicker?.addEventListener('change', function(event) {
         const selectedOption = event.target.value;
         if (selectedOption === '*') {
             // Desmarcar todas las opciones excepto la opción "Marcar todos"

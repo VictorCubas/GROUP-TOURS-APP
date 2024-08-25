@@ -1,0 +1,9 @@
+{% extends 'index.html' %}
+
+{% block content %}
+<h1>Detalle de Usuario</h1>
+<p>Email: {{ object.email }}</p>
+<p>Nombre: {{ object.first_name }} {{ object.last_name }}</p>
+<a href="{% url 'user_update' pk=object.pk %}">Editar</a>
+<a href="{% url 'user_delete' pk=object.pk %}">Eliminar</a>
+{% endblock %}
