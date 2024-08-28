@@ -13,6 +13,7 @@ class Usuario(models.Model):
     correo = models.CharField(max_length=100)
     direccion = models.CharField(max_length=200)
     activo = models.BooleanField(default=True)
+    en_uso = models.BooleanField(default=False)
     
     #personalizamos la tabla en postgres
     class Meta:

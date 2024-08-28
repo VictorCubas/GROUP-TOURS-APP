@@ -20,6 +20,7 @@ class Empleado(Persona):
     descripcion = models.CharField(max_length=200, default='')
     tipo = models.CharField(max_length=1, default='')
     activo = models.BooleanField(default=True)
+    en_uso = models.BooleanField(default=False)
     
     #personalizamos la tabla en postgre
     class Meta:
