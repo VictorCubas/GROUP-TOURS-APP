@@ -148,7 +148,7 @@ def registrarPermiso(request):
             Permiso.objects.create(nombre=nombre, descripcion=descripcion, tipo=tipo, formulario=formulario)
             agregado = True
         except:
-            parametro = "error"
+            pass
 
 
     return redirect(f'/permiso', name='index-permiso' )
