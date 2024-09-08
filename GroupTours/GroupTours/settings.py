@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'apps.logout',
     'apps.permiso',
     'apps.rol',
+    'apps.empleados',
 ]
 
 MIDDLEWARE = [

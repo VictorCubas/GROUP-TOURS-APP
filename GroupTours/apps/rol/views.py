@@ -133,21 +133,22 @@ def agregar(request):
     esValido = validarRepetido(nombre, None)
     
     global agregado, nombre_repetido, operacion
+    
     nombre_repetido = esValido
     agregado = False
     operacion = 'agregar'
     
     if esValido:
-        print('ES VALIDO!')
-        # print(f'{nombre}, {descripcion}, {permiso_ids}')
         try:
             rol = Rol.objects.create(nombre=nombre, descripcion=descripcion)
-        
+            
             for p in permiso_ids:
                 permiso = Permiso.objects.get(id=int(p))
                 permiso.en_uso = True
                 permiso.save()
                 rolPermiso = RolesPermisos.objects.create(rol=rol, permiso=permiso)
+                
+            agregado = True
         except:
             pass
         
