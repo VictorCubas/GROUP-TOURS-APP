@@ -87,13 +87,25 @@ WSGI_APPLICATION = 'GroupTours.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/4.1/ref/settings/#databases
 
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.postgresql_psycopg2',
+#         'NAME': 'GroupTours',
+#         'USER':  os.getenv('DBUSER'),
+#         'PASSWORD':  os.getenv('DBPASS'),
+#         'HOST': '127.0.0.1',
+#         'DATABASE_PORT': '5432',
+#     }
+# }
+
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql_psycopg2',
-        'NAME': 'GroupTours',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'postgres',
         'USER':  os.getenv('DBUSER'),
         'PASSWORD':  os.getenv('DBPASS'),
-        'HOST': '127.0.0.1',
+        # 'HOST': '127.0.0.1',
+        'HOST': 'grouptoursapp.c7e2008ukujw.us-east-2.rds.amazonaws.com',
         'DATABASE_PORT': '5432',
     }
 }
