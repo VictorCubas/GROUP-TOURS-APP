@@ -189,6 +189,7 @@
 						</tr>
 					</thead>
 					<tbody>
+                        
 						{% for p in page %}
 						<tr>
 							<td>{{forloop.counter}}</td>
@@ -256,6 +257,10 @@
 						{% endfor %}
 					</tbody>
 				</table>
+
+                {% if not p %}
+                    <p class="lista-vacia">LISTA VACIA</p>
+                {% endif %}
 
                 {% include "paginator.html" %} 
 

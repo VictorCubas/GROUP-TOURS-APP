@@ -260,6 +260,10 @@
 					</tbody>
 				</table>
 
+                {% if not p %}
+                    <p class="lista-vacia">LISTA VACIA</p>
+                {% endif %}
+                
                 {% include "paginator.html" %} 
 
 			</div>

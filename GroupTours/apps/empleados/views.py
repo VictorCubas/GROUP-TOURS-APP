@@ -28,7 +28,9 @@ def index(request):
     else: 
         listaEmpleado = Empleado.objects.filter(activo=True).order_by('-id')
         
-    print(f'listaEmpleado: {listaEmpleado[0].en_uso}')
+    # print(f'empleados: {listaEmpleado}')
+        
+    # print(f'listaEmpleado: {listaEmpleado[0].en_uso}')
     
     resultadosAPaginar = listaEmpleado
     cantidad_de_resultados = len(resultadosAPaginar)

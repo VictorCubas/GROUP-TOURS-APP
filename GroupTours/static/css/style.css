@@ -311,3 +311,12 @@ tr{
   .select-rol-permisos{
     display: none !important;
   }
+
+  .lista-vacia{
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    height: 20vh;
+    color: #c3c3c3;
+  }
