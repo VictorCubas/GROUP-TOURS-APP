@@ -119,3 +119,11 @@ def index(request):
     context['activo'] = activo
 
     return render(request, 'empleados.html', context)
+
+
+
+def agregar(request):
+    context = {
+                'menu_activo': 'empleado'
+                }
+    return render(request, 'empleado-nuevo.html', context)
