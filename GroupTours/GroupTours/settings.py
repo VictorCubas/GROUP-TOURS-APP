@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/4.1/ref/settings/
 from pathlib import Path
 import os
 from dotenv import load_dotenv
+from datetime import timedelta
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -32,10 +33,12 @@ DEBUG = True
 
 ALLOWED_HOSTS = []
 
+CORS_ALLOW_ALL_ORIGINS = True
 
 # Application definition
 
 INSTALLED_APPS = [
+    'corsheaders',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -43,7 +46,9 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'rest_framework_simplejwt',
     
+    'apps.login_token',
     'apps.login',
     'apps.usuario',
     'apps.home',
@@ -56,6 +61,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -130,30 +136,46 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 
-# REST_FRAMEWORK = {
-#     #'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-#     #'PAGE_SIZE': 100,
+REST_FRAMEWORK = {
+    # Paginación
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 100,
 
-#     'DEFAULT_PERMISSION_CLASSES': (
-#         'rest_framework.permissions.AllowAny',
-#         #'rest_framework.permissions.IsAuthenticated',
-#     ),
-#     'DEFAULT_AUTHENTICATION_CLASSES': (
-#         'apps.api.authentication.CsrfExemptSessionAuthentication',
-#         'rest_framework.authentication.SessionAuthentication',
-#     ),
-#     'DEFAULT_RENDERER_CLASSES': (
-#         'rest_framework.renderers.JSONRenderer',
-#         'rest_framework.renderers.BrowsableAPIRenderer',
-#     ),
-#     'DEFAULT_PARSER_CLASSES': (
-#         'rest_framework.parsers.JSONParser',
-#     ),
-#     'DATETIME_FORMAT': '%Y-%m-%dT%H:%M:%S%z',
-#     'DATE_FORMAT': '%Y-%m-%d',
-#     'COERCE_DECIMAL_TO_STRING': False
-# }
+    # Autenticación
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        # Opcionalmente para desarrollo:
+        # 'rest_framework.authentication.SessionAuthentication',
+    ),
 
+    # Permisos globales
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.IsAuthenticated',  # Bloquea todo por defecto
+    ),
+
+    # Renderers
+    'DEFAULT_RENDERER_CLASSES': (
+        'rest_framework.renderers.JSONRenderer',
+        'rest_framework.renderers.BrowsableAPIRenderer',  # Útil en desarrollo
+    ),
+
+    # Parsers
+    'DEFAULT_PARSER_CLASSES': (
+        'rest_framework.parsers.JSONParser',
+    ),
+
+    # Formato de fechas
+    'DATETIME_FORMAT': '%Y-%m-%dT%H:%M:%S%z',
+    'DATE_FORMAT': '%Y-%m-%d',
+
+    # Opcional: evita convertir Decimals a strings
+    'COERCE_DECIMAL_TO_STRING': False,
+}
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
+    'AUTH_HEADER_TYPES': ('Bearer',),
+}
 
 
 # Internationalization
