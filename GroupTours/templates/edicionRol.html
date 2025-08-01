@@ -1,0 +1,134 @@
+{%extends './base.html'%}
+
+{% block title %} GROUP TOURS APP {% endblock %}
+
+
+{% block body %}
+    <div class="d-flex align-items-center">
+        <a href="/rol" class="btn go-back-btn text-center d-flex justify-content-center align-items-center" title="Volver atrás">
+            <i class="fa fa-arrow-left fa-lg"></i>
+        </a>
+        <h1 class="title pt-2">EDITAR ROL</h1>
+    </div>
+
+    <input id="eliminacionExitosa" name="eliminacionExitosa" type="hidden" value="{{eliminacionExitosa}}">
+    <input id="menu-activo" name="menu-activo" type="hidden" value="{{menu_activo}}">
+    
+
+    {% if not habilitarEdicion %}
+    <div class="alert alert-warning alert-dismissible fade show" role="alert">
+        <div class="d-flex align-items-center">
+                <svg class="bi flex-shrink-0 me-2" width="24" height="24" role="img" aria-label="Warning:"><use xlink:href="#exclamation-triangle-fill"/></svg>
+            <div>
+                Rol en uso. Sólo puedes editar el campo <b>descripción</b>.
+            </div>
+        </div>
+
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    {% endif %}
+
+    <br>
+    <div class="row">
+        <div class="col-sm-12 col-md-12 col-lg-12 col-xl-12">
+			
+            <div class="accordion" id="accordionExample">
+                <div class="accordion-item">
+                  <h2 class="accordion-header" id="headingOne">
+                    <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="true" aria-controls="collapseOne">
+                        Registrar Rol
+                    </button>
+                  </h2>
+                  <div id="collapseOne" class="accordion-collapse collapse show" aria-labelledby="headingOne" data-bs-parent="#accordionExample">
+                    <div class="accordion-body">
+                        <div class="card">
+                            <div class="card-body">
+                                
+                                <form class="formulario" id='form-rol' action='/rol/editar/{{rol.id}}' method="POST"> {% csrf_token %}
+                                    <div class="formulario-campos">
+                                        <div class="form-group py-2">
+
+                                            <input type="text" id="txtNombreRol" name='txtNombre' 
+                                                class="form-control {% if not habilitarEdicion %} text-secondary {% endif %}"
+                                                placeholder="Nombre del Rol" 
+                                                maxlength="50" value="{{rol.nombre}}" 
+                                                {% if not habilitarEdicion %} readonly {% endif %}>
+                                        </div>
+                                        
+                                        <div class="form-group py-2">
+                                            <input type="text" id="txtDescripcionRol" name='txtDescripcion' 
+                                                class="form-control" placeholder="Descripcion" 
+                                                value="{{rol.descripcion}}" required> 
+                                               
+                                        </div>
+
+                                        
+                                        <div class="permisos-list">
+                                            <div class="permisos-list-item">
+                                                <div class="form-group py-2">
+                                                    <select class="selectpicker border rounded" data-live-search="true" name="txtPermisos"
+                                                         data-width="100%" multiple required 
+                                                         data-actions-box="true" data-none-selected-text="Ver los seleccionados"
+                                                         data-select-all-text="Marcar todos" data-deselect-all-text="Quitar todos"
+                                                         >
+                                                         
+                                                        {% for p in  permisosDelRol%}
+                                                            
+                                                                {% if p.selected == 'si' %}
+                                                                    <option selected class="options-permisos" data-tokens="{{p.permiso.id}}" value="{{p.permiso.id}}" 
+                                                                                    {% if not habilitarEdicion %} disabled {% endif %}>{{p.permiso.nombre}}</option>
+                                                                    <!-- <input class="select-rol-permisos" name="txtPermisos" value="{{p.permiso.id}}"> -->
+                                                                {% else %}
+                                                                    <option class="options-permisos" data-tokens="{{p.permiso.id}}" value="{{p.permiso.id}}"
+                                                                             {% if not habilitarEdicion %} disabled {% endif %}>{{p.permiso.nombre}}</option>
+                                                                {% endif %}
+                                                                
+                                                        {% endfor %}
+                                                    </select>
+
+                                                    <!-- EN CASO DE NO HABILITAR LA EDICION
+                                                     EL BACKEND NO PERMITE OBTENER LOS VALORES DE LOS VALORES SELECCIONADOS
+                                                     YA QUE ESTA EN MODO DISABLED
+                                                     
+                                                     ASI QUE SE CREA UNA SECCION AUXILIAR PARA OBTENER ESOS VALORES
+                                                     LOS CUALES PERMANECER HIDDEN (OCULTO)-->
+                                                    {% if not habilitarEdicion %}
+                                                        {% for p in  permisosDelRol%}                                                            
+                                                            {% if p.selected == 'si' %}
+                                                                <input type="hidden" name="txtPermisos" value="{{p.permiso.id}}">
+                                                            {% endif %}
+                                                        {% endfor %}
+                                                    {% endif %}
+                                                        
+                                                </div>
+
+                                                <!-- <button type="button" onclick="agregarPermisoSelect()"
+                                                    class="agregar-permiso btn btn-primary"><i class="fa fa-plus"></i></button> -->
+                                            </div>
+                                        </div>
+                
+                                        <!--
+                                        <div class="form-group py-2">
+                                            <input type="text" id="txtFormulario" name='txtFormulario' 
+                                                class="form-control" placeholder="Formulario" 
+                                                required>
+                                        </div>-->
+                                    </div>
+            
+                                    <div class="formulario-guardar form-group pt-4 px-5">
+                                        <button type="submit" class="btn btn-success btn-block text-white btnGuardarPermiso">Guardar</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                  </div>
+                </div>
+ 
+              </div>
+
+		
+		</div>
+    </div>
+{% endblock%}
+

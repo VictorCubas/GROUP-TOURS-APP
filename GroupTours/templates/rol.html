@@ -1,0 +1,297 @@
+{%extends './base.html'%}
+
+{% block title %} GROUP TOURS APP {% endblock %}
+
+
+{% block body %}
+<h1 class="pt-2">MODULO ROLES</h1>
+    <svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+        <symbol id="check-circle-fill" fill="currentColor" viewBox="0 0 16 16">
+        <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
+        </symbol>
+        <symbol id="info-fill" fill="currentColor" viewBox="0 0 16 16">
+        <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/>
+        </symbol>
+        <symbol id="exclamation-triangle-fill" fill="currentColor" viewBox="0 0 16 16">
+        <path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/>
+        </symbol>
+    </svg>
+    
+    {% if operacion == 'editar' or operacion == 'agregar' %}
+        <div class="alert alert-{{tipo}} alert-dismissible fade show" role="alert">
+            <div class="d-flex align-items-center">
+                
+                <!-- <svg class="bi flex-shrink-0 me-2" width="24" height="24" role="img" aria-label="Success:"><use xlink:href="#check-circle-fill"/></svg>     -->
+                
+                {% if tipo == 'success' %}
+                    <svg class="bi flex-shrink-0 me-2" width="24" height="24" role="img" aria-label="Success:"><use xlink:href="#check-circle-fill"/></svg>
+                {% elif tipo == 'warning'%}
+                    <svg class="bi flex-shrink-0 me-2" width="24" height="24" role="img" aria-label="Warning:"><use xlink:href="#exclamation-triangle-fill"/></svg>
+                {% elif tipo == 'danger'%}
+                    <svg class="bi flex-shrink-0 me-2" width="24" height="24" role="img" aria-label="Danger:"><use xlink:href="#exclamation-triangle-fill"/></svg>
+                {% endif %}
+
+                <div>
+                    {{mensaje}}
+                </div>
+            </div>
+
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    {% endif %}
+
+    <input id="eliminacionExitosa" name="eliminacionExitosa" type="hidden" value="{{eliminacionExitosa}}">
+    <input id="modulo" name="modulo" type="hidden" value="Rol">
+    <input id="activacionExitosa" name="activacionExitosa" type="hidden" value="{{activacionExitosa}}">
+    <!-- ESTE INPUT ES NECESARIO PARA MARCA UN ITEM ACTIVO EN EL SIDE-BAR'menu_activo': 'permiso'-->
+    <input id="menu-activo" name="menu-activo" type="hidden" value="{{menu_activo}}">
+
+    <div class="row">
+        <div class="col-sm-12 col-md-12 col-lg-12 col-xl-12">
+			
+            <div class="accordion" id="accordionExample">
+                <div class="accordion-item">
+                  <h2 class="accordion-header" id="headingOne">
+                    <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="true" aria-controls="collapseOne">
+                        Registrar Rol
+                    </button>
+                  </h2>
+                  <div id="collapseOne" class="accordion-collapse collapse show" aria-labelledby="headingOne" data-bs-parent="#accordionExample">
+                    <div class="accordion-body">
+                        <div class="card">
+                            <div class="card-body">
+                                
+                                <form class="formulario" id='form-rol' action='/rol/agregar' method="POST"> {% csrf_token %}
+                                    <div class="formulario-campos">
+                                        <div class="form-group py-2">
+
+                                            <input type="text" id="txtNombrePermiso" name='txtNombre' 
+                                                class="form-control" placeholder="Nombre del Rol *" 
+                                                maxlength="50" required>
+                                        </div>
+                                        
+                                        <div class="form-group py-2">
+                                            <input type="text" id="txtDescripcionPermiso" name='txtDescripcion' 
+                                                class="form-control" placeholder="Descripcion *" 
+                                                required> 
+                                               
+                                        </div>
+
+                                        
+                                        <div class="multi-select-list">
+                                            <div class="multi-select-list-item">
+                                                <div class="form-group py-2">
+                                                    <select class="selectpicker border rounded" data-live-search="true" name="txtPermisos"
+                                                         data-width="100%" multiple required 
+                                                         data-actions-box="true" data-none-selected-text="Seleccione los permisos *"
+                                                         data-select-all-text="Marcar todos" data-deselect-all-text="Quitar todos">
+                                                         
+                                                        {% for permiso in listaPermisos %}
+                                                            <option class="options-permisos" data-tokens="{{permiso.id}}" value="{{permiso.id}}">{{permiso.nombre}}</option>
+                                                        {% endfor %}
+                                                    </select>
+
+                                                    <!-- <select id="divRatings" class="selectpicker" multiple title='Choose one of the following...' data-size="5" data-selected-text-format="count>2" data-actions-box="true">
+                                                        <option value="All" selected="selected">All Ratings</option>
+                                                        <option value="EC">EC (Early Childhood)</option>
+                                                        <option value="E">E (Everyone)</option>
+                                                        <option value="E10+">E10+ (Everyone 10+)</option>
+                                                        <option value="T">T (Teen)</option>
+                                                        <option value="M">M (Mature)</option>
+                                                        <option value="AO">AO (Adults Only)</option>
+                                                    </select> -->
+
+                                                    <!-- <select class="form-select" multiple aria-label="multiple select example"
+                                                                name="txtPermisos" required>
+                                                    
+                                                        <option data-tokens="" value="" selected disabled>Seleccione el permiso</option>
+
+                                                        {% for permiso in listaPermisos %}
+                                                            <option data-tokens="{{permiso.id}}" value="{{permiso.id}}">{{permiso.nombre}}</option>
+                                                        {% endfor %}
+                                                    </select> -->
+                                                </div>
+
+                                                <!-- <button type="button" onclick="agregarPermisoSelect()"
+                                                    class="agregar-permiso btn btn-primary"><i class="fa fa-plus"></i></button> -->
+                                            </div>
+                                        </div>
+                
+                                        <!--
+                                        <div class="form-group py-2">
+                                            <input type="text" id="txtFormulario" name='txtFormulario' 
+                                                class="form-control" placeholder="Formulario" 
+                                                required>
+                                        </div>-->
+                                    </div>
+            
+                                    <div class="formulario-guardar form-group pt-4 px-5">
+                                        <button type="submit" class="btn btn-success btn-block text-white btnGuardarPermiso">Guardar</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                  </div>
+                </div>
+ 
+              </div>
+
+		
+		</div>
+        
+		<div id="divListadoPermiso" class="col-sm-12 col-md-12 col-lg-12 col-xl-12">
+            <div class="d-flex justify-content-between align-items-center">
+			    <h2 class="mt-4 text-dark">Listado de roles</h2>
+
+                <form class="formulario-buscar mt-3" action="/rol/buscar/" method="GET">
+                    <div class="input-group filtro">
+                        <div class="form-check form-switch form-outline mr-2 pr-2">
+                            <label class="form-check-label" for="flexSwitchCheckChecked">Activo</label>
+                            <input class="form-check-input" type="checkbox" role="switch" id="flexSwitchCheckChecked" name="activo" {% if activo %}checked{% endif %}>
+                        </div>
+
+                        <div class="form-outline" data-mdb-input-init>
+                            <input value="{{query}}" id="search-focus" name="q" type="search" id="form1" 
+                                    class="form-control" placeholder="Buscar..."/>
+                            <!-- <label class="form-label" for="form1">Search</label> -->
+                        </div>
+                        <button type="submit" class="btn btn-primary tooltip-container" data-mdb-ripple-init>
+                            <i class="fa fa-search"></i>
+                            <span class="tooltip-text" id="left">Buscar</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+			<div class="table-responsive py-2">
+				<table class='table table-striped'>
+					<thead>
+						<tr>
+							<th>#</th>
+							<th>Nombre</th>
+							<th>Descripcion</th>
+							<th>Activo</th>
+							<th class="text-nowrap">En uso</th>
+                            <th>Permisos</th>
+							<th class="text-center" colspan="2">Acciones</th>
+						</tr>
+					</thead>
+					<tbody>
+						{% for r in page %}
+						<tr>
+							<td>{{forloop.counter}}</td>
+							<td class="permiso-columna-width">{{r.rol.nombre}}</td>
+
+							<td class="permiso-columna-width">{{r.rol.descripcion}}</td>
+
+                            <!-- ESTADO -->
+							<td>
+                                {% if r.rol.activo %}
+                                    <a class="btn btn-success estado">
+                                        <i class="fa fa-check"></i>
+                                    </a>
+                                {% else %}
+                                    <a class="btn btn-danger estado">
+                                        <i class="fa fa-close"></i>
+                                    </a>
+                                {% endif %}
+                            </td>
+
+                            <!-- EN USO -->
+							<td>
+                                {% if r.rol.en_uso %}
+                                    <a class="btn btn-success estado">
+                                        <i class="fa fa-check"></i>
+                                    </a>
+                                {% else %}
+                                    <a class="btn btn-danger estado">
+                                        <i class="fa fa-close"></i>
+                                    </a>
+                                {% endif %}
+                            </td>
+
+							<td>
+                                <div class="accordion accordion-permiso" id="accordionPermiso-{{r.rol.id}}">
+
+                                    <div class="accordion-item">
+                                        <h2 class="accordion-header" id="headingPermiso-{{r.rol.id}}">
+                                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapsePermiso-{{r.rol.id}}" 
+                                                    zaria-expanded="false" aria-controls="collapsePermiso-{{r.rol.id}}">
+                                            Ver permisos
+                                            </button>
+                                        </h2>
+                                        <div id="collapsePermiso-{{r.rol.id}}" class="accordion-collapse collapse dropdown-custom" aria-labelledby="headingPermiso-{{r.rol.id}}" data-bs-parent="#accordionPermiso-{{r.rol.id}}">
+                                            <div class="accordion-body">
+                                            <table class='table'>
+                                                <tbody>
+                                                    {% for permiso in r.permisos %}
+                                                        <tr>
+                                                            <td>{{permiso.nombre}} | 
+
+                                                                {% if permiso.tipo == 'R' %}
+                                                                    Lectura
+                                                                {% elif permiso.tipo == 'C' %}
+                                                                    Creacion
+                                                                {% elif permiso.tipo == 'U' %}
+                                                                    Modificacion
+                                                                {% else %}
+                                                                    Eliminacion
+                                                                {% endif %}
+                                                            
+                                                                | {{permiso.formulario}}
+                                                            </td>
+                                                        </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                     
+                                </div>
+                            </td>
+							<td class="text-end"><a href="/rol/edicion/{{r.rol.id}}" class="btn btn-info btnEditarPermiso tooltip-container">
+                                <!-- <i class="fa fa-edit"></i> -->
+                                <span class="material-icons">edit</span>
+                                <span class="tooltip-text" id="left">Editar</span>
+                            </a></td>
+
+							<td>
+                                
+                                {% if activo %}        
+                                    <a id="enlace-eliminacion" href="javascript:eliminar('rol/eliminar', {{r.rol.id}})" class="btn btn-danger tooltip-container
+                                    btnEliminarPermiso btnEliminacion">
+                                        <!-- <i class="fa fa-close"></i> -->
+                                        <span class="material-icons">cancel</span>
+                                        <!-- <span class="tooltip-text" id="top">I'm a tooltip!</span> -->
+                                        <span class="tooltip-text" id="left">Desactivar</span>
+                                    </a>
+                                {% else %}
+                                    <a id="enlace-eliminacion" href="javascript:eliminar('rol/activar', {{r.rol.id}})" class="btn btn-success tooltip-container
+                                    btnActivarPermiso btnActivacion">
+                                        <!-- <i class="fa fa-close"></i> -->
+                                        <span class="material-icons">check</span>
+                                        <!-- <span class="tooltip-text" id="top">I'm a tooltip!</span> -->
+                                        <span class="tooltip-text" id="left">Activar</span>
+                                    </a>
+                                {% endif %}
+                            </td>
+						</tr>
+						{% endfor %}
+
+                        
+					</tbody>
+				</table>
+
+
+                {% if page|length == 0 %}
+                    <p class="lista-vacia">LISTA VACIA</p>
+                {% endif %}
+
+                {% include 'paginator.html' %}   
+			</div>
+		</div>
+    </div>
+{% endblock%}
+

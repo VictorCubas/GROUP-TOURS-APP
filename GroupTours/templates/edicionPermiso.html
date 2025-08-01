@@ -1,0 +1,217 @@
+{%extends './base.html'%}
+
+
+{% block title %} GROUP TOURS APP {% endblock %}
+
+
+{% block body %}
+
+<div class="d-flex align-items-center">
+    <a href="/permiso" class="btn go-back-btn text-center d-flex justify-content-center align-items-center" title="Volver atrás">
+        <i class="fa fa-arrow-left fa-lg"></i>
+    </a>
+    <h1 class="title pt-2">EDITAR PERMISO</h1>
+</div>
+
+
+{% if not habilitarEdicion %}
+    <div class="alert alert-warning alert-dismissible fade show" role="alert">
+        <div class="d-flex align-items-center">
+                <svg class="bi flex-shrink-0 me-2" width="24" height="24" role="img" aria-label="Warning:"><use xlink:href="#exclamation-triangle-fill"/></svg>
+            <div>
+                Permiso en uso. Sólo puedes editar el campo <b>descripción</b>.
+            </div>
+        </div>
+
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+{% endif %}
+
+<input id="menu-activo" name="menu-activo" type="hidden" value="{{menu_activo}}">
+    
+<br>
+<div class="row">
+    <div class="col-sm-12 col-md-12 col-lg-12 col-xl-12">
+        
+        <div class="accordion" id="accordionExample">
+            <div class="accordion-item">
+              <h2 class="accordion-header" id="headingOne">
+                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="true" aria-controls="collapseOne">
+                    Editar Permiso
+                </button>
+              </h2>
+              <div id="collapseOne" class="accordion-collapse collapse show" aria-labelledby="headingOne" data-bs-parent="#accordionExample">
+                <div class="accordion-body">
+                    <div class="card">
+                        <div class="card-body">
+                            
+                            <form class="formulario" id='url' action='/permiso/editarPermiso/{{permiso.id}}' method="POST"> {% csrf_token%}
+                                <div class="formulario-campos">
+                                    <div class="form-group py-2">
+
+                                        <input type="text" id="txtNombrePermiso" name="txtNombre"
+                                            class="form-control {% if not habilitarEdicion %} text-secondary {% endif %}" placeholder="Nombre del Permiso"
+                                                maxlength="50" required value="{{ permiso.nombre }}"
+                                            {% if not habilitarEdicion %} readonly {% endif %}>
+
+                                            
+                                    </div>
+                                    <div class="form-group py-2">
+                                        <!--<input type="text" id="txtTipoPermiso" name='txtTipo' 
+                                            class="form-control" placeholder="Tipo: C-R-U-D" 
+                                            required>-->
+                                            {% if not habilitarEdicion %}
+                                                <input type="hidden" name="txtTipo" value="{{ permiso.tipo }}">
+                                            {% endif %}
+
+                                            {% if not habilitarEdicion %}
+                                                <select class="form-select select-tipo" aria-label="Default select example"
+                                                    name="txtTipoEditar" required
+                                                    disabled>
+                                            {% else %}
+                                                <select class="form-select select-tipo" aria-label="Default select example"
+                                                    name="txtTipo" required>
+                                            {% endif %}
+
+                                                <option disabled value="">Selecciona el tipo</option>
+                                                {% if permiso.tipo == "C" %}
+                                                    <option selected value="C">Creacion</option>
+                                                {% else %}
+                                                    <option value="C">Creacion</option>
+                                                {% endif %}
+
+                                                {% if permiso.tipo == "R" %}
+                                                    <option selected value="R">Lectura</option>
+                                                {% else %}
+                                                    <option value="R">Lectura</option>
+                                                {% endif %}
+
+                                                {% if permiso.tipo == "U" %}
+                                                    <option selected value="U">Modificacion</option>
+                                                {% else %}
+                                                    <option value="U">Modificacion</option>
+                                                {% endif %}
+
+                                                {% if permiso.tipo == "D" %}
+                                                    <option selected value="D">Eliminacion</option>
+                                                {% else %}
+                                                    <option value="D">Eliminacion</option>
+                                                {% endif %}
+                                                
+                                                
+                                              </select>
+                                    </div>
+                                    <div class="form-group py-2">
+                                        <input type="text" id="txtDescripcionPermiso" name='txtDescripcion' 
+                                            class="form-control {% if not habilitarEdicion %} text-secondary {% endif %}" placeholder="Descripcion" value="{{permiso.descripcion}}"
+                                            required> 
+                                           
+                                    </div>
+            
+                                    <div class="form-group py-2">
+                                        <!--<ul class="navbar-nav"> 
+                                            <li class="nav-item dropdown"> 
+                                                <a id='btnDropdown' style="width: 200px;" class="btn btn-info" href="http://example.com" id="navbarDropdownMenuLink"
+                                                    data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                                    Lista de formularios
+                                                    <i class="fa fa-angle-down"></i>
+                                                </a>
+                                                <div class="dropdown-menu" aria-labelledby="navbarDropdownMenuLink"
+                                                    style="position: absolute; top: 100px;" > 
+                                                    {% for formulario in formularios %}
+                                                        <a class="dropdown-item"
+                                                            href='javascript:cambiarValorDropdown("{{formulario}}")'>{{formulario}}</a> 
+                                                        
+                                                    {% endfor %}
+                                                </div> 
+                                            </li>
+                                        </ul>-->
+                                        {% if not habilitarEdicion %}
+                                            <input type="hidden" name="txtFormulario" value="{{ permiso.formulario }}">
+                                        {% endif %}
+
+                                        {% if not habilitarEdicion %}
+                                            <select class="form-select select-pantalla" aria-label="Default select example" 
+                                            name="txtFormularioEditar" required disabled>
+                                        {% else %}
+                                            <select class="form-select select-pantalla" aria-label="Default select example" 
+                                            name="txtFormulario" required>
+                                        {% endif %}
+
+                                            {% if permiso.formulario == "Paquetes" %}
+                                                    <option selected value="Paquetes">Paquetes</option>
+                                            {% else %}
+                                                <option value="Paquetes">Paquetes</option>
+                                            {% endif %}
+
+
+                                            {% if permiso.formulario == "Usuarios" %}
+                                                <option selected value="Usuarios">Usuarios</option>
+                                            {% else %}
+                                                <option value="Usuarios">Usuarios</option>
+                                            {% endif %}
+
+                                            {% if permiso.formulario == "Pasajeros" %}
+                                                <option selected value="Pasajeros">Pasajeros</option>
+                                            {% else %}
+                                                <option value="Pasajeros">Pasajeros</option>
+                                            {% endif %}
+
+                                            {% if permiso.formulario == "Roles" %}
+                                                <option selected value="Roles">Roles</option>
+                                            {% else %}
+                                                <option value="Roles">Roles</option>
+                                            {% endif %}
+
+                                            {% if permiso.formulario == "Permisos" %}
+                                                <option selected value="Permisos">Permisos</option>
+                                            {% else %}
+                                                <option value="Permisos">Permisos</option>
+                                            {% endif %}
+
+                                            {% if permiso.formulario == "Compras" %}
+                                                <option selected value="Compras">Compras</option>
+                                            {% else %}
+                                                <option value="Compras">Compras</option>
+                                            {% endif %}
+
+                                            {% if permiso.formulario == "Ventas" %}
+                                                <option selected value="Ventas">Ventas</option>
+                                            {% else %}
+                                                <option value="Ventas">Ventas</option>
+                                            {% endif %}
+
+                                            {% if permiso.formulario == "Documentos" %}
+                                                <option selected value="Documentos">Documentos</option>
+                                            {% else %}
+                                                <option value="Documentos">Documentos</option>
+                                            {% endif %}
+
+                                          </select>
+                                    </div>
+            
+                                    <!--
+                                    <div class="form-group py-2">
+                                        <input type="text" id="txtFormulario" name='txtFormulario' 
+                                            class="form-control" placeholder="Formulario" 
+                                            required>
+                                    </div>-->
+                                </div>
+        
+                                <div class="formulario-guardar form-group pt-4 px-5">
+                                    <button type="submit" class="btn btn-success btn-block text-white btnGuardarPermiso">Guardar</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+    
+    </div>
+
+
+{% endblock%}
