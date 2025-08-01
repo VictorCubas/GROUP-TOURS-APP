@@ -21,7 +21,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api', include('apps.login_token.urls')),
     path('', include('apps.login.urls')),
-    # path('home', include('apps.home.urls')),
+    path('home', include('apps.home.urls')),
     # path('logout', include('apps.logout.urls')),
     # path('permiso', include('apps.permiso.urls')),
     # path('usuario', include('apps.usuario.urls')),
