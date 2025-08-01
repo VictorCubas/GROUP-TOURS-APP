@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.1/ref/settings/
 """
 
+import dj_database_url 
 from pathlib import Path
 import os
 from dotenv import load_dotenv
@@ -60,6 +61,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -94,15 +96,23 @@ WSGI_APPLICATION = 'GroupTours.wsgi.application'
 # https://docs.djangoproject.com/en/4.1/ref/settings/#databases
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql_psycopg2',
-        'NAME': 'GroupTours',
-        'USER':  os.getenv('DBUSER'),
-        'PASSWORD':  os.getenv('DBPASS'),
-        'HOST': '127.0.0.1',
-        'DATABASE_PORT': '5432',
-    }
+    'default': dj_database_url.config(
+        # Replace this value with your local database's connection string.
+        default=os.getenv('DATABASE_URL'),
+        conn_max_age=600
+    )
 }
+
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.postgresql_psycopg2',
+#         'NAME': 'GroupTours',
+#         'USER':  os.getenv('DBUSER'),
+#         'PASSWORD':  os.getenv('DBPASS'),
+#         'HOST': '127.0.0.1',
+#         'DATABASE_PORT': '5432',
+#     }
+# }
 
 # DATABASES = {
 #     'default': {
@@ -195,6 +205,10 @@ USE_TZ = True
 
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [STATIC_DIR,]
+
+if not DEBUG:
+    STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+    STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.1/ref/settings/#default-auto-field
