@@ -1,334 +1,373 @@
-from django.shortcuts import render, redirect
-from django.http import HttpResponse
-
-from apps.rol.models import RolesPermisos
 from .models import Permiso
-from django.core.paginator import Paginator, Page
-from django.db.models import Q, Func, F
-from unicodedata import normalize
-from django.core.paginator import Paginator, Page
+
 # Create your views here.
+from rest_framework import viewsets
 
-editado = False
-agregado = False
-eliminado = False
-elimninacion_no_permitida = False
-nombre_repetido = False
-operacion = None
-activo = True
-activado = False
+#from apps.informe.pagination import StandardResultsSetPagination
+from .serializers import PermisoSerializer
 
-def index(request):
-    # print(request.path)
-    listaPermiso = None
-    global editado, operacion, agregado, eliminado, activado 
-    if operacion == "activar": 
-        listaPermiso = Permiso.objects.filter(activo=False).order_by('-id')
 
-    else: 
-        listaPermiso = Permiso.objects.filter(activo=True).order_by('-id')
+#importaciones para el mapa
+from django.shortcuts import render
 
-    operaciones = ['add-success', 'add-error', 'add-warning', 'delete-success', 'delete-error',
-                   'delete-warning', 'edit-success', 'edit-error', 'edit-warning']
+#imports para los apis
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from django.http import HttpResponse
+from rest_framework import status
+
+#imports para el manejo de imagenes
+# from django.core.files.storage import FileSystemStorage
     
+
+class PermisoListViewSet(viewsets.ModelViewSet):
+    queryset = Permiso.objects.order_by('id').all()
+    serializer_class = PermisoSerializer
+    #pagination_class = StandardResultsSetPagination
+    permission_classes = []
     
-    resultadosAPaginar = listaPermiso
-    cantidad_de_resultados = len(resultadosAPaginar)
-    paginator = Paginator(resultadosAPaginar, per_page=5)  # 5 resultados por página
-    page_number = request.GET.get('page')  # Obtén el número de página de la URL
-    page: Page = paginator.get_page(page_number)
-    
-    context = {
-                'listaPermisos':listaPermiso,
-                'cantidad_de_resultados': cantidad_de_resultados,
-                'page': page,
-                'menu_activo': 'permiso'
-                }
-    
-    mensaje = ''
-    tipo = ''
-    
-    if operacion == 'editar':
-        print(f'editado: {editado}')
-        context['editado'] = editado
-        context['operacion'] = operacion
-        print(f'context: {context}')
-        mensaje = 'El permiso se ha editado con exito'
+    @api_view(['PUT'])
+    def actualizar(request, permisoId):
+        try:
+            permiso = Permiso.objects.get(id=permisoId)
+        except Permiso.DoesNotExist:
+            return Response({'error': 'Permiso no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = PermisoSerializer(permiso, data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
-        if editado:
-            tipo = 'success'
-        else:
-            tipo = 'warning'
-            mensaje = 'Permiso ya existente'
+    
+    class Meta:
+        model = Permiso
+        fields = '__all__'
+        ordering = ['id']
+        
+        def __str__(self):
+            return f'{self.nombre} ({self.get_tipo_display()})'
+
+# editado = False
+# agregado = False
+# eliminado = False
+# elimninacion_no_permitida = False
+# nombre_repetido = False
+# operacion = None
+# activo = True
+# activado = False
+
+# def index(request):
+#     # print(request.path)
+#     listaPermiso = None
+#     global editado, operacion, agregado, eliminado, activado 
+#     if operacion == "activar": 
+#         listaPermiso = Permiso.objects.filter(activo=False).order_by('-id')
+
+#     else: 
+#         listaPermiso = Permiso.objects.filter(activo=True).order_by('-id')
+
+#     operaciones = ['add-success', 'add-error', 'add-warning', 'delete-success', 'delete-error',
+#                    'delete-warning', 'edit-success', 'edit-error', 'edit-warning']
+    
+    
+#     resultadosAPaginar = listaPermiso
+#     cantidad_de_resultados = len(resultadosAPaginar)
+#     paginator = Paginator(resultadosAPaginar, per_page=5)  # 5 resultados por página
+#     page_number = request.GET.get('page')  # Obtén el número de página de la URL
+#     page: Page = paginator.get_page(page_number)
+    
+#     context = {
+#                 'listaPermisos':listaPermiso,
+#                 'cantidad_de_resultados': cantidad_de_resultados,
+#                 'page': page,
+#                 'menu_activo': 'permiso'
+#                 }
+    
+#     mensaje = ''
+#     tipo = ''
+    
+#     if operacion == 'editar':
+#         print(f'editado: {editado}')
+#         context['editado'] = editado
+#         context['operacion'] = operacion
+#         print(f'context: {context}')
+#         mensaje = 'El permiso se ha editado con exito'
+        
+#         if editado:
+#             tipo = 'success'
+#         else:
+#             tipo = 'warning'
+#             mensaje = 'Permiso ya existente'
             
-        editado = False
+#         editado = False
         
         
-        # if nombre_repetido:
-        #     mensaje = 'Permiso ya existente'
+#         # if nombre_repetido:
+#         #     mensaje = 'Permiso ya existente'
         
-    elif operacion == 'agregar':
-        context['operacion'] = operacion
+#     elif operacion == 'agregar':
+#         context['operacion'] = operacion
         
-        if agregado:
-            context['agregado'] = True
-            tipo = 'success'
-            mensaje = 'El permiso se ha guardado con exito'
+#         if agregado:
+#             context['agregado'] = True
+#             tipo = 'success'
+#             mensaje = 'El permiso se ha guardado con exito'
             
-            agregado = False
-        else:
-            context['agregado'] = False
-            mensaje = 'Permiso ya existente'
-            tipo = 'warning'
-    elif operacion == 'eliminar':
-        context['operacion'] = operacion
-        print(f'eliminado 2: {eliminado}')
+#             agregado = False
+#         else:
+#             context['agregado'] = False
+#             mensaje = 'Permiso ya existente'
+#             tipo = 'warning'
+#     elif operacion == 'eliminar':
+#         context['operacion'] = operacion
+#         print(f'eliminado 2: {eliminado}')
         
-        context['eliminacionExitosa'] = eliminado
+#         context['eliminacionExitosa'] = eliminado
         
-        if eliminado:
-            context['eliminado'] = True
-            tipo = 'success'
+#         if eliminado:
+#             context['eliminado'] = True
+#             tipo = 'success'
             
-        else:
-            context['eliminado'] = False
-            tipo = 'warning'
+#         else:
+#             context['eliminado'] = False
+#             tipo = 'warning'
             
-            if elimninacion_no_permitida:
-                context['eliminacionExitosa'] = 'warning'
+#             if elimninacion_no_permitida:
+#                 context['eliminacionExitosa'] = 'warning'
             
-        eliminado = False
+#         eliminado = False
         
         
-        print(f"eliminacionExitosa: {context['eliminacionExitosa']}")
+#         print(f"eliminacionExitosa: {context['eliminacionExitosa']}")
 
-    elif operacion == 'activar':
-        context['operacion'] = operacion
+#     elif operacion == 'activar':
+#         context['operacion'] = operacion
     
-        context['activacionExitosa'] = activado
+#         context['activacionExitosa'] = activado
         
-        if activado:
-            context['activado'] = True
-            tipo = 'success'
+#         if activado:
+#             context['activado'] = True
+#             tipo = 'success'
             
-        else:
-            context['activado'] = False
-            tipo = 'warning'
+#         else:
+#             context['activado'] = False
+#             tipo = 'warning'
             
-        activado = False
+#         activado = False
             
-    context['tipo'] = tipo
-    operacion = None
-    context['mensaje'] = mensaje
-    context['activo'] = activo
+#     context['tipo'] = tipo
+#     operacion = None
+#     context['mensaje'] = mensaje
+#     context['activo'] = activo
 
-    return render(request, 'permiso.html', context)
+#     return render(request, 'permiso.html', context)
 
 
-def registrarPermiso(request):
-    #se recupera los datos del formulario
-    nombre = request.POST.get('txtNombre').strip()
-    descripcion = request.POST.get('txtDescripcion').strip()
-    tipo = request.POST.get('txtTipo')
-    formulario = request.POST.get('txtFormulario')
+# def registrarPermiso(request):
+#     #se recupera los datos del formulario
+#     nombre = request.POST.get('txtNombre').strip()
+#     descripcion = request.POST.get('txtDescripcion').strip()
+#     tipo = request.POST.get('txtTipo')
+#     formulario = request.POST.get('txtFormulario')
 
-    esValido = validarRepetido(nombre, None)
+#     esValido = validarRepetido(nombre, None)
     
-    print(f'esValido: {esValido}')
+#     print(f'esValido: {esValido}')
     
-    global agregado, nombre_repetido, operacion
-    nombre_repetido = esValido
-    agregado = False
-    operacion = 'agregar'
+#     global agregado, nombre_repetido, operacion
+#     nombre_repetido = esValido
+#     agregado = False
+#     operacion = 'agregar'
 
-    if esValido:
+#     if esValido:
 
-        try: 
-            #se crea un permiso
-            Permiso.objects.create(nombre=nombre, descripcion=descripcion, tipo=tipo, formulario=formulario)
-            agregado = True
-        except:
-            pass
+#         try: 
+#             #se crea un permiso
+#             Permiso.objects.create(nombre=nombre, descripcion=descripcion, tipo=tipo, formulario=formulario)
+#             agregado = True
+#         except:
+#             pass
 
 
-    return redirect(f'/permiso', name='index-permiso' )
+#     return redirect(f'/permiso', name='index-permiso' )
 
-def edicionPermiso(request, codigo):
-    permiso = Permiso.objects.get(id=int(codigo))
+# def edicionPermiso(request, codigo):
+#     permiso = Permiso.objects.get(id=int(codigo))
     
-    rolesPermisos = RolesPermisos.objects.filter(permiso_id = permiso.id)
+#     rolesPermisos = RolesPermisos.objects.filter(permiso_id = permiso.id)
     
-    habilitarEdicion = True
-    if len(rolesPermisos) > 0:
-        habilitarEdicion = False
+#     habilitarEdicion = True
+#     if len(rolesPermisos) > 0:
+#         habilitarEdicion = False
         
-    return render(request, "edicionPermiso.html", {
-                "permiso": permiso, "habilitarEdicion": habilitarEdicion,
-                                        'menu_activo': 'permiso'})
+#     return render(request, "edicionPermiso.html", {
+#                 "permiso": permiso, "habilitarEdicion": habilitarEdicion,
+#                                         'menu_activo': 'permiso'})
 
-def editarPermiso(request, id):
-    nombre = request.POST.get('txtNombre').strip()
-    descripcion = request.POST.get('txtDescripcion').strip()
-    tipo = request.POST.get('txtTipo')
-    formulario = request.POST.get('txtFormulario')
-    esValido = False
+# def editarPermiso(request, id):
+#     nombre = request.POST.get('txtNombre').strip()
+#     descripcion = request.POST.get('txtDescripcion').strip()
+#     tipo = request.POST.get('txtTipo')
+#     formulario = request.POST.get('txtFormulario')
+#     esValido = False
 
-    global editado, operacion, nombre_repetido
-    editado = False
-    operacion = 'editar'
+#     global editado, operacion, nombre_repetido
+#     editado = False
+#     operacion = 'editar'
 
-    try:
-        permiso = Permiso.objects.get(id=id)
+#     try:
+#         permiso = Permiso.objects.get(id=id)
 
-        esValido = validarRepetido(nombre, permiso)
-        nombre_repetido = esValido
-        print(f'esValido: {esValido}')
-        if esValido:
-            permiso.nombre = nombre
-            permiso.descripcion = descripcion
-            permiso.tipo = tipo
-            permiso.formulario = formulario
-            # permiso.save()
+#         esValido = validarRepetido(nombre, permiso)
+#         nombre_repetido = esValido
+#         print(f'esValido: {esValido}')
+#         if esValido:
+#             permiso.nombre = nombre
+#             permiso.descripcion = descripcion
+#             permiso.tipo = tipo
+#             permiso.formulario = formulario
+#             # permiso.save()
             
-            editado = True
-    except:
-        pass
+#             editado = True
+#     except:
+#         pass
     
-    return redirect(f'/permiso', name='index-permiso' )
+#     return redirect(f'/permiso', name='index-permiso' )
 
-def eliminar(request, id):
+# def eliminar(request, id):
     
-    global eliminado, operacion, elimninacion_no_permitida, activo
-    eliminado = False
-    elimninacion_no_permitida = False
-    operacion = 'eliminar'
-    activo = True
+#     global eliminado, operacion, elimninacion_no_permitida, activo
+#     eliminado = False
+#     elimninacion_no_permitida = False
+#     operacion = 'eliminar'
+#     activo = True
 
-    try:
-        permiso = Permiso.objects.get(id=id)
+#     try:
+#         permiso = Permiso.objects.get(id=id)
 
-        permisoEstaEnUso = permisoEnUso(id)
+#         permisoEstaEnUso = permisoEnUso(id)
         
-        print(f'permisoEnUso: {permisoEstaEnUso}')
+#         print(f'permisoEnUso: {permisoEstaEnUso}')
         
-        if not permisoEstaEnUso:
-            # permiso.delete()
-            permiso.activo = False
-            permiso.save()
-            eliminado = True
-        else:
-            elimninacion_no_permitida = True
-    except:
-        pass
+#         if not permisoEstaEnUso:
+#             # permiso.delete()
+#             permiso.activo = False
+#             permiso.save()
+#             eliminado = True
+#         else:
+#             elimninacion_no_permitida = True
+#     except:
+#         pass
 
-    return redirect(f'/permiso', name='index-permiso' )
+#     return redirect(f'/permiso', name='index-permiso' )
 
 
-def permisoEnUso(id):
-    rolesPermisos = RolesPermisos.objects.filter(permiso_id = id)
+# def permisoEnUso(id):
+#     rolesPermisos = RolesPermisos.objects.filter(permiso_id = id)
     
-    #significa que el permiso esta siendo usado por otro rol
-    return len(rolesPermisos) > 0
+#     #significa que el permiso esta siendo usado por otro rol
+#     return len(rolesPermisos) > 0
 
 
-def validarRepetido(nombre, permiso):
-    '''
-    Este metodo valida que si hay algun permiso con el mismo nombre
-    Se puede hacer de manera mas simple, solo reutilice lo que ya tenia
-    '''
+# def validarRepetido(nombre, permiso):
+#     '''
+#     Este metodo valida que si hay algun permiso con el mismo nombre
+#     Se puede hacer de manera mas simple, solo reutilice lo que ya tenia
+#     '''
     
-    nombre = nombre.lower()
+#     nombre = nombre.lower()
 
-    # Normalizar y convertir a minúsculas el nombre para la consulta
-    query_normalized = normalize('NFKD', nombre).encode('ASCII', 'ignore').decode('ASCII')
+#     # Normalizar y convertir a minúsculas el nombre para la consulta
+#     query_normalized = normalize('NFKD', nombre).encode('ASCII', 'ignore').decode('ASCII')
 
-    resultados_permisos = None
+#     resultados_permisos = None
 
-    if permiso:
-        resultados_permisos = Permiso.objects.annotate(
-            nombre_normalized=Func(
-                Func(F('nombre'), function='unaccent'), 
-                function='lower'
-            ),
-        ).filter(
-            Q(nombre_normalized=query_normalized)
-        ).exclude(
-            id=permiso.id  # Excluyendo el permiso actual basado en su id
-        )
-    else:
-        resultados_permisos = Permiso.objects.annotate(
-            nombre_normalized=Func(
-                Func(F('nombre'), function='unaccent'), 
-                function='lower'
-            ),
-        ).filter(
-            Q(nombre_normalized=query_normalized)
-        )
+#     if permiso:
+#         resultados_permisos = Permiso.objects.annotate(
+#             nombre_normalized=Func(
+#                 Func(F('nombre'), function='unaccent'), 
+#                 function='lower'
+#             ),
+#         ).filter(
+#             Q(nombre_normalized=query_normalized)
+#         ).exclude(
+#             id=permiso.id  # Excluyendo el permiso actual basado en su id
+#         )
+#     else:
+#         resultados_permisos = Permiso.objects.annotate(
+#             nombre_normalized=Func(
+#                 Func(F('nombre'), function='unaccent'), 
+#                 function='lower'
+#             ),
+#         ).filter(
+#             Q(nombre_normalized=query_normalized)
+#         )
     
-    # print(f'resultados_roles: {resultados_roles}')
-    # print(f'len resultados_roles: {len(resultados_roles)}')
+#     # print(f'resultados_roles: {resultados_roles}')
+#     # print(f'len resultados_roles: {len(resultados_roles)}')
     
-    if len(resultados_permisos) == 0:
-        return True
+#     if len(resultados_permisos) == 0:
+#         return True
 
-    return False
+#     return False
 
 
-def buscar(request):
-    activoTemp = request.GET.get('activo')
-    query = request.GET.get('q', '').strip()  # Obtener el término de búsqueda del parámetro 'q'
-    context = {}
+# def buscar(request):
+#     activoTemp = request.GET.get('activo')
+#     query = request.GET.get('q', '').strip()  # Obtener el término de búsqueda del parámetro 'q'
+#     context = {}
 
-    # Filtrar por el estado de 'activo'
-    if activoTemp is not None and activoTemp != 'False':
-        permisos = Permiso.objects.filter(activo=True)
-        activoTemp = True
-    else:
-        permisos = Permiso.objects.filter(activo=False)
-        activoTemp = False
+#     # Filtrar por el estado de 'activo'
+#     if activoTemp is not None and activoTemp != 'False':
+#         permisos = Permiso.objects.filter(activo=True)
+#         activoTemp = True
+#     else:
+#         permisos = Permiso.objects.filter(activo=False)
+#         activoTemp = False
     
-    # Filtrar por el término de búsqueda 'q' si no está vacío
-    if query:
-        query_normalized = normalize('NFKD', query).encode('ASCII', 'ignore').decode('ASCII')
-        permisos = permisos.annotate(
-            nombre_normalized=Func(F('nombre'), function='unaccent')
-        ).filter(
-            Q(nombre_normalized__icontains=query_normalized)
-        )
+#     # Filtrar por el término de búsqueda 'q' si no está vacío
+#     if query:
+#         query_normalized = normalize('NFKD', query).encode('ASCII', 'ignore').decode('ASCII')
+#         permisos = permisos.annotate(
+#             nombre_normalized=Func(F('nombre'), function='unaccent')
+#         ).filter(
+#             Q(nombre_normalized__icontains=query_normalized)
+#         )
 
     
-    listaPermisos = Permiso.objects.all().order_by('id')
+#     listaPermisos = Permiso.objects.all().order_by('id')
 
-    resultadosAPaginar = permisos
-    cantidad_de_resultados = len(resultadosAPaginar)
-    paginator = Paginator(resultadosAPaginar, per_page=5)  # 5 resultados por página
-    page_number = request.GET.get('page')  # Obtén el número de página de la URL
-    page: Page = paginator.get_page(page_number)
+#     resultadosAPaginar = permisos
+#     cantidad_de_resultados = len(resultadosAPaginar)
+#     paginator = Paginator(resultadosAPaginar, per_page=5)  # 5 resultados por página
+#     page_number = request.GET.get('page')  # Obtén el número de página de la URL
+#     page: Page = paginator.get_page(page_number)
     
-    context = {
-        'listaPermisos': listaPermisos,
-        'cantidad_de_resultados': cantidad_de_resultados,
-        'page': page,
-        'query': query,
-        'activo': activoTemp  # Incluye el valor de activo en el contexto
-    }
+#     context = {
+#         'listaPermisos': listaPermisos,
+#         'cantidad_de_resultados': cantidad_de_resultados,
+#         'page': page,
+#         'query': query,
+#         'activo': activoTemp  # Incluye el valor de activo en el contexto
+#     }
 
-    return render(request, 'permiso.html', context)
+#     return render(request, 'permiso.html', context)
 
-def activar(request, id):
+# def activar(request, id):
     
-    global activado, operacion, activo 
-    activado= False
-    activo= False
-    operacion = 'activar'
+#     global activado, operacion, activo 
+#     activado= False
+#     activo= False
+#     operacion = 'activar'
 
-    try:
-        permiso = Permiso.objects.get(id=id)
+#     try:
+#         permiso = Permiso.objects.get(id=id)
 
-        permiso.activo = True
-        activado = True
-        permiso.save()
-    except:
-        pass
+#         permiso.activo = True
+#         activado = True
+#         permiso.save()
+#     except:
+#         pass
 
-    return redirect(f'/permiso', name='index-permiso' )
+#     return redirect(f'/permiso', name='index-permiso' )
