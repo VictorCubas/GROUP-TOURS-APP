@@ -8,10 +8,10 @@ class Permiso(models.Model):
     '''
     
     TIPO_CHOICES = [
-        ('C', 'Crear'),
-        ('R', 'Leer'),
-        ('U', 'Actualizar'),
-        ('D', 'Eliminar'),
+        ('C', 'Creacion'),
+        ('R', 'Lectura'),
+        ('U', 'Modificacion'),
+        ('D', 'Eliminacion'),
         ('E', 'Exportar'),
     ]
 
@@ -21,6 +21,7 @@ class Permiso(models.Model):
     modulo = models.CharField(max_length=50, default='')
     activo = models.BooleanField(default=True)
     en_uso = models.BooleanField(default=False)
+    fechaCreacion = models.DateTimeField(db_index=True, auto_now_add=True, verbose_name='fecha creacion')
     
     #personalizamos la tabla en posgres
     class Meta:
