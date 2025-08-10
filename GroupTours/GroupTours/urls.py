@@ -19,7 +19,8 @@ from django.conf.urls import include
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api', include('apps.login_token.urls')),
+    # path('api', include('apps.login_token.urls')),
+     path('api/', include('apps.api.urls')),
     path('', include('apps.login.urls')),
     path('home', include('apps.home.urls')),
     # path('logout', include('apps.logout.urls')),
