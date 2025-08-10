@@ -25,11 +25,14 @@ class PermisoSerializer(serializers.ModelSerializer):
         Acepta tanto código ('D') como nombre legible ('Eliminacion').
         """
         tipo_reverse_map = {v: k for k, v in Permiso.TIPO_CHOICES}
-        tipo_valor = data.get('tipo')
-        if tipo_valor in tipo_reverse_map:
-            data['tipo'] = tipo_reverse_map[tipo_valor]
-        elif tipo_valor not in dict(Permiso.TIPO_CHOICES):
-            raise serializers.ValidationError({
-                'tipo': f'Valor inválido "{tipo_valor}". Debe ser uno de códigos {list(dict(Permiso.TIPO_CHOICES).keys())} o nombres {list(tipo_reverse_map.keys())}'
-            })
+
+        if 'tipo' in data: 
+            tipo_valor = data.get('tipo')
+            if tipo_valor in tipo_reverse_map:
+                data['tipo'] = tipo_reverse_map[tipo_valor]
+            elif tipo_valor not in dict(Permiso.TIPO_CHOICES):
+                raise serializers.ValidationError({
+                    'tipo': f'Valor inválido "{tipo_valor}". Debe ser uno de códigos {list(dict(Permiso.TIPO_CHOICES).keys())} o nombres {list(tipo_reverse_map.keys())}'
+                })
+
         return super().to_internal_value(data)

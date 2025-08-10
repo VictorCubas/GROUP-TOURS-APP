@@ -44,7 +44,7 @@ class PermisoPagination(PageNumberPagination):
 
 
 class PermisoListViewSet(viewsets.ModelViewSet):
-    queryset = Permiso.objects.order_by('id').all()
+    queryset = Permiso.objects.order_by('-fechaCreacion').all()
     serializer_class = PermisoSerializer
     pagination_class = PermisoPagination
     #pagination_class = StandardResultsSetPagination
@@ -52,20 +52,6 @@ class PermisoListViewSet(viewsets.ModelViewSet):
     
     filter_backends = [DjangoFilterBackend]
     filterset_class = PermisoFilter
-    
-    @api_view(['PUT'])
-    def actualizar(request, permisoId):
-        try:
-            permiso = Permiso.objects.get(id=permisoId)
-        except Permiso.DoesNotExist:
-            return Response({'error': 'Permiso no encontrado'}, status=status.HTTP_404_NOT_FOUND)
-
-        serializer = PermisoSerializer(permiso, data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        
     
     class Meta:
         model = Permiso
