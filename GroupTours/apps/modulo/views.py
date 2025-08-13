@@ -28,7 +28,7 @@ class ModuloFilter(django_filters.FilterSet):
         fields = ['nombre', 'activo']
 
 
-class PermisoPagination(PageNumberPagination):
+class ModuloPagination(PageNumberPagination):
     page_size = 2  # o el valor que desees
     page_size_query_param = 'page_size'  # permite que el frontend especifique la cantidad
 
@@ -46,7 +46,7 @@ class PermisoPagination(PageNumberPagination):
 class ModuloListViewSet(viewsets.ModelViewSet):
     queryset = Modulo.objects.order_by('-fecha_creacion').all()
     serializer_class = ModuloSerializer
-    pagination_class = PermisoPagination
+    pagination_class = ModuloPagination
     #pagination_class = StandardResultsSetPagination
     permission_classes = []
     
@@ -67,6 +67,14 @@ class ModuloListViewSet(viewsets.ModelViewSet):
             'total_inactivos': inactivos,
             'total_en_uso': en_uso,
         })
+        
+    @action(detail=False, methods=['get'], url_path='todos', pagination_class=None)
+    def todos(self, request):
+        """
+        Retorna todos los módulos sin paginación (solo id y nombre)
+        """
+        queryset = self.filter_queryset(self.get_queryset()).values('id', 'nombre')
+        return Response(list(queryset))
     
     class Meta:
         model = Modulo

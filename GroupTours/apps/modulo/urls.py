@@ -6,6 +6,7 @@ urlpatterns = [
     path('', ModuloListViewSet.as_view({'get':'list', 'post':'create',}), name='modulo'),
     path('<int:pk>/', ModuloListViewSet.as_view({'get': 'retrieve', 'put': 'update', 'patch': 'partial_update'}), name='modulo-detail'),
     path('resumen/', ModuloListViewSet.as_view({'get': 'resumen'}), name='modulo-resumen'),   
+    path('todos/', ModuloListViewSet.as_view({'get': 'todos'}), name='todos'),   
 ]
 
 
