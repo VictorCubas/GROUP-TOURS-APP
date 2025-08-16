@@ -2,17 +2,30 @@ from rest_framework import serializers
 from .models import Persona, PersonaFisica, PersonaJuridica
 from apps.tipo_documento.models import TipoDocumento
 
+class TipoDocumentoSimpleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TipoDocumento
+        fields = ['id', 'nombre', 'descripcion',]
+
 # --- Serializers para lectura ---
 class PersonaFisicaSerializer(serializers.ModelSerializer):
     tipo = serializers.SerializerMethodField()
     edad = serializers.ReadOnlyField()
+    tipo_documento = TipoDocumentoSimpleSerializer(read_only=True) #para la recuperacion en el listado
+    tipo_documento_id = serializers.PrimaryKeyRelatedField( #para guardar o editar
+        queryset=TipoDocumento.objects.all(),
+        source='tipo_documento',
+        write_only=True
+    )
+
 
     class Meta:
         model = PersonaFisica
         fields = [
             'id', 'tipo', 'nombre', 'apellido', 'fecha_nacimiento', 'edad', 'sexo',
-            'nacionalidad', 'tipo_documento', 'documento', 'email', 'telefono',
-            'direccion', 'activo', 'fecha_creacion', 'fecha_modificacion',
+            'nacionalidad', 'documento', 'email', 'telefono',
+            'direccion', 'activo', 'fecha_creacion', 'fecha_modificacion', 'tipo_documento_id',
+            'tipo_documento'
         ]
 
     def get_tipo(self, obj):
@@ -20,11 +33,18 @@ class PersonaFisicaSerializer(serializers.ModelSerializer):
 
 class PersonaJuridicaSerializer(serializers.ModelSerializer):
     tipo = serializers.SerializerMethodField()
+    tipo_documento = TipoDocumentoSimpleSerializer(read_only=True) #para la recuperacion en el listado
+    tipo_documento_id = serializers.PrimaryKeyRelatedField( #para guardar o editar
+        queryset=TipoDocumento.objects.all(),
+        source='tipo_documento',
+        write_only=True
+    )
 
     class Meta:
         model = PersonaJuridica
         fields = [
             'id', 'tipo', 'razon_social', 'representante', 'tipo_documento',
+            'tipo_documento_id',
             'documento', 'email', 'telefono', 'direccion', 'activo',
             'fecha_creacion', 'fecha_modificacion'
         ]
