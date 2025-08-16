@@ -1,34 +1,67 @@
 from rest_framework import viewsets, serializers
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
-from django_filters.rest_framework import DjangoFilterBackend, FilterSet, DateFromToRangeFilter
+from django_filters.rest_framework import FilterSet, DateFilter, DateFromToRangeFilter, DjangoFilterBackend
 from rest_framework.decorators import action
 import django_filters
 from .models import Persona, PersonaFisica, PersonaJuridica
 from .serializers import PersonaCreateSerializer, PersonaFisicaSerializer, PersonaJuridicaSerializer
+from django.utils.timezone import make_aware
+from datetime import datetime, timedelta
 
 # --- Filtros ---
 class PersonaFilter(FilterSet):
     documento = django_filters.CharFilter(field_name='documento', lookup_expr='icontains')
     telefono = django_filters.CharFilter(field_name='telefono', lookup_expr='icontains')
     activo = django_filters.BooleanFilter(field_name='activo')
-    fecha_creacion = DateFromToRangeFilter(field_name='fecha_creacion')
 
-    # Se mantienen para compatibilidad, pero podrían necesitar ajustes según la base de datos
+    # --- Rango de fechas con filtros explícitos ---
+    fecha_desde = DateFilter(field_name='fecha_creacion', lookup_expr='gte')  # mayor o igual
+    fecha_hasta = DateFilter(field_name='fecha_creacion', method='filter_fecha_hasta')
+
+    # --- Compatibilidad con filtros actuales ---
+    fecha_creacion = DateFromToRangeFilter(field_name='fecha_creacion')  
+
+    # Filtros específicos de PersonaFisica
     nombre = django_filters.CharFilter(field_name='personafisica__nombre', lookup_expr='icontains')
     apellido = django_filters.CharFilter(field_name='personafisica__apellido', lookup_expr='icontains')
     sexo = django_filters.CharFilter(field_name='personafisica__sexo', lookup_expr='exact')
+
+    # Filtros específicos de PersonaJuridica
     razon_social = django_filters.CharFilter(field_name='personajuridica__razon_social', lookup_expr='icontains')
+    
+    def filter_fecha_hasta(self, queryset, name, value):
+        # sumamos 1 día y usamos lt para incluir todo el día final
+        siguiente_dia = datetime.combine(value, datetime.min.time()) + timedelta(days=1)
+        siguiente_dia = make_aware(siguiente_dia)
+        return queryset.filter(fecha_creacion__lt=siguiente_dia)
 
     class Meta:
         model = Persona
-        fields = ['documento', 'telefono', 'activo', 'fecha_creacion',
-                  'nombre', 'apellido', 'sexo', 'razon_social']
+        fields = [
+            'documento', 'telefono', 'activo',
+            'fecha_creacion', 'fecha_desde', 'fecha_hasta',
+            'nombre', 'apellido', 'sexo', 'razon_social'
+        ]
 
 # --- Paginación ---
 class PersonaPagination(PageNumberPagination):
     page_size = 10
     page_size_query_param = 'page_size'
+
+    def get_paginated_response(self, data):
+        return Response({
+            'totalItems': self.page.paginator.count,
+            'pageSize': self.get_page_size(self.request),
+            'totalPages': self.page.paginator.num_pages,
+            'next': self.get_next_link(),
+            'previous': self.get_previous_link(),
+            'results': data
+        })
+        
+class PersonaPagination(PageNumberPagination):
+    page_size = 5  # valor por defecto
+    page_size_query_param = 'page_size'  # frontend puede pedir otra cantidad
 
     def get_paginated_response(self, data):
         return Response({
