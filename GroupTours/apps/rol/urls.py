@@ -1,12 +1,12 @@
-from django.urls import path
-from . import views
+from django.urls import re_path, path, include
+from rest_framework.urlpatterns import format_suffix_patterns
+from .views import *
 
 urlpatterns = [
-    path('', views.index, name='index-roles'),
-    path('/agregar', views.agregar, name='agregar-rol'),
-    path('/eliminar/<int:id>', views.eliminar, name='eliminar-rol'),
-    path('/edicion/<int:id>', views.edicion, name='edicion-rol'),
-    path('/editar/<int:id>', views.editar, name='editar-rol'),
-    path('/buscar/', views.buscar, name='buscar-rol'),
-    path('/activar/<int:id>', views.activar, name='activar-rol'),
+    path('', RolListViewSet.as_view({'get':'list', 'post':'create',}), name='rol'),
+    path('<int:pk>/', RolListViewSet.as_view({'get': 'retrieve', 'put': 'update', 'patch': 'partial_update'}), name='rol-detail'),
+    path('resumen/', RolListViewSet.as_view({'get': 'resumen'}), name='rol-resumen'),
 ]
+
+
+urlpatterns = format_suffix_patterns(urlpatterns)
