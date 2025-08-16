@@ -64,6 +64,7 @@ INSTALLED_APPS = [
     'apps.rol',
     'apps.empleados',
     'apps.modulo',
+    'apps.tipo_documento',
 ]
 
 MIDDLEWARE = [

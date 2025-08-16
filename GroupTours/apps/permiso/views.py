@@ -60,7 +60,7 @@ class PermisoListViewSet(viewsets.ModelViewSet):
         Retorna todos los permisos sin paginación con modulo {id, nombre}
         """
         queryset = self.filter_queryset(
-            self.get_queryset().select_related('modulo')
+            self.get_queryset().filter(activo=True).select_related('modulo')
         )
 
         permisos = [

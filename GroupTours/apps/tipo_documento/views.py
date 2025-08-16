@@ -1,36 +1,28 @@
-from .models import Modulo
-
-# Create your views here.
 from rest_framework import viewsets
-
-#from apps.informe.pagination import StandardResultsSetPagination
-from .serializers import ModuloSerializer
-
-#imports para los apis
-from rest_framework.decorators import api_view
-from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.response import Response
-from django.http import HttpResponse
-from rest_framework import status
 from rest_framework.pagination import PageNumberPagination
-import django_filters
 from rest_framework.decorators import action
+import django_filters
+from django_filters.rest_framework import DjangoFilterBackend
 
-#imports para el manejo de imagenes
-# from django.core.files.storage import FileSystemStorage
+from .models import TipoDocumento
+from .serializers import TipoDocumentoSerializer
 
-class ModuloFilter(django_filters.FilterSet):
+
+# -------------------- FILTROS --------------------
+class TipoDocumentoFilter(django_filters.FilterSet):
     nombre = django_filters.CharFilter(field_name='nombre', lookup_expr='icontains')
     activo = django_filters.BooleanFilter(field_name='activo')
 
     class Meta:
-        model = Modulo
-        fields = ['nombre', 'activo']
+        model = TipoDocumento
+        fields = ['nombre', 'activo',]
 
 
-class ModuloPagination(PageNumberPagination):
-    page_size = 2  # o el valor que desees
-    page_size_query_param = 'page_size'  # permite que el frontend especifique la cantidad
+# -------------------- PAGINACIÓN --------------------
+class TipoDocumentoPagination(PageNumberPagination):
+    page_size = 5  # puedes ajustar
+    page_size_query_param = 'page_size'  # frontend puede setear page_size dinámico
 
     def get_paginated_response(self, data):
         return Response({
@@ -43,23 +35,23 @@ class ModuloPagination(PageNumberPagination):
         })
 
 
-class ModuloListViewSet(viewsets.ModelViewSet):
-    queryset = Modulo.objects.order_by('-fecha_creacion').all()
-    serializer_class = ModuloSerializer
-    pagination_class = ModuloPagination
-    #pagination_class = StandardResultsSetPagination
+# -------------------- VIEWSET --------------------
+class TipoDocumentoViewSet(viewsets.ModelViewSet):
+    queryset = TipoDocumento.objects.order_by('-fecha_creacion').all()
+    serializer_class = TipoDocumentoSerializer
+    pagination_class = TipoDocumentoPagination
     permission_classes = []
-    
+
     filter_backends = [DjangoFilterBackend]
-    filterset_class = ModuloFilter
-    
-    
+    filterset_class = TipoDocumentoFilter
+
+    # ----- ENDPOINT EXTRA: resumen -----
     @action(detail=False, methods=['get'], url_path='resumen')
     def resumen(self, request):
-        total = Modulo.objects.count()
-        activos = Modulo.objects.filter(activo=True).count()
-        inactivos = Modulo.objects.filter(activo=False).count()
-        en_uso = Modulo.objects.filter(en_uso=True).count()
+        total = TipoDocumento.objects.count()
+        activos = TipoDocumento.objects.filter(activo=True).count()
+        inactivos = TipoDocumento.objects.filter(activo=False).count()
+        en_uso = TipoDocumento.objects.filter(en_uso=True).count()
 
         return Response({
             'total': total,
@@ -67,19 +59,20 @@ class ModuloListViewSet(viewsets.ModelViewSet):
             'total_inactivos': inactivos,
             'total_en_uso': en_uso,
         })
-        
+
+    # ----- ENDPOINT EXTRA: todos -----
     @action(detail=False, methods=['get'], url_path='todos', pagination_class=None)
     def todos(self, request):
         """
-        Retorna todos los módulos sin paginación (solo id y nombre)
+        Retorna todos los tipos de documento sin paginación (solo id y nombre)
         """
         queryset = self.filter_queryset(self.get_queryset().filter(activo=True)).values('id', 'nombre')
         return Response(list(queryset))
-    
+
     class Meta:
-        model = Modulo
+        model = TipoDocumento
         fields = '__all__'
         ordering = ['id']
-        
+
         def __str__(self):
             return f'{self.nombre}'
