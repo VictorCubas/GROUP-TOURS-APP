@@ -8,6 +8,7 @@ from .models import Persona, PersonaFisica, PersonaJuridica
 from .serializers import PersonaCreateSerializer, PersonaFisicaSerializer, PersonaJuridicaSerializer
 from django.utils.timezone import make_aware
 from datetime import datetime, timedelta
+from django.db.models import Q
 
 # --- Filtros ---
 class PersonaFilter(FilterSet):
@@ -30,11 +31,26 @@ class PersonaFilter(FilterSet):
     # Filtros específicos de PersonaJuridica
     razon_social = django_filters.CharFilter(field_name='personajuridica__razon_social', lookup_expr='icontains')
     
+    # Filtro por tipo de persona
+    tipo = django_filters.ChoiceFilter(
+        choices=[('fisica', 'PersonaFisica'), ('juridica', 'PersonaJuridica')],
+        method='filter_tipo'
+    )
+
     def filter_fecha_hasta(self, queryset, name, value):
-        # sumamos 1 día y usamos lt para incluir todo el día final
         siguiente_dia = datetime.combine(value, datetime.min.time()) + timedelta(days=1)
         siguiente_dia = make_aware(siguiente_dia)
         return queryset.filter(fecha_creacion__lt=siguiente_dia)
+
+    def filter_tipo(self, queryset, name, value):
+        if value == 'fisica':
+            # Filtra registros que sean instancia de PersonaFisica
+            return queryset.filter(Q(nombre__isnull=False))
+        elif value == 'juridica':
+            # Filtra registros que sean instancia de PersonaJuridica
+            return queryset.filter(Q(razon_social__isnull=False))
+        return queryset
+
 
     class Meta:
         model = Persona
