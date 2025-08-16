@@ -62,7 +62,7 @@ class ModuloListViewSet(viewsets.ModelViewSet):
         en_uso = Modulo.objects.filter(en_uso=True).count()
 
         return Response({
-            'total_permisos': total,
+            'total': total,
             'total_activos': activos,
             'total_inactivos': inactivos,
             'total_en_uso': en_uso,

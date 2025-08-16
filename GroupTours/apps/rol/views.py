@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.pagination import PageNumberPagination
 from .models import Rol
-from .serializers import RolSerializer
+from .serializers import RolCreateUpdateSerializer, RolSerializer
 import django_filters
 
 # Filtros opcionales para Rol
@@ -49,8 +49,13 @@ class RolListViewSet(viewsets.ModelViewSet):
         en_uso = Rol.objects.filter(en_uso=True).count()
 
         return Response({
-            'total_roles': total,
+            'total': total,
             'total_activos': activos,
             'total_inactivos': inactivos,
             'total_en_uso': en_uso,
         })
+
+    def get_serializer_class(self):
+        if self.action in ['create', 'update', 'partial_update']:
+            return RolCreateUpdateSerializer
+        return RolSerializer

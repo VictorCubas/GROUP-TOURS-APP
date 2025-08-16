@@ -1,27 +1,63 @@
-# serializers.py
 from rest_framework import serializers
-from apps.permiso.models import Permiso
-from .models import Rol
 
-# Serializer simple para permisos
+from apps.permiso.models import Permiso
+from .models import Rol, RolesPermisos
+from apps.permiso.serializers import PermisoSerializer, ModuloSimpleSerializer  # Para incluir info de permisos
+
+
 class PermisoSimpleSerializer(serializers.ModelSerializer):
     class Meta:
         model = Permiso
-        fields = ['id', 'nombre']
+        fields = ['id', 'nombre']  # Solo id y nombre
 
-# Serializer para crear/editar roles con permisos por ID
-class RolSerializer(serializers.ModelSerializer):
-    permisos = PermisoSimpleSerializer(many=True, read_only=True)
-    permisos_ids = serializers.PrimaryKeyRelatedField(
-        many=True,
+class RolCreateUpdateSerializer(serializers.ModelSerializer):
+    permisos_id = serializers.PrimaryKeyRelatedField(
         queryset=Permiso.objects.all(),
-        write_only=True,
-        source='permisos'  # indica que esto llena la relación ManyToMany
+        many=True,
+        source='permisos'  # esto enlaza con el campo ManyToMany
     )
 
     class Meta:
         model = Rol
         fields = [
-            'id', 'nombre', 'descripcion', 'permisos', 'permisos_ids',
-            'activo', 'en_uso', 'fecha_creacion', 'fecha_modificacion'
+            'id',
+            'nombre',
+            'descripcion',
+            'permisos_id',
+            'activo',
+            'en_uso'
         ]
+
+    def create(self, validated_data):
+        permisos = validated_data.pop('permisos', [])
+        rol = Rol.objects.create(**validated_data)
+        rol.permisos.set(permisos)
+        return rol
+
+    def update(self, instance, validated_data):
+        permisos = validated_data.pop('permisos', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        if permisos is not None:
+            instance.permisos.set(permisos)
+        return instance
+
+
+class RolSerializer(serializers.ModelSerializer):
+    # Para mostrar los permisos asociados de forma detallada
+    permisos = PermisoSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Rol
+        fields = [
+            'id',
+            'nombre',
+            'descripcion',
+            'permisos',
+            'activo',
+            'en_uso',
+            'fecha_creacion',
+            'fecha_modificacion'
+        ]
+        read_only_fields = ['fecha_creacion', 'fecha_modificacion']

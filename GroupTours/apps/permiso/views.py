@@ -54,6 +54,31 @@ class PermisoListViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend]
     filterset_class = PermisoFilter
     
+    @action(detail=False, methods=['get'], url_path='todos', pagination_class=None)
+    def todos(self, request):
+        """
+        Retorna todos los permisos sin paginación con modulo {id, nombre}
+        """
+        queryset = self.filter_queryset(
+            self.get_queryset().select_related('modulo')
+        )
+
+        permisos = [
+            {
+                "id": permiso.id,
+                "nombre": permiso.nombre,
+                "descripcion": permiso.descripcion,
+                "tipo": permiso.tipo,
+                "modulo": {
+                    "id": permiso.modulo.id if permiso.modulo else None,
+                    "nombre": permiso.modulo.nombre if permiso.modulo else None
+                }
+            }
+            for permiso in queryset
+        ]
+
+        return Response(permisos)
+    
     
     @action(detail=False, methods=['get'], url_path='resumen')
     def resumen(self, request):
@@ -63,7 +88,7 @@ class PermisoListViewSet(viewsets.ModelViewSet):
         en_uso = Permiso.objects.filter(en_uso=True).count()
 
         return Response({
-            'total_permisos': total,
+            'total': total,
             'total_activos': activos,
             'total_inactivos': inactivos,
             'total_en_uso': en_uso,
