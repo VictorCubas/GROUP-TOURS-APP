@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'django_filters',
+    'polymorphic',
     
     'apps.login_token',
     'apps.login',
@@ -65,6 +66,7 @@ INSTALLED_APPS = [
     'apps.empleados',
     'apps.modulo',
     'apps.tipo_documento',
+    'apps.persona',
 ]
 
 MIDDLEWARE = [

@@ -1,3 +1,123 @@
-from django.shortcuts import render
+from rest_framework import viewsets, serializers
+from rest_framework.response import Response
+from rest_framework.pagination import PageNumberPagination
+from django_filters.rest_framework import DjangoFilterBackend, FilterSet, DateFromToRangeFilter
+from rest_framework.decorators import action
+import django_filters
+from .models import Persona, PersonaFisica, PersonaJuridica
+from .serializers import PersonaCreateSerializer, PersonaFisicaSerializer, PersonaJuridicaSerializer
 
-# Create your views here.
+# --- Filtros ---
+class PersonaFilter(FilterSet):
+    documento = django_filters.CharFilter(field_name='documento', lookup_expr='icontains')
+    telefono = django_filters.CharFilter(field_name='telefono', lookup_expr='icontains')
+    activo = django_filters.BooleanFilter(field_name='activo')
+    fecha_creacion = DateFromToRangeFilter(field_name='fecha_creacion')
+
+    # Se mantienen para compatibilidad, pero podrían necesitar ajustes según la base de datos
+    nombre = django_filters.CharFilter(field_name='personafisica__nombre', lookup_expr='icontains')
+    apellido = django_filters.CharFilter(field_name='personafisica__apellido', lookup_expr='icontains')
+    sexo = django_filters.CharFilter(field_name='personafisica__sexo', lookup_expr='exact')
+    razon_social = django_filters.CharFilter(field_name='personajuridica__razon_social', lookup_expr='icontains')
+
+    class Meta:
+        model = Persona
+        fields = ['documento', 'telefono', 'activo', 'fecha_creacion',
+                  'nombre', 'apellido', 'sexo', 'razon_social']
+
+# --- Paginación ---
+class PersonaPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+
+    def get_paginated_response(self, data):
+        return Response({
+            'totalItems': self.page.paginator.count,
+            'pageSize': self.get_page_size(self.request),
+            'totalPages': self.page.paginator.num_pages,
+            'next': self.get_next_link(),
+            'previous': self.get_previous_link(),
+            'results': data
+        })
+
+# --- ViewSet ---
+class PersonaViewSet(viewsets.ModelViewSet):
+    queryset = Persona.objects.select_related('tipo_documento').order_by('-fecha_creacion')
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = PersonaFilter
+    pagination_class = PersonaPagination
+    permission_classes = []
+
+    serializer_class = PersonaCreateSerializer
+
+    def get_queryset(self):
+        # Return a combined queryset or handle separately based on your needs
+        tipo = self.request.query_params.get('tipo')
+        if tipo == 'fisica':
+            return PersonaFisica.objects.all()
+        elif tipo == 'juridica':
+            return PersonaJuridica.objects.all()
+        return Persona.objects.all() # Usamos _serialize_persona para list y retrieve
+
+    def _serialize_persona(self, obj):
+        """Serializa según tipo concreto de persona y agrega el campo 'tipo'"""
+        try:
+            fisica = obj.personafisica
+            data = PersonaFisicaSerializer(fisica).data
+            return data
+        except PersonaFisica.DoesNotExist:
+            pass
+
+        try:
+            juridica = obj.personajuridica
+            data = PersonaJuridicaSerializer(juridica).data
+            return data
+        except PersonaJuridica.DoesNotExist:
+            pass
+
+        return {}
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            results = [self._serialize_persona(obj) for obj in page]
+            return self.get_paginated_response(results)
+
+        results = [self._serialize_persona(obj) for obj in queryset]
+        return Response(results)
+
+    def retrieve(self, request, *args, **kwargs):
+        obj = self.get_object()
+        return Response(self._serialize_persona(obj))
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        instance = serializer.save()
+        return Response(self._serialize_persona(instance))
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=False)
+        serializer.is_valid(raise_exception=True)
+        updated_instance = serializer.save()
+        return Response(self._serialize_persona(updated_instance))
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        updated_instance = serializer.save()
+        return Response(self._serialize_persona(updated_instance))
+
+    @action(detail=False, methods=['get'], url_path='resumen', pagination_class=None)
+    def resumen(self, request):
+        total = Persona.objects.count()
+        activos = Persona.objects.filter(activo=True).count()
+        inactivos = Persona.objects.filter(activo=False).count()
+        return Response({
+            'total': total,
+            'total_activos': activos,
+            'total_inactivos': inactivos,
+        })
