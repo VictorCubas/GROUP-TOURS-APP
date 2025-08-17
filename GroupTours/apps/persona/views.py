@@ -9,6 +9,8 @@ from .serializers import PersonaCreateSerializer, PersonaFisicaSerializer, Perso
 from django.utils.timezone import make_aware
 from datetime import datetime, timedelta
 from django.db.models import Q
+from django.db.models import F, ExpressionWrapper, fields
+from django.utils.timezone import now
 
 # --- Filtros ---
 class PersonaFilter(FilterSet):
@@ -44,11 +46,9 @@ class PersonaFilter(FilterSet):
 
     def filter_tipo(self, queryset, name, value):
         if value == 'fisica':
-            # Filtra registros que sean instancia de PersonaFisica
-            return queryset.filter(Q(nombre__isnull=False))
+            return queryset.filter(personafisica__id__isnull=False)
         elif value == 'juridica':
-            # Filtra registros que sean instancia de PersonaJuridica
-            return queryset.filter(Q(razon_social__isnull=False))
+            return queryset.filter(personajuridica__id__isnull=False)
         return queryset
 
 
@@ -101,12 +101,13 @@ class PersonaViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         # Return a combined queryset or handle separately based on your needs
-        tipo = self.request.query_params.get('tipo')
-        if tipo == 'fisica':
-            return PersonaFisica.objects.all()
-        elif tipo == 'juridica':
-            return PersonaJuridica.objects.all()
-        return Persona.objects.all() # Usamos _serialize_persona para list y retrieve
+        return Persona.objects.select_related('tipo_documento').order_by('-fecha_creacion')
+        # tipo = self.request.query_params.get('tipo')
+        # if tipo == 'fisica':
+        #     return PersonaFisica.objects.all()
+        # elif tipo == 'juridica':
+        #     return PersonaJuridica.objects.all()
+        # return Persona.objects.all() # Usamos _serialize_persona para list y retrieve
 
     def _serialize_persona(self, obj):
         """Serializa según tipo concreto de persona y agrega el campo 'tipo'"""
@@ -165,8 +166,21 @@ class PersonaViewSet(viewsets.ModelViewSet):
         total = Persona.objects.count()
         activos = Persona.objects.filter(activo=True).count()
         inactivos = Persona.objects.filter(activo=False).count()
-        return Response({
-            'total': total,
-            'total_activos': activos,
-            'total_inactivos': inactivos,
-        })
+
+        # --- Calcular edad promedio de personas físicas ---
+        personas_fisicas = PersonaFisica.objects.all()
+        edades = [
+            (now().date() - p.fecha_nacimiento).days // 365
+            for p in personas_fisicas if p.fecha_nacimiento
+        ]
+        edad_promedio = round(sum(edades) / len(edades)) if edades else 0
+
+        # --- Formatear respuesta como lista de objetos ---
+        data = [
+            {'texto': 'Total', 'valor': str(total)},
+            {'texto': 'Activos', 'valor': str(activos)},
+            {'texto': 'Inactivos', 'valor': str(inactivos)},
+            {'texto': 'Edad Promedio', 'valor': str(edad_promedio)},
+        ]
+
+        return Response(data)
