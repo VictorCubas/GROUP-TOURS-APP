@@ -86,19 +86,31 @@ class PersonaCreateSerializer(serializers.Serializer):
 
     def validate(self, data):
         tipo = data.get('tipo')
+
+        # si es actualización y no mandaron tipo → tomarlo del instance
+        if not tipo and self.instance:
+            if isinstance(self.instance, PersonaFisica):
+                tipo = 'fisica'
+            elif isinstance(self.instance, PersonaJuridica):
+                tipo = 'juridica'
+
         if tipo == 'fisica':
             required_fields = ['nombre', 'fecha_nacimiento', 'sexo', 'nacionalidad']
-            for field in required_fields:
-                if not data.get(field):
-                    raise serializers.ValidationError({field: f"El campo '{field}' es requerido para PersonaFisica"})
+            if not self.instance:  # solo obligatorios en creación
+                for field in required_fields:
+                    if not data.get(field):
+                        raise serializers.ValidationError({field: f"El campo '{field}' es requerido para PersonaFisica"})
         elif tipo == 'juridica':
             required_fields = ['razon_social']
-            for field in required_fields:
-                if not data.get(field):
-                    raise serializers.ValidationError({field: f"El campo '{field}' es requerido para PersonaJuridica"})
+            if not self.instance:  # solo obligatorios en creación
+                for field in required_fields:
+                    if not data.get(field):
+                        raise serializers.ValidationError({field: f"El campo '{field}' es requerido para PersonaJuridica"})
         else:
             raise serializers.ValidationError("Tipo de persona inválido")
+
         return data
+
 
     def create(self, validated_data):
         tipo = validated_data.pop('tipo')
