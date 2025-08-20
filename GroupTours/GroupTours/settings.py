@@ -41,6 +41,13 @@ if RENDER_EXTERNAL_HOSTNAME:
 
 CORS_ALLOW_ALL_ORIGINS = True
 
+#LENGUAGE E INTERNACIONALIZACION
+LANGUAGE_CODE = 'es-py'
+TIME_ZONE = 'America/Asuncion'
+USE_I18N = True     
+USE_L10N = True
+USE_TZ = True
+
 # Application definition
 
 INSTALLED_APPS = [
@@ -67,6 +74,7 @@ INSTALLED_APPS = [
     'apps.modulo',
     'apps.tipo_documento',
     'apps.persona',
+    'apps.nacionalidad',
 ]
 
 MIDDLEWARE = [

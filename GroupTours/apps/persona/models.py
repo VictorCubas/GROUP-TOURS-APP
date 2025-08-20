@@ -1,5 +1,6 @@
 from django.db import models
 from datetime import date
+from apps.nacionalidad.models import Nacionalidad
 from apps.tipo_documento.models import TipoDocumento
 
 
@@ -47,7 +48,11 @@ class PersonaFisica(Persona):
         choices=Persona.GENEROS,
         default=Persona.FEMENINO
     )
-    nacionalidad = models.CharField(max_length=100, blank=True, null=True)
+    nacionalidad = models.ForeignKey(
+        Nacionalidad,
+        on_delete=models.CASCADE,
+        related_name="personas_fisicas"
+    )
 
     @property
     def edad(self):

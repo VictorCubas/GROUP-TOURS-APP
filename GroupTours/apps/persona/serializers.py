@@ -1,6 +1,15 @@
 from rest_framework import serializers
+from django.db import models
+
+from apps.nacionalidad.models import Nacionalidad
 from .models import Persona, PersonaFisica, PersonaJuridica
 from apps.tipo_documento.models import TipoDocumento
+
+
+class NacionalidadSimpleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Nacionalidad
+        fields = ['id', 'nombre', 'codigo_alpha2', ]
 
 class TipoDocumentoSimpleSerializer(serializers.ModelSerializer):
     class Meta:
@@ -17,13 +26,20 @@ class PersonaFisicaSerializer(serializers.ModelSerializer):
         source='tipo_documento',
         write_only=True
     )
+    
+    nacionalidad = NacionalidadSimpleSerializer(read_only=True) #para la recuperacion en el listado
+    nacionalidad_id = serializers.PrimaryKeyRelatedField( #para guardar o editar
+        queryset=Nacionalidad.objects.all(),
+        source='nacionalidad',
+        write_only=True
+    )
 
 
     class Meta:
         model = PersonaFisica
         fields = [
             'id', 'tipo', 'nombre', 'apellido', 'fecha_nacimiento', 'edad', 'sexo',
-            'nacionalidad', 'documento', 'email', 'telefono',
+            'nacionalidad', 'nacionalidad_id', 'documento', 'email', 'telefono',
             'direccion', 'activo', 'fecha_creacion', 'fecha_modificacion', 'tipo_documento_id',
             'tipo_documento'
         ]
@@ -70,11 +86,14 @@ class PersonaCreateSerializer(serializers.Serializer):
     apellido = serializers.CharField(max_length=100, required=False)
     fecha_nacimiento = serializers.DateField(required=False)
     sexo = serializers.ChoiceField(choices=PersonaFisica.GENEROS, required=False)
-    nacionalidad = serializers.CharField(max_length=100, required=False)
+    nacionalidad = serializers.PrimaryKeyRelatedField(
+            queryset=Nacionalidad.objects.all(),
+            required=False
+        )
 
     # Campos PersonaJuridica
     razon_social = serializers.CharField(max_length=200, required=False)
-    representante = serializers.CharField(max_length=150, required=False)
+    representante = serializers.CharField(max_length=150, required=False, allow_null=True)
 
     def get_tipo(self, obj):
         """Determine the value of 'tipo' based on the instance type."""
