@@ -1,16 +1,28 @@
 from rest_framework import serializers
 
+from apps.modulo.models import Modulo
+
 from .models import Permiso
 
+class ModuloSimpleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Modulo
+        fields = ['id', 'nombre']
 
 class PermisoSerializer(serializers.ModelSerializer):
     tipo = serializers.CharField()  # Campo normal para lectura y escritura
+    modulo = ModuloSimpleSerializer(read_only=True) #para la recuperacion en el listado
+    modulo_id = serializers.PrimaryKeyRelatedField( #para guardar o editar
+        queryset=Modulo.objects.all(),
+        source='modulo',
+        write_only=True
+    )
 
     class Meta:
         model = Permiso
         fields = [
             'id', 'nombre', 'descripcion', 'tipo', 'modulo',
-            'activo', 'en_uso', 'fechaCreacion'
+            'modulo_id', 'activo', 'en_uso', 'fechaCreacion'
         ]
 
     def to_representation(self, obj):

@@ -1,5 +1,7 @@
 from django.db import models
 
+from apps.modulo.models import Modulo
+
 # Create your models here.
 
 class Permiso(models.Model):
@@ -15,10 +17,10 @@ class Permiso(models.Model):
         ('E', 'Exportar'),
     ]
 
-    nombre = models.CharField(max_length=50)
+    nombre = models.CharField(max_length=100, unique=True)
     descripcion = models.CharField(max_length=200, default='')
     tipo = models.CharField(max_length=1, choices=TIPO_CHOICES, default='C')
-    modulo = models.CharField(max_length=50, default='')
+    modulo = models.ForeignKey(Modulo, on_delete=models.CASCADE, related_name="permisos")
     activo = models.BooleanField(default=True)
     en_uso = models.BooleanField(default=False)
     fechaCreacion = models.DateTimeField(db_index=True, auto_now_add=True, verbose_name='fecha creacion')

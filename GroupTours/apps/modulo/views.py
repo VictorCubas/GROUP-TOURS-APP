@@ -1,10 +1,10 @@
-from .models import Permiso
+from .models import Modulo
 
 # Create your views here.
 from rest_framework import viewsets
 
 #from apps.informe.pagination import StandardResultsSetPagination
-from .serializers import PermisoSerializer
+from .serializers import ModuloSerializer
 
 #imports para los apis
 from rest_framework.decorators import api_view
@@ -19,17 +19,16 @@ from rest_framework.decorators import action
 #imports para el manejo de imagenes
 # from django.core.files.storage import FileSystemStorage
 
-class PermisoFilter(django_filters.FilterSet):
+class ModuloFilter(django_filters.FilterSet):
     nombre = django_filters.CharFilter(field_name='nombre', lookup_expr='icontains')
-    tipo = django_filters.CharFilter(field_name='tipo', lookup_expr='exact')
     activo = django_filters.BooleanFilter(field_name='activo')
 
     class Meta:
-        model = Permiso
-        fields = ['nombre', 'tipo', 'activo']
+        model = Modulo
+        fields = ['nombre', 'activo']
 
 
-class PermisoPagination(PageNumberPagination):
+class ModuloPagination(PageNumberPagination):
     page_size = 2  # o el valor que desees
     page_size_query_param = 'page_size'  # permite que el frontend especifique la cantidad
 
@@ -44,48 +43,23 @@ class PermisoPagination(PageNumberPagination):
         })
 
 
-class PermisoListViewSet(viewsets.ModelViewSet):
-    queryset = Permiso.objects.order_by('-fechaCreacion').all()
-    serializer_class = PermisoSerializer
-    pagination_class = PermisoPagination
+class ModuloListViewSet(viewsets.ModelViewSet):
+    queryset = Modulo.objects.order_by('-fecha_creacion').all()
+    serializer_class = ModuloSerializer
+    pagination_class = ModuloPagination
     #pagination_class = StandardResultsSetPagination
     permission_classes = []
     
     filter_backends = [DjangoFilterBackend]
-    filterset_class = PermisoFilter
-    
-    @action(detail=False, methods=['get'], url_path='todos', pagination_class=None)
-    def todos(self, request):
-        """
-        Retorna todos los permisos sin paginación con modulo {id, nombre}
-        """
-        queryset = self.filter_queryset(
-            self.get_queryset().filter(activo=True).select_related('modulo')
-        )
-
-        permisos = [
-            {
-                "id": permiso.id,
-                "nombre": permiso.nombre,
-                "descripcion": permiso.descripcion,
-                "tipo": permiso.tipo,
-                "modulo": {
-                    "id": permiso.modulo.id if permiso.modulo else None,
-                    "nombre": permiso.modulo.nombre if permiso.modulo else None
-                }
-            }
-            for permiso in queryset
-        ]
-
-        return Response(permisos)
+    filterset_class = ModuloFilter
     
     
     @action(detail=False, methods=['get'], url_path='resumen')
     def resumen(self, request):
-        total = Permiso.objects.count()
-        activos = Permiso.objects.filter(activo=True).count()
-        inactivos = Permiso.objects.filter(activo=False).count()
-        en_uso = Permiso.objects.filter(en_uso=True).count()
+        total = Modulo.objects.count()
+        activos = Modulo.objects.filter(activo=True).count()
+        inactivos = Modulo.objects.filter(activo=False).count()
+        en_uso = Modulo.objects.filter(en_uso=True).count()
 
         return Response({
             'total': total,
@@ -93,11 +67,19 @@ class PermisoListViewSet(viewsets.ModelViewSet):
             'total_inactivos': inactivos,
             'total_en_uso': en_uso,
         })
+        
+    @action(detail=False, methods=['get'], url_path='todos', pagination_class=None)
+    def todos(self, request):
+        """
+        Retorna todos los módulos sin paginación (solo id y nombre)
+        """
+        queryset = self.filter_queryset(self.get_queryset().filter(activo=True)).values('id', 'nombre')
+        return Response(list(queryset))
     
     class Meta:
-        model = Permiso
+        model = Modulo
         fields = '__all__'
         ordering = ['id']
         
         def __str__(self):
-            return f'{self.nombre} ({self.get_tipo_display()})'
+            return f'{self.nombre}'
