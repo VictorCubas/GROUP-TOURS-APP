@@ -11,6 +11,7 @@ class TipoDocumento(models.Model):
     class Meta:
         verbose_name = "Tipo de Documento"
         verbose_name_plural = "Tipos de Documentos"
+        db_table = 'TipoDocumento'
         ordering = ["nombre"]
 
     def __str__(self):

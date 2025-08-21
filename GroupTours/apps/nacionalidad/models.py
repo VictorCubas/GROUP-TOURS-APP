@@ -11,6 +11,7 @@ class Nacionalidad(models.Model):
     class Meta:
         verbose_name = "Nacionalidad"
         verbose_name_plural = "Nacionalidades"
+        db_table = 'Nacionalidad'
         ordering = ["nombre"]
 
     def __str__(self):
