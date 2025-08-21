@@ -69,7 +69,6 @@ INSTALLED_APPS = [
     'apps.logout',
     'apps.permiso',
     'apps.rol',
-    'apps.empleados',
     'apps.modulo',
     'apps.tipo_documento',
     'apps.persona',
