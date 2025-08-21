@@ -1,6 +1,7 @@
 from django.db import models
 
 from apps.permiso.models import Permiso
+from django.utils import timezone
 
 # Create your models here.
 class RolesPermisos(models.Model):
@@ -21,11 +22,13 @@ class Rol(models.Model):
     Abstraccion de la clase Rol
     '''
     
-    nombre = models.CharField(max_length=50)
+    nombre = models.CharField(max_length=100, unique=True)
     descripcion = models.CharField(max_length=200, default='')
     permisos = models.ManyToManyField(Permiso, through=RolesPermisos, related_name='rol_permiso')
     activo = models.BooleanField(default=True)
     en_uso = models.BooleanField(default=False)
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_modificacion = models.DateTimeField(auto_now=True, null=True)  # Se actualiza al modificar
     
     #personalizamos la tabla en postgres
     class Meta:
@@ -35,4 +38,4 @@ class Rol(models.Model):
     
     def _str_(self):
         texto = '{} {} {}'
-        return texto.format(self.nombre, self.descripcion, self.tipo)
+        return texto.format(self.nombre, self.descripcion, self.fecha_creacion)
