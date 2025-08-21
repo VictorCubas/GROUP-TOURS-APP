@@ -63,6 +63,11 @@ class PersonaFisica(Persona):
                 - ((today.month, today.day) < (self.fecha_nacimiento.month, self.fecha_nacimiento.day))
             )
         return None
+    
+    
+    class Meta:
+        db_table = 'PersonaFisica'
+        verbose_name = 'Persona Física'
 
     def __str__(self):
         return f"{self.nombre} {self.apellido or ''}".strip()
@@ -72,5 +77,9 @@ class PersonaJuridica(Persona):
     razon_social = models.CharField(max_length=200)
     representante = models.CharField(max_length=150, blank=True, null=True)
 
+    class Meta:
+        db_table = 'PersonaJuridica'
+        verbose_name = 'Persona Jurídica'
+        
     def __str__(self):
         return self.razon_social
