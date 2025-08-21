@@ -22,7 +22,7 @@ class Rol(models.Model):
     Abstraccion de la clase Rol
     '''
     
-    nombre = models.CharField(max_length=100)
+    nombre = models.CharField(max_length=100, unique=True)
     descripcion = models.CharField(max_length=200, default='')
     permisos = models.ManyToManyField(Permiso, through=RolesPermisos, related_name='rol_permiso')
     activo = models.BooleanField(default=True)
