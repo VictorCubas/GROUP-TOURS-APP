@@ -65,7 +65,6 @@ INSTALLED_APPS = [
     
     'apps.login_token',
     'apps.login',
-    'apps.usuario',
     'apps.home',
     'apps.logout',
     'apps.permiso',
