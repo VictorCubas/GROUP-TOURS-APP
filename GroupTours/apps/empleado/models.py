@@ -3,6 +3,7 @@ from django.db import models
 from apps.persona.models import Persona
 from apps.puesto.models import Puesto
 from apps.tipo_remuneracion.models import TipoRemuneracion
+from django.utils.timezone import now
 
 class Empleado(models.Model):
     persona = models.OneToOneField(
@@ -36,6 +37,7 @@ class Empleado(models.Model):
         help_text="Porcentaje de comisión del empleado, si aplica"
     )
     activo = models.BooleanField(default=True)
+    fecha_ingreso = models.DateField(default=now)  
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     fecha_modificacion = models.DateTimeField(auto_now=True)
 

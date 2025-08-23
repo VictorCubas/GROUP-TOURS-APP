@@ -43,7 +43,8 @@ class EmpleadoSerializer(serializers.ModelSerializer):
             'puesto', 'puesto_id',
             'tipo_remuneracion', 'tipo_remuneracion_id',
             'salario', 'porcentaje_comision', 'activo',
-            'fecha_creacion', 'fecha_modificacion'
+            'fecha_ingreso','fecha_creacion', 
+            'fecha_modificacion'
         ]
 
     def get_persona(self, obj):
@@ -74,5 +75,5 @@ class EmpleadoCreateSerializer(serializers.ModelSerializer):
         model = Empleado
         fields = [
             'id', 'persona', 'puesto', 'tipo_remuneracion',
-            'salario', 'porcentaje_comision', 'activo'
+            'salario', 'porcentaje_comision', 'activo', 'fecha_ingreso',
         ]

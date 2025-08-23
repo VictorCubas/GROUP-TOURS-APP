@@ -5,6 +5,9 @@ from rest_framework.pagination import PageNumberPagination
 from .models import Empleado
 from .serializers import EmpleadoSerializer, EmpleadoCreateSerializer
 from .filters import EmpleadoFilter
+from rest_framework.decorators import action
+from django.utils.timezone import now
+
 
 class EmpleadoPagination(PageNumberPagination):
     page_size = 10
@@ -64,3 +67,27 @@ class EmpleadoViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         updated_instance = serializer.save()
         return Response(self._serialize_empleado(updated_instance))
+
+
+    @action(detail=False, methods=['get'], url_path='resumen', pagination_class=None)
+    def resumen(self, request):
+        total = Empleado.objects.count()
+        activos = Empleado.objects.filter(activo=True).count()
+        inactivos = Empleado.objects.filter(activo=False).count()
+        
+        empleados = Empleado.objects.all()
+        antiguedades = [
+            (now().date() - e.fecha_ingreso).days // 365
+            for e in empleados if e.fecha_ingreso
+        ]
+        antiguedad_promedio = round(sum(antiguedades) / len(antiguedades)) if antiguedades else 0
+
+        # --- Formatear respuesta como lista de objetos ---
+        data = [
+            {'texto': 'Total', 'valor': str(total)},
+            {'texto': 'Activos', 'valor': str(activos)},
+            {'texto': 'Inactivos', 'valor': str(inactivos)},
+            {'texto': 'Antiguedad Promedio', 'valor': str(antiguedad_promedio)},
+        ]
+
+        return Response(data)
