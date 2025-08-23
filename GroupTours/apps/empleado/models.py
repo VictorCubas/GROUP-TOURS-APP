@@ -25,8 +25,8 @@ class Empleado(models.Model):
     )
     salario = models.DecimalField(
         max_digits=10, 
-        decimal_places=2, 
-        default=0.00,
+        decimal_places=0, 
+        default=0,
         help_text="Salario base del empleado, si aplica"
     )
     porcentaje_comision = models.DecimalField(
