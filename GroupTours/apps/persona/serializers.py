@@ -151,7 +151,7 @@ class PersonaCreateSerializer(serializers.Serializer):
         # --- Persona Física ---
         if tipo == 'fisica':
             if not hasattr(instance, "personafisica"):
-                raise serializers.ValidationError("La persona no es de tipo física")
+                raise serializers.ValidationError("La persona no es de tipo física o no permite el cambio de tipo de persona")
             persona_fisica = instance.personafisica
             for attr in ['nombre', 'apellido', 'fecha_nacimiento', 'sexo', 'nacionalidad']:
                 if attr in validated_data:
@@ -161,7 +161,7 @@ class PersonaCreateSerializer(serializers.Serializer):
         # --- Persona Jurídica ---
         elif tipo == 'juridica':
             if not hasattr(instance, "personajuridica"):
-                raise serializers.ValidationError("La persona no es de tipo jurídica")
+                raise serializers.ValidationError("La persona no es de tipo jurídica o no permite el cambio de tipo de persona")
             persona_juridica = instance.personajuridica
             for attr in ['razon_social', 'representante']:
                 if attr in validated_data:

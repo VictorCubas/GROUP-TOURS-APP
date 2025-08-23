@@ -42,9 +42,13 @@ if RENDER_EXTERNAL_HOSTNAME:
 CORS_ALLOW_ALL_ORIGINS = True
 
 #LENGUAGE E INTERNACIONALIZACION
-LANGUAGE_CODE = 'es-py'
+LANGUAGE_CODE = 'es'
+LANGUAGES = [
+    ('es', 'Spanish'),
+    ('en', 'English'),
+]
 TIME_ZONE = 'America/Asuncion'
-USE_I18N = True     
+USE_I18N = True
 USE_L10N = True
 USE_TZ = True
 
@@ -87,6 +91,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'django.middleware.locale.LocaleMiddleware',
 ]
 
 CORS_ALLOWED_ORIGINS = [
