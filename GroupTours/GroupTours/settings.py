@@ -79,6 +79,8 @@ INSTALLED_APPS = [
     'apps.tipo_documento',
     'apps.persona',
     'apps.nacionalidad',
+    'apps.puesto',
+    'apps.tipo_remuneracion',
 ]
 
 MIDDLEWARE = [
