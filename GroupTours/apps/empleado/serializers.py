@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from .models import Empleado
-from apps.persona.serializers import PersonaFisicaSerializer, PersonaJuridicaSerializer, PersonaCreateSerializer
-from apps.persona.models import Persona
+from apps.persona.models import PersonaFisica, PersonaJuridica, Persona
+from apps.persona.serializers import PersonaFisicaSerializer, PersonaJuridicaSerializer
 from apps.puesto.models import Puesto
 from apps.tipo_remuneracion.models import TipoRemuneracion
 
@@ -17,7 +17,7 @@ class TipoRemuneracionSimpleSerializer(serializers.ModelSerializer):
 
 # --- Serializer para lectura ---
 class EmpleadoSerializer(serializers.ModelSerializer):
-    persona = PersonaCreateSerializer(read_only=True)
+    persona = serializers.SerializerMethodField()
     persona_id = serializers.PrimaryKeyRelatedField(
         queryset=Persona.objects.all(),
         source='persona',
@@ -46,10 +46,33 @@ class EmpleadoSerializer(serializers.ModelSerializer):
             'fecha_creacion', 'fecha_modificacion'
         ]
 
-# --- Serializer para creación/actualización ---
+    def get_persona(self, obj):
+        """Serializa la persona con tipo y tipo_documento completo"""
+        try:
+            # Si es Persona Física
+            persona_fisica = obj.persona.personafisica
+            return PersonaFisicaSerializer(persona_fisica).data
+        except PersonaFisica.DoesNotExist:
+            pass
+
+        try:
+            # Si es Persona Jurídica
+            persona_juridica = obj.persona.personajuridica
+            return PersonaJuridicaSerializer(persona_juridica).data
+        except PersonaJuridica.DoesNotExist:
+            pass
+
+        return None
+
+
 class EmpleadoCreateSerializer(serializers.ModelSerializer):
+    persona = serializers.PrimaryKeyRelatedField(queryset=Persona.objects.all())
+    puesto = serializers.PrimaryKeyRelatedField(queryset=Puesto.objects.all())
+    tipo_remuneracion = serializers.PrimaryKeyRelatedField(queryset=TipoRemuneracion.objects.all())
+
     class Meta:
         model = Empleado
         fields = [
-            'persona', 'puesto', 'tipo_remuneracion', 'salario', 'porcentaje_comision', 'activo'
+            'id', 'persona', 'puesto', 'tipo_remuneracion',
+            'salario', 'porcentaje_comision', 'activo'
         ]
