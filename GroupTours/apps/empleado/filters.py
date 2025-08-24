@@ -26,11 +26,8 @@ class EmpleadoFilter(FilterSet):
         lookup_expr='lte'
     )
     
-    # 🔹 Filtro unificado para buscar en nombre, apellido o razón social
+    # 🔹 Filtro unificado para buscar en nombre, apellido, razón social o documento
     busqueda = django_filters.CharFilter(method='filter_busqueda')
-
-    # Filtro por documento individual (opcional si necesitas separar)
-    documento = django_filters.CharFilter(field_name='persona__documento', lookup_expr='icontains')
 
     class Meta:
         model = Empleado
@@ -47,9 +44,11 @@ class EmpleadoFilter(FilterSet):
         Filtra empleados por:
         - persona física: nombre o apellido
         - persona jurídica: razón social
+        - documento
         """
         return queryset.filter(
             Q(persona__personafisica__nombre__icontains=value) |
             Q(persona__personafisica__apellido__icontains=value) |
-            Q(persona__personajuridica__razon_social__icontains=value)
+            Q(persona__personajuridica__razon_social__icontains=value) |
+            Q(persona__documento__icontains=value)
         )
