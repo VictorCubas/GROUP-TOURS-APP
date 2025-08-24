@@ -50,5 +50,6 @@ class EmpleadoFilter(FilterSet):
             Q(persona__personafisica__nombre__icontains=value) |
             Q(persona__personafisica__apellido__icontains=value) |
             Q(persona__personajuridica__razon_social__icontains=value) |
-            Q(persona__documento__icontains=value)
+            Q(persona__documento__icontains=value) |
+            Q(persona__telefono__icontains=value)
         )
