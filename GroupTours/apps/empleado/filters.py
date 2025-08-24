@@ -1,5 +1,6 @@
 import django_filters
 from django_filters.rest_framework import FilterSet
+from django.db.models import Q
 from .models import Empleado
 
 class EmpleadoFilter(FilterSet):
@@ -25,11 +26,13 @@ class EmpleadoFilter(FilterSet):
         lookup_expr='lte'
     )
     
-    # 🔹 Filtros por datos de persona
-    documento = django_filters.CharFilter(field_name='persona__documento', lookup_expr='icontains')
-    nombre = django_filters.CharFilter(field_name='persona__personafisica__nombre', lookup_expr='icontains')
-    apellido = django_filters.CharFilter(field_name='persona__personafisica__apellido', lookup_expr='icontains')
+    # 🔹 Filtro unificado para buscar en nombre o apellido de personas físicas
+    nombre_completo = django_filters.CharFilter(method='filter_nombre_completo')
+
+    # 🔹 Filtro para personas jurídicas
     razon_social = django_filters.CharFilter(field_name='persona__personajuridica__razon_social', lookup_expr='icontains')
+    
+    documento = django_filters.CharFilter(field_name='persona__documento', lookup_expr='icontains')
 
     class Meta:
         model = Empleado
@@ -40,3 +43,12 @@ class EmpleadoFilter(FilterSet):
             'fecha_ingreso_desde',
             'fecha_ingreso_hasta'
         ]
+
+    def filter_nombre_completo(self, queryset, name, value):
+        """
+        Filtra empleados cuya persona física tenga nombre o apellido que contenga el valor.
+        """
+        return queryset.filter(
+            Q(persona__personafisica__nombre__icontains=value) |
+            Q(persona__personafisica__apellido__icontains=value)
+        )
