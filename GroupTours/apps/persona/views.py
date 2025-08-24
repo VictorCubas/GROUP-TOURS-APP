@@ -192,6 +192,10 @@ class PersonaViewSet(viewsets.ModelViewSet):
 
         queryset = self.get_queryset()
 
+        # Excluir personas que ya están asignadas a un empleado
+        queryset = queryset.exclude(empleado__isnull=False)
+
+        # Si hay parámetro de búsqueda, filtrar por nombre, apellido, razón social o documento
         if busqueda:
             queryset = queryset.filter(
                 Q(personafisica__nombre__icontains=busqueda) |
