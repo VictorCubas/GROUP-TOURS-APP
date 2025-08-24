@@ -24,9 +24,7 @@ class Empleado(models.Model):
         related_name='empleados',
         help_text="Tipo de remuneración del empleado"
     )
-    salario = models.DecimalField(
-        max_digits=10, 
-        decimal_places=0, 
+    salario = models.IntegerField(
         default=0,
         help_text="Salario base del empleado, si aplica"
     )
