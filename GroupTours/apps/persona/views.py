@@ -184,3 +184,21 @@ class PersonaViewSet(viewsets.ModelViewSet):
         ]
 
         return Response(data)
+    
+    
+    @action(detail=False, methods=['get'], url_path='todos', pagination_class=None)
+    def todos(self, request):
+        busqueda = request.query_params.get('q', '').strip()
+
+        queryset = self.get_queryset()
+
+        if busqueda:
+            queryset = queryset.filter(
+                Q(personafisica__nombre__icontains=busqueda) |
+                Q(personafisica__apellido__icontains=busqueda) |
+                Q(personajuridica__razon_social__icontains=busqueda) |
+                Q(documento__icontains=busqueda)
+            ).distinct()
+
+        data = [self._serialize_persona(obj) for obj in queryset]
+        return Response(data)
