@@ -13,14 +13,19 @@ class Usuario(AbstractUser):
         null=True,  # permite nulos
         blank=True, # permite dejar vacío en formularios/admin
     )
-    rol = models.ForeignKey(
+    
+    roles = models.ManyToManyField(
         Rol,
-        on_delete=models.PROTECT,
         related_name="usuarios",
-        help_text="Rol asignado al usuario",
-        null=True,  # permite nulos
-        blank=True, # permite dejar vacío en formularios/admin
+        help_text="Roles asignado al usuario",
     )
+    
+    
+    #   roles = models.ManyToManyField(
+    #     Rol,
+    #     related_name="usuarios",
+    #     blank=True
+    # )
     
     activo = models.BooleanField(default=True)
     fecha_creacion = models.DateTimeField(auto_now_add=True)

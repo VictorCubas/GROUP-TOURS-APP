@@ -23,7 +23,13 @@ class UsuarioPagination(PageNumberPagination):
         })
 
 class UsuarioViewSet(viewsets.ModelViewSet):
-    queryset = Usuario.objects.select_related('empleado', 'empleado__persona').prefetch_related('roles').order_by('-fecha_creacion')
+    queryset = (
+            Usuario.objects
+            .select_related('empleado', 'empleado__persona')  # Solo relaciones directas FK/OneToOne
+            .prefetch_related('roles', 'roles__permisos')     # ManyToMany o relaciones reversas
+            .order_by('-fecha_creacion')
+        )
+    
     filter_backends = [DjangoFilterBackend]
     filterset_class = UsuarioFilter
     pagination_class = UsuarioPagination

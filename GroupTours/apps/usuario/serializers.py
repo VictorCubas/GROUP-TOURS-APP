@@ -3,11 +3,18 @@ from .models import Usuario
 from apps.empleado.models import Empleado
 from apps.empleado.serializers import EmpleadoSerializer
 from apps.rol.models import Rol
+from apps.permiso.models import Permiso
+
+class PermisoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Permiso
+        fields = ['id', 'nombre',]  # ajusta los campos a tu modelo
 
 class RolSimpleSerializer(serializers.ModelSerializer):
+    permisos = PermisoSerializer(many=True, read_only=True)
     class Meta:
         model = Rol
-        fields = ['id', 'nombre']
+        fields = ['id', 'nombre', 'permisos', ]
 
 class UsuarioSerializer(serializers.ModelSerializer):
     empleado = EmpleadoSerializer(read_only=True)
@@ -18,11 +25,12 @@ class UsuarioSerializer(serializers.ModelSerializer):
     )
     roles = RolSimpleSerializer(many=True, read_only=True)
     roles_ids = serializers.PrimaryKeyRelatedField(
-        queryset=Rol.objects.all(),
-        source='roles',
         many=True,
-        write_only=True
+        write_only=True,
+        queryset=Rol.objects.all(),
+        source="roles"
     )
+
 
     class Meta:
         model = Usuario
