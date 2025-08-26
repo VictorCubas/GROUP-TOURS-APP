@@ -5,42 +5,67 @@ from apps.empleado.serializers import EmpleadoSerializer
 from apps.rol.models import Rol
 from apps.permiso.models import Permiso
 
-class PermisoSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Permiso
-        fields = ['id', 'nombre',]  # ajusta los campos a tu modelo
 
 class RolSimpleSerializer(serializers.ModelSerializer):
-    permisos = PermisoSerializer(many=True, read_only=True)
+
     class Meta:
         model = Rol
-        fields = ['id', 'nombre', 'permisos', ]
+        fields = ['id', 'nombre',]
 
-class UsuarioSerializer(serializers.ModelSerializer):
-    empleado = EmpleadoSerializer(read_only=True)
-    empleado_id = serializers.PrimaryKeyRelatedField(
-        queryset=Empleado.objects.all(),
-        source='empleado',
-        write_only=True
-    )
+
+# Serializer resumido para listado
+class UsuarioListadoSerializer(serializers.ModelSerializer):
+    empleado_id = serializers.IntegerField(source='empleado.id', read_only=True)
+    empleado_nombre = serializers.SerializerMethodField()
+    empleado_puesto = serializers.SerializerMethodField()
+    empleado_email = serializers.SerializerMethodField()
+    empleado_telefono = serializers.SerializerMethodField()
     roles = RolSimpleSerializer(many=True, read_only=True)
-    roles_ids = serializers.PrimaryKeyRelatedField(
-        many=True,
-        write_only=True,
-        queryset=Rol.objects.all(),
-        source="roles"
-    )
-
-
+    
     class Meta:
         model = Usuario
         fields = [
-            'id', 'username', 'empleado', 'empleado_id',
-            'roles', 'roles_ids',
-            'activo', 'fecha_creacion', 'fecha_modificacion'
+            'id',
+            'username',
+            'empleado_id',
+            'empleado_nombre',
+            'empleado_puesto',
+            'empleado_email',     # nuevo campo
+            'empleado_telefono',  # nuevo campo
+            'roles',
+            'activo',
+            'last_login',
+            'fecha_creacion',
+            'fecha_modificacion'
         ]
+    
+    def get_empleado_nombre(self, obj):
+        if obj.empleado and obj.empleado.persona:
+            p = obj.empleado.persona
+            if hasattr(p, 'personafisica'):
+                pf = p.personafisica
+                return f"{pf.nombre} {pf.apellido}"
+            if hasattr(p, 'personajuridica'):
+                pj = p.personajuridica
+                return pj.razon_social
+        return None
 
+    def get_empleado_puesto(self, obj):
+        if obj.empleado and hasattr(obj.empleado, 'puesto'):
+            return obj.empleado.puesto.nombre
+        return None
 
+    def get_empleado_email(self, obj):
+        if obj.empleado and obj.empleado.persona:
+            return getattr(obj.empleado.persona, 'email', None)
+        return None
+
+    def get_empleado_telefono(self, obj):
+        if obj.empleado and obj.empleado.persona:
+            return getattr(obj.empleado.persona, 'telefono', None)
+        return None
+
+# Serializer para creación/actualización
 class UsuarioCreateSerializer(serializers.ModelSerializer):
     empleado = serializers.PrimaryKeyRelatedField(queryset=Empleado.objects.all())
     roles = serializers.PrimaryKeyRelatedField(queryset=Rol.objects.all(), many=True)

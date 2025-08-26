@@ -20,13 +20,6 @@ class Usuario(AbstractUser):
         help_text="Roles asignado al usuario",
     )
     
-    
-    #   roles = models.ManyToManyField(
-    #     Rol,
-    #     related_name="usuarios",
-    #     blank=True
-    # )
-    
     activo = models.BooleanField(default=True)
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     fecha_modificacion = models.DateTimeField(auto_now=True)
