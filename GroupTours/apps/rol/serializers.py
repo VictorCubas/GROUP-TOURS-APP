@@ -46,7 +46,7 @@ class RolCreateUpdateSerializer(serializers.ModelSerializer):
 
 class RolSerializer(serializers.ModelSerializer):
     # Para mostrar los permisos asociados de forma detallada
-    permisos = PermisoSerializer(many=True, read_only=True)
+    permisos = PermisoSimpleSerializer(many=True, read_only=True)
 
     class Meta:
         model = Rol
