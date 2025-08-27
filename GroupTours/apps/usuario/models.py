@@ -10,8 +10,8 @@ class Usuario(AbstractUser):
         on_delete=models.CASCADE,
         related_name="usuario",
         help_text="Empleado asociado a este usuario del sistema",
-        null=True,  # permite nulos
-        blank=True, # permite dejar vacío en formularios/admin
+        null=True,
+        blank=True,
     )
     
     roles = models.ManyToManyField(
@@ -30,4 +30,5 @@ class Usuario(AbstractUser):
         db_table = "usuario"
 
     def __str__(self):
-        return f"{self.username} - {self.empleado.persona.nombre}"
+        empleado_nombre = getattr(self.empleado.persona, 'nombre', '') if self.empleado else ''
+        return f"{self.username} - {empleado_nombre}"

@@ -1,3 +1,4 @@
+# apps/usuario/views.py
 from rest_framework import viewsets
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
@@ -8,6 +9,8 @@ from .filters import UsuarioFilter
 from rest_framework.decorators import action
 from django.utils import timezone
 from datetime import timedelta
+from django.core.mail import send_mail
+from django.conf import settings
 
 class UsuarioPagination(PageNumberPagination):
     page_size = 10
@@ -22,7 +25,6 @@ class UsuarioPagination(PageNumberPagination):
             'previous': self.get_previous_link(),
             'results': data
         })
-
 
 class UsuarioViewSet(viewsets.ModelViewSet):
     queryset = (
@@ -41,39 +43,37 @@ class UsuarioViewSet(viewsets.ModelViewSet):
             return UsuarioListadoSerializer
         return UsuarioCreateSerializer
 
-    def list(self, request, *args, **kwargs):
-        queryset = self.filter_queryset(self.get_queryset())
-        page = self.paginate_queryset(queryset)
-        if page is not None:
-            serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
-
-    def retrieve(self, request, *args, **kwargs):
-        obj = self.get_object()
-        serializer = self.get_serializer(obj)
-        return Response(serializer.data)
-
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         instance = serializer.save()
-        return Response(UsuarioListadoSerializer(instance).data)
 
-    def update(self, request, *args, **kwargs):
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data)
-        serializer.is_valid(raise_exception=True)
-        updated_instance = serializer.save()
-        return Response(UsuarioListadoSerializer(updated_instance).data)
+        # Obtener email directamente
+        email_destino = getattr(instance.empleado.persona, 'email', None) if instance.empleado else None
+        password_generada = getattr(instance, 'generated_password', None)
 
-    def partial_update(self, request, *args, **kwargs):
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        updated_instance = serializer.save()
-        return Response(UsuarioListadoSerializer(updated_instance).data)
+        if email_destino and password_generada:
+            asunto = "Tu cuenta ha sido creada"
+            mensaje = (
+                f"Bienvenido,\n\n"
+                f"Tu cuenta en el sistema ha sido creada exitosamente.\n"
+                f"Usuario: {instance.username}\n"
+                f"Contraseña temporal: {password_generada}\n\n"
+                f"Por favor, inicia sesión y cambia tu contraseña."
+            )
+
+            try:
+                send_mail(
+                    asunto,
+                    mensaje,
+                    settings.DEFAULT_FROM_EMAIL,
+                    [email_destino],
+                    fail_silently=False
+                )
+            except Exception as e:
+                print(f"Error enviando correo: {e}")
+
+        return Response(serializer.to_representation(instance))
 
     @action(detail=False, methods=['get'], url_path='resumen', pagination_class=None)
     def resumen(self, request):
