@@ -91,3 +91,35 @@ class EmpleadoViewSet(viewsets.ModelViewSet):
         ]
 
         return Response(data)
+    
+    
+    @action(detail=False, methods=['get'], url_path='todos', pagination_class=None)
+    def todos(self, request):
+        empleados = (
+            self.get_queryset()
+            .filter(activo=True, usuario__isnull=True)  # Activos y sin usuario asignado
+            .select_related(
+                'persona',
+                'persona__personafisica',
+                'persona__personajuridica'
+            )
+        )
+
+        resultado = []
+        for emp in empleados:
+            persona = emp.persona
+            if hasattr(persona, "personafisica"):
+                pf = persona.personafisica
+                nombre_completo = f"{pf.nombre} {pf.apellido or ''}".strip()
+            elif hasattr(persona, "personajuridica"):
+                pj = persona.personajuridica
+                nombre_completo = pj.razon_social
+            else:
+                nombre_completo = ""
+
+            resultado.append({
+                "id": emp.id,
+                "nombre_completo": nombre_completo
+            })
+
+        return Response(resultado)

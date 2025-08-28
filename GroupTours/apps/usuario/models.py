@@ -10,24 +10,16 @@ class Usuario(AbstractUser):
         on_delete=models.CASCADE,
         related_name="usuario",
         help_text="Empleado asociado a este usuario del sistema",
-        null=True,  # permite nulos
-        blank=True, # permite dejar vacío en formularios/admin
+        null=True,
+        blank=True,
     )
-    
     roles = models.ManyToManyField(
         Rol,
         related_name="usuarios",
         help_text="Roles asignado al usuario",
     )
-    
-    
-    #   roles = models.ManyToManyField(
-    #     Rol,
-    #     related_name="usuarios",
-    #     blank=True
-    # )
-    
     activo = models.BooleanField(default=True)
+    debe_cambiar_contrasenia = models.BooleanField(default=True) 
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     fecha_modificacion = models.DateTimeField(auto_now=True)
 
@@ -37,4 +29,5 @@ class Usuario(AbstractUser):
         db_table = "usuario"
 
     def __str__(self):
-        return f"{self.username} - {self.empleado.persona.nombre}"
+        empleado_nombre = getattr(self.empleado.persona, 'nombre', '') if self.empleado else ''
+        return f"{self.username} - {empleado_nombre}"
