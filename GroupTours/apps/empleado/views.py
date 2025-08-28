@@ -95,10 +95,14 @@ class EmpleadoViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'], url_path='todos', pagination_class=None)
     def todos(self, request):
-        empleados = self.get_queryset().select_related(
-            'persona',
-            'persona__personafisica',
-            'persona__personajuridica'
+        empleados = (
+            self.get_queryset()
+            .filter(activo=True, usuario__isnull=True)  # Activos y sin usuario asignado
+            .select_related(
+                'persona',
+                'persona__personafisica',
+                'persona__personajuridica'
+            )
         )
 
         resultado = []

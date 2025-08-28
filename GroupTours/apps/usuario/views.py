@@ -11,6 +11,10 @@ from django.utils import timezone
 from datetime import timedelta
 from django.core.mail import send_mail
 from django.conf import settings
+from rest_framework import status
+from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
 class UsuarioPagination(PageNumberPagination):
     page_size = 10
@@ -91,3 +95,16 @@ class UsuarioViewSet(viewsets.ModelViewSet):
             {'texto': 'Nuevos últimos 30 días', 'valor': str(nuevos)},
         ]
         return Response(data)
+    
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
+    def resetear(self, request):
+        usuario = request.user
+        nueva_password = request.data.get('new_password')
+        if not nueva_password:
+            return Response({'error': 'Nueva contraseña requerida'}, status=status.HTTP_400_BAD_REQUEST)
+
+        usuario.set_password(nueva_password)
+        usuario.debe_cambiar_contrasenia = False  # <--- Resetear flag
+        usuario.save()
+
+        return Response({'message': 'Contraseña actualizada correctamente'})

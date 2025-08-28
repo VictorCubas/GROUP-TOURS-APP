@@ -101,12 +101,12 @@ class UsuarioCreateSerializer(serializers.ModelSerializer):
         username = self.generate_username(empleado)
         password = validated_data.pop('password', None) or self.generate_password()
 
-        usuario = Usuario(username=username, **validated_data)
+        usuario = Usuario(username=username, debe_cambiar_contrasenia=True, **validated_data)  # <--- Aquí
         usuario.set_password(password)
         usuario.save()
         usuario.roles.set(roles_data)
 
-        usuario.generated_password = password  # Para devolverla en la respuesta
+        usuario.generated_password = password
         return usuario
 
     def update(self, instance, validated_data):
