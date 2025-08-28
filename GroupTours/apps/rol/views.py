@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.pagination import PageNumberPagination
 from .models import Rol
-from .serializers import RolCreateUpdateSerializer, RolSerializer
+from .serializers import PermisoSimpleSerializer, RolCreateUpdateSerializer, RolSerializer
 import django_filters
 
 # Filtros opcionales para Rol
@@ -16,7 +16,7 @@ class RolFilter(django_filters.FilterSet):
     class Meta:
         model = Rol
         fields = ['nombre', 'activo']
-
+        
 # Paginación
 class RolPagination(PageNumberPagination):
     page_size = 5
@@ -54,6 +54,15 @@ class RolListViewSet(viewsets.ModelViewSet):
             'total_inactivos': inactivos,
             'total_en_uso': en_uso,
         })
+        
+    @action(detail=False, methods=['get'], url_path='todos', pagination_class=None)
+    def todos(self, request):
+        """
+        Devuelve todos los roles sin paginación, con sus permisos detallados.
+        """
+        roles = self.get_queryset()
+        serializer = RolSerializer(roles, many=True)
+        return Response(serializer.data)
 
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
