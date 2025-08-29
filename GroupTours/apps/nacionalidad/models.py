@@ -1,8 +1,17 @@
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 
 class Nacionalidad(models.Model):
-    nombre = models.CharField(max_length=100, unique=True)  # Ej: Paraguay
-    codigo_alpha2 = models.CharField(max_length=2, unique=True) 
+    nombre = models.CharField(max_length=100, unique=True,
+            error_messages={
+                'unique': _('Ya existe una nacionalidad con este nombre.'),
+            })  # Ej: Paraguay
+    codigo_alpha2 = models.CharField(
+        max_length=2,
+        unique=True,
+        error_messages={
+            'unique': _('Ya existe una nacionalidad con este código alpha2.'),
+        }) 
     activo = models.BooleanField(default=True)              # Para inactivar sin borrar
     en_uso = models.BooleanField(default=False)              # Para inactivar sin borrar
     fecha_creacion = models.DateTimeField(auto_now_add=True)

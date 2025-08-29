@@ -6,6 +6,7 @@ urlpatterns = [
     path('', RolListViewSet.as_view({'get':'list', 'post':'create',}), name='rol'),
     path('<int:pk>/', RolListViewSet.as_view({'get': 'retrieve', 'put': 'update', 'patch': 'partial_update'}), name='rol-detail'),
     path('resumen/', RolListViewSet.as_view({'get': 'resumen'}), name='rol-resumen'),
+    path('todos/', RolListViewSet.as_view({'get': 'todos'}), name='todos'),
 ]
 
 

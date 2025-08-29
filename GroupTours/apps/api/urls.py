@@ -8,5 +8,9 @@ urlpatterns = [
     path('tipo_documentos/', include('apps.tipo_documento.urls')),
     path('personas/', include('apps.persona.urls')),
     path('nacionalidades/', include('apps.nacionalidad.urls')),
+    path('puestos/', include('apps.puesto.urls')),
+    path('tipo_remuneracion/', include('apps.tipo_remuneracion.urls')),
+    path('empleados/', include('apps.empleado.urls')),
+    path('usuarios/', include('apps.usuario.urls')),
     # Puedes seguir agregando aquí otras rutas
 ]
