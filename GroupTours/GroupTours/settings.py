@@ -93,6 +93,7 @@ INSTALLED_APPS = [
     'apps.puesto',
     'apps.tipo_remuneracion',
     'apps.empleado',
+    'apps.usuario',
 ]
 
 MIDDLEWARE = [
