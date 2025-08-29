@@ -1,75 +1,110 @@
-from django.shortcuts import render
-from django.http import HttpResponse
+# apps/usuario/views.py
+from rest_framework import viewsets
+from rest_framework.response import Response
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.pagination import PageNumberPagination
 from .models import Usuario
-from apps.rol.models import Rol
-from .models import UsuariosRoles
-# Create your views here.
+from .serializers import UsuarioListadoSerializer, UsuarioCreateSerializer
+from .filters import UsuarioFilter
+from rest_framework.decorators import action
+from django.utils import timezone
+from datetime import timedelta
+from django.core.mail import send_mail
+from django.conf import settings
+from rest_framework import status
+from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
-def index(request):
-    # print(request.path)
-    listaUsuarios = Usuario.objects.all().order_by('id')
-    listaRoles = Rol.objects.all().order_by('id')
-    listaUsuarioRoles = getUsuariosRoles(listaUsuarios)
-    
-    context = {
-        'listaUsuarios':listaUsuarios,
-        'listaRoles': listaRoles,
-        'menu_activo': 'usuario'}
-    
-    
-    return render(request, 'usuario.html', context)
+class UsuarioPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
 
+    def get_paginated_response(self, data):
+        return Response({
+            'totalItems': self.page.paginator.count,
+            'pageSize': self.get_page_size(self.request),
+            'totalPages': self.page.paginator.num_pages,
+            'next': self.get_next_link(),
+            'previous': self.get_previous_link(),
+            'results': data
+        })
 
-def getUsuariosRoles(listaUsuarios):
-    listaUsuariosRoles = []
-    
-    for usuario in listaUsuarios:
-        listaRolesAsignados = []
-        listaAux = {}
+class UsuarioViewSet(viewsets.ModelViewSet):
+    queryset = (
+        Usuario.objects
+        .select_related('empleado', 'empleado__persona')
+        .prefetch_related('roles', 'roles__permisos')
+        .order_by('-fecha_creacion')
+    )
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = UsuarioFilter
+    pagination_class = UsuarioPagination
+    permission_classes = []
+
+    def get_serializer_class(self):
+        if self.action in ['list', 'retrieve']:
+            return UsuarioListadoSerializer
+        return UsuarioCreateSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        instance = serializer.save()
+
+        # Obtener email directamente
+        email_destino = getattr(instance.empleado.persona, 'email', None) if instance.empleado else None
+        password_generada = getattr(instance, 'generated_password', None)
+
+        if email_destino and password_generada:
+            asunto = "Tu cuenta ha sido creada"
+            mensaje = (
+                f"Bienvenido,\n\n"
+                f"Tu cuenta en el sistema ha sido creada exitosamente.\n"
+                f"Usuario: {instance.username}\n"
+                f"Contraseña temporal: {password_generada}\n\n"
+                f"Por favor, inicia sesión y cambia tu contraseña."
+            )
+
+            try:
+                send_mail(
+                    asunto,
+                    mensaje,
+                    settings.DEFAULT_FROM_EMAIL,
+                    [email_destino],
+                    fail_silently=False
+                )
+            except Exception as e:
+                print(f"Error enviando correo: {e}")
+
+        return Response(serializer.to_representation(instance))
+
+    @action(detail=False, methods=['get'], url_path='resumen', pagination_class=None)
+    def resumen(self, request):
+        total = Usuario.objects.count()
+        activos = Usuario.objects.filter(activo=True).count()
+        inactivos = Usuario.objects.filter(activo=False).count()
         
-        listaAux['rol'] = usuario
-        rolPermiso = UsuariosRoles.objects.filter(rol_id=usuario.id)
+        ultimos_30_dias = timezone.now() - timedelta(days=30)
+        nuevos = Usuario.objects.filter(fecha_creacion__gte=ultimos_30_dias).count()
         
-        for rp in rolPermiso:
-            # permiso = Permiso.objects.get(id=int(rp.permiso_id))
-            listaRolesAsignados.append(rp.permiso)
-            
-        
-        listaAux['permisos'] = listaRolesAsignados
-        listaUsuariosRoles.append(listaAux)
-        
-    return listaUsuariosRoles
+        data = [
+            {'texto': 'Total', 'valor': str(total)},
+            {'texto': 'Activos', 'valor': str(activos)},
+            {'texto': 'Inactivos', 'valor': str(inactivos)},
+            {'texto': 'Nuevos últimos 30 días', 'valor': str(nuevos)},
+        ]
+        return Response(data)
+    
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
+    def resetear(self, request):
+        usuario = request.user
+        nueva_password = request.data.get('new_password')
+        if not nueva_password:
+            return Response({'error': 'Nueva contraseña requerida'}, status=status.HTTP_400_BAD_REQUEST)
 
+        usuario.set_password(nueva_password)
+        usuario.debe_cambiar_contrasenia = False  # <--- Resetear flag
+        usuario.save()
 
-def registrarUsuario(request):
-    #se recupera los datos del formulario
-    documento = request.POST.get('txtDocumento')
-    nombre = request.POST.get('txtNombre')
-    apellido = request.POST.get('txtApellido')
-    telefono = request.POST.get('txtTelefono')
-    correo = request.POST.get('txtCorreo')
-    direccion = request.POST.get('txtDireccion')
-   
-    #se crea un usuario
-    Usuario.objects.create(documento = documento,
-                           nombre = nombre,
-                           apellido = apellido,
-                           telefono = telefono,
-                           correo = correo,
-                           direccion = direccion,)
-
-    #se recupera toda la lista de usuarios
-    listaUsuario = Usuario.objects.all().order_by('id')
-
-    return render(request, 'usuario.html', {'listaUsuarios':listaUsuario} )
-
-def eliminar(request, id):
-    try:
-        usuario = Usuario.objects.get(id=id)
-        usuario.delete()
-    except:
-        pass
-
-    listaUsuario = Usuario.objects.all().order_by('id')
-
-    return render(request, 'usuario.html', {'listaUsuarios':listaUsuario})
+        return Response({'message': 'Contraseña actualizada correctamente'})

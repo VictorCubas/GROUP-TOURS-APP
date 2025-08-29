@@ -42,11 +42,28 @@ if RENDER_EXTERNAL_HOSTNAME:
 CORS_ALLOW_ALL_ORIGINS = True
 
 #LENGUAGE E INTERNACIONALIZACION
-LANGUAGE_CODE = 'es-py'
+LANGUAGE_CODE = 'es'
+LANGUAGES = [
+    ('es', 'Spanish'),
+    ('en', 'English'),
+]
 TIME_ZONE = 'America/Asuncion'
-USE_I18N = True     
+USE_I18N = True
 USE_L10N = True
 USE_TZ = True
+
+
+AUTH_USER_MODEL = 'usuario.Usuario'
+
+
+# EMAIL CONFIG
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = "vhcubas91@gmail.com"
+EMAIL_HOST_PASSWORD = "ozxd njyn bjaj vhkd"  # Mejor usar App Password
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
 # Application definition
 
@@ -70,11 +87,13 @@ INSTALLED_APPS = [
     'apps.logout',
     'apps.permiso',
     'apps.rol',
-    'apps.empleados',
     'apps.modulo',
     'apps.tipo_documento',
     'apps.persona',
     'apps.nacionalidad',
+    'apps.puesto',
+    'apps.tipo_remuneracion',
+    'apps.empleado',
 ]
 
 MIDDLEWARE = [
@@ -87,6 +106,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'django.middleware.locale.LocaleMiddleware',
 ]
 
 CORS_ALLOWED_ORIGINS = [

@@ -1,44 +1,33 @@
+# apps/usuario/models.py
+from django.contrib.auth.models import AbstractUser
 from django.db import models
-
+from apps.empleado.models import Empleado
 from apps.rol.models import Rol
 
-class Usuario(models.Model):
-    '''
-    Abstraccion de la clase Usuario
-    '''
-    documento = models.CharField(max_length=8)
-    nombre = models.CharField(max_length=100)
-    apellido = models.CharField(max_length=100)
-    telefono = models.CharField(max_length=15)
-    correo = models.CharField(max_length=100)
-    direccion = models.CharField(max_length=200)
+class Usuario(AbstractUser):
+    empleado = models.OneToOneField(
+        Empleado,
+        on_delete=models.CASCADE,
+        related_name="usuario",
+        help_text="Empleado asociado a este usuario del sistema",
+        null=True,
+        blank=True,
+    )
+    roles = models.ManyToManyField(
+        Rol,
+        related_name="usuarios",
+        help_text="Roles asignado al usuario",
+    )
     activo = models.BooleanField(default=True)
-    en_uso = models.BooleanField(default=False)
-    
-    #personalizamos la tabla en postgres
-    class Meta:
-        verbose_name = 'Usuario'
-        db_table = 'Usuario'
+    debe_cambiar_contrasenia = models.BooleanField(default=True) 
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_modificacion = models.DateTimeField(auto_now=True)
 
-    
-    def _str_(self):
-        texto = '{} {} {} {} {} {} {}'
-        return texto.format(self.documento,
-                            self.nombre, 
-                            self.apellido,
-                            self.telefono,
-                            self.correo,
-                            self.direccion,
-                            self.activo) 
-        
-class UsuariosRoles(models.Model):
-    '''
-    Abstraccion de la clase UsuariosRoles
-    '''
-    
-    usuario = models.ForeignKey(Usuario, related_name='usuarios_roles', on_delete=models.SET_NULL, null=True)
-    rol = models.ForeignKey(Rol, related_name='usuarios_roles', on_delete=models.SET_NULL, null=True)
-    
     class Meta:
-        verbose_name = 'UsuariosRoles'
-        db_table = 'UsuariosRoles'
+        verbose_name = "Usuario"
+        verbose_name_plural = "Usuarios"
+        db_table = "usuario"
+
+    def __str__(self):
+        empleado_nombre = getattr(self.empleado.persona, 'nombre', '') if self.empleado else ''
+        return f"{self.username} - {empleado_nombre}"
