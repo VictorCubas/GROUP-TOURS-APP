@@ -25,22 +25,38 @@ class RolCreateUpdateSerializer(serializers.ModelSerializer):
             'descripcion',
             'permisos_id',
             'activo',
-            'en_uso'
+            'en_uso',
+            'es_admin'
         ]
 
     def create(self, validated_data):
         permisos = validated_data.pop('permisos', [])
+        es_admin = validated_data.get('es_admin', False)
+
         rol = Rol.objects.create(**validated_data)
-        rol.permisos.set(permisos)
+
+        if es_admin:
+            # Si es administrador, asignar TODOS los permisos
+            todos_permisos = Permiso.objects.all()
+            rol.permisos.set(todos_permisos)
+        else:
+            rol.permisos.set(permisos)
+
         return rol
 
     def update(self, instance, validated_data):
         permisos = validated_data.pop('permisos', None)
+        es_admin = validated_data.get('es_admin', instance.es_admin)
+
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
-        if permisos is not None:
+
+        if es_admin:
+            instance.permisos.set(Permiso.objects.all())
+        elif permisos is not None:
             instance.permisos.set(permisos)
+
         return instance
 
 
@@ -57,6 +73,7 @@ class RolSerializer(serializers.ModelSerializer):
             'permisos',
             'activo',
             'en_uso',
+            'es_admin',  # <-- Nuevo campo
             'fecha_creacion',
             'fecha_modificacion'
         ]
