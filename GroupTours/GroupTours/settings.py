@@ -82,7 +82,6 @@ INSTALLED_APPS = [
     
     'apps.login_token',
     'apps.login',
-    'apps.usuario',
     'apps.home',
     'apps.logout',
     'apps.permiso',
@@ -94,6 +93,7 @@ INSTALLED_APPS = [
     'apps.puesto',
     'apps.tipo_remuneracion',
     'apps.empleado',
+    'apps.usuario',
 ]
 
 MIDDLEWARE = [
