@@ -26,6 +26,7 @@ class Rol(models.Model):
     descripcion = models.CharField(max_length=200, default='')
     permisos = models.ManyToManyField(Permiso, through=RolesPermisos, related_name='rol_permiso')
     activo = models.BooleanField(default=True)
+    es_admin = models.BooleanField(default=False) 
     en_uso = models.BooleanField(default=False)
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     fecha_modificacion = models.DateTimeField(auto_now=True, null=True)  # Se actualiza al modificar
