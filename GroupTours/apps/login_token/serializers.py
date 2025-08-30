@@ -7,22 +7,36 @@ class LoginTokenSerializer(TokenObtainPairSerializer):
         try:
             data = super().validate(attrs)
 
-            # 1️⃣ Datos básicos del usuario
+            # 1️⃣ Obtener el nombre según el tipo de persona
+            nombre_persona = None
+            if self.user.empleado and self.user.empleado.persona:
+                persona = self.user.empleado.persona
+                if hasattr(persona, "personafisica"):
+                    nombre_persona = f"{persona.personafisica.nombre} {persona.personafisica.apellido or ''}".strip()
+                elif hasattr(persona, "personajuridica"):
+                    nombre_persona = persona.personajuridica.razon_social
+
+            # Si no hay nombre, usar username
+            if not nombre_persona:
+                nombre_persona = self.user.username
+
+            # 2️⃣ Datos básicos del usuario
             user_info = {
                 "id": self.user.id,
                 "username": self.user.username,
+                "nombre_persona": nombre_persona,
                 "roles": list(self.user.roles.values_list("nombre", flat=True)),
-                "es_admin": False,  # por defecto
+                "es_admin": False,
                 "permisos": []
             }
 
-            # 2️⃣ Revisar si el usuario tiene algún rol admin
+            # 3️⃣ Revisar si el usuario tiene algún rol admin
             roles_data = self.user.roles.all()
             tiene_admin = any(rol.es_admin for rol in roles_data)
             user_info["es_admin"] = tiene_admin
 
+            # 4️⃣ Si no es admin, obtener permisos detallados
             if not tiene_admin:
-                # 3️⃣ Estructura para agrupar permisos por módulo
                 permisos_por_modulo = defaultdict(lambda: {
                     "crear": False,
                     "leer": False,
@@ -31,7 +45,6 @@ class LoginTokenSerializer(TokenObtainPairSerializer):
                     "exportar": False
                 })
 
-                # 4️⃣ Obtener permisos de sus roles
                 for rol in self.user.roles.prefetch_related("permisos__modulo").all():
                     for permiso in rol.permisos.all():
                         if permiso.tipo == "C":
@@ -45,14 +58,13 @@ class LoginTokenSerializer(TokenObtainPairSerializer):
                         elif permiso.tipo == "E":
                             permisos_por_modulo[permiso.modulo.nombre]["exportar"] = True
 
-                # 5️⃣ Convertir a lista
                 for modulo, permisos in permisos_por_modulo.items():
                     user_info["permisos"].append({
                         "modulo": modulo,
                         "permisos": permisos
                     })
 
-            # 6️⃣ Agregar datos al token
+            # 5️⃣ Agregar datos al token
             data["user"] = user_info
             data["debe_cambiar_contrasenia"] = self.user.debe_cambiar_contrasenia
 
