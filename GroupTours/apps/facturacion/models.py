@@ -1,6 +1,6 @@
+# apps/facturacion/models.py
 from django.db import models
 from django.db.models import Max
-from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
 
 # ---------- Tipos de impuesto ----------
@@ -21,8 +21,9 @@ class SubtipoImpuesto(models.Model):
         return f"{self.tipo_impuesto.nombre} - {self.nombre}"
 
 
-# ---------- Empresa ----------
+# ---------- Empresa (única) ----------
 class Empresa(models.Model):
+    # Solo una empresa en todo el sistema
     ruc = models.CharField(max_length=12, unique=True)
     nombre = models.CharField(max_length=150)
     direccion = models.CharField(max_length=250, blank=True, null=True)
@@ -30,16 +31,18 @@ class Empresa(models.Model):
     correo = models.EmailField(blank=True, null=True)
     actividades = models.TextField(blank=True, null=True)
 
+    def save(self, *args, **kwargs):
+        if not self.pk and Empresa.objects.exists():
+            raise ValueError("Solo puede existir una empresa en el sistema")
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return self.nombre
 
 
 # ---------- Establecimiento ----------
 class Establecimiento(models.Model):
-    nombre = models.CharField(
-                    max_length=100,
-                    default='SIN NOMBRE'
-                )
+    nombre = models.CharField(max_length=100, default='SIN NOMBRE')
     empresa = models.ForeignKey(Empresa, on_delete=models.CASCADE, related_name="establecimientos")
     codigo = models.CharField(max_length=3)  # Ej: "001"
     direccion = models.CharField(max_length=250, blank=True, null=True)
@@ -53,10 +56,7 @@ class Establecimiento(models.Model):
 
 # ---------- Punto de Expedición ----------
 class PuntoExpedicion(models.Model):
-    nombre = models.CharField(
-                max_length=100,
-                default='SIN NOMBRE'
-            )
+    nombre = models.CharField(max_length=100, default='SIN NOMBRE')
     establecimiento = models.ForeignKey(Establecimiento, on_delete=models.CASCADE, related_name="puntos_expedicion")
     codigo = models.CharField(max_length=3)  # Ej: "001"
     descripcion = models.CharField(max_length=100, blank=True, null=True)
@@ -90,7 +90,7 @@ class FacturaElectronica(models.Model):
     tipo_impuesto = models.ForeignKey(TipoImpuesto, on_delete=models.PROTECT)
     subtipo_impuesto = models.ForeignKey(SubtipoImpuesto, on_delete=models.SET_NULL, null=True, blank=True)
 
-    # Ahora opcionales para configuraciones
+    # Opcionales para configuraciones
     numero_factura = models.CharField(max_length=15, editable=False, null=True, blank=True)
     fecha_emision = models.DateTimeField(null=True, blank=True)
 
@@ -103,7 +103,7 @@ class FacturaElectronica(models.Model):
         return f"{self.numero_factura} - {self.empresa.nombre}"
 
     def save(self, *args, **kwargs):
-        # Si no es configuración, genera número de factura
+        # Generar número de factura solo si no es configuración
         if not self.es_configuracion and not self.numero_factura:
             self.numero_factura = self.generar_numero_factura()
         super().save(*args, **kwargs)
@@ -132,5 +132,3 @@ class FacturaElectronica(models.Model):
 
         correlativo_str = str(correlativo).zfill(7)
         return f"{self.establecimiento.codigo}-{self.punto_expedicion.codigo}-{correlativo_str}"
-
-

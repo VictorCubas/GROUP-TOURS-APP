@@ -1,12 +1,10 @@
 # apps/facturacion/views.py
 from rest_framework import viewsets
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
-
 from .models import (
     Empresa, Establecimiento, PuntoExpedicion,
     TipoImpuesto, Timbrado, FacturaElectronica
@@ -17,17 +15,18 @@ from .serializers import (
     TimbradoSerializer, FacturaElectronicaSerializer
 )
 
-
+# ---------- ViewSets ----------
 class EmpresaViewSet(viewsets.ModelViewSet):
     queryset = Empresa.objects.all()
     serializer_class = EmpresaSerializer
     permission_classes = []
 
     @action(detail=False, methods=['get'])
-    def todos(self, request):
-        empresas = self.get_queryset()
-        return Response(self.serializer_class(empresas, many=True).data)
-
+    def empresa(self, request):
+        empresa = Empresa.objects.first()
+        if not empresa:
+            return Response({"error": "No hay empresa registrada"}, status=404)
+        return Response(self.serializer_class(empresa).data)
 
 class EstablecimientoViewSet(viewsets.ModelViewSet):
     queryset = Establecimiento.objects.all()
@@ -39,7 +38,6 @@ class EstablecimientoViewSet(viewsets.ModelViewSet):
         establecimientos = self.get_queryset()
         return Response(self.serializer_class(establecimientos, many=True).data)
 
-
 class PuntoExpedicionViewSet(viewsets.ModelViewSet):
     queryset = PuntoExpedicion.objects.all()
     serializer_class = PuntoExpedicionSerializer
@@ -49,7 +47,6 @@ class PuntoExpedicionViewSet(viewsets.ModelViewSet):
     def todos(self, request):
         puntos = self.get_queryset()
         return Response(self.serializer_class(puntos, many=True).data)
-
 
 class TipoImpuestoViewSet(viewsets.ModelViewSet):
     queryset = TipoImpuesto.objects.all()
@@ -61,7 +58,6 @@ class TipoImpuestoViewSet(viewsets.ModelViewSet):
         tipos = self.get_queryset()
         return Response(self.serializer_class(tipos, many=True).data)
 
-
 class TimbradoViewSet(viewsets.ModelViewSet):
     queryset = Timbrado.objects.all()
     serializer_class = TimbradoSerializer
@@ -72,7 +68,7 @@ class TimbradoViewSet(viewsets.ModelViewSet):
         timbrados = self.get_queryset()
         return Response(self.serializer_class(timbrados, many=True).data)
 
-
+# ---------- API Endpoints ----------
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def guardar_configuracion_factura(request):
@@ -82,36 +78,23 @@ def guardar_configuracion_factura(request):
     if not factura_data:
         return Response({"error": "Los datos de factura son requeridos"}, status=status.HTTP_400_BAD_REQUEST)
 
-    # -------- 1. Actualizar o crear empresa --------
+    # -------- Empresa Única --------
+    empresa = Empresa.objects.first()
     if empresa_data:
-        empresa_id = empresa_data.get('id')
-        if empresa_id:
-            empresa = get_object_or_404(Empresa, id=empresa_id)
-            empresa_serializer = EmpresaSerializer(empresa, data=empresa_data, partial=True)
-        else:
-            empresa_serializer = EmpresaSerializer(data=empresa_data)
-        
+        empresa_serializer = EmpresaSerializer(empresa, data=empresa_data, partial=True) if empresa else EmpresaSerializer(data=empresa_data)
         empresa_serializer.is_valid(raise_exception=True)
         empresa = empresa_serializer.save()
-    else:
-        # Si no se envía empresa, la buscamos en la factura
-        empresa = get_object_or_404(Empresa, id=factura_data.get('empresa'))
 
-    # -------- 2. Guardar configuración de factura --------
+    # -------- Configuración de Factura --------
     factura_data['empresa'] = empresa.id
-    factura_data['es_configuracion'] = True  # aseguramos que sea config
+    factura_data['es_configuracion'] = True
 
-    # Si existe config previa para esta empresa, actualizar
     config_existente = FacturaElectronica.objects.filter(
         empresa=empresa,
         es_configuracion=True
     ).first()
 
-    if config_existente:
-        factura_serializer = FacturaElectronicaSerializer(config_existente, data=factura_data, partial=True)
-    else:
-        factura_serializer = FacturaElectronicaSerializer(data=factura_data)
-
+    factura_serializer = FacturaElectronicaSerializer(config_existente, data=factura_data, partial=True) if config_existente else FacturaElectronicaSerializer(data=factura_data)
     factura_serializer.is_valid(raise_exception=True)
     factura_serializer.save()
 
@@ -119,16 +102,16 @@ def guardar_configuracion_factura(request):
         "empresa": EmpresaSerializer(empresa).data,
         "factura": factura_serializer.data
     }, status=status.HTTP_200_OK)
-    
-    
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
-def obtener_configuracion_factura(request, empresa_id):
+def obtener_configuracion_factura(request, empresa_id=None):
     """
-    Retorna la configuración actual de facturación para una empresa específica.
+    Retorna la configuración actual de facturación. Ignora el ID, ya que solo existe una empresa.
     """
-    empresa = get_object_or_404(Empresa, id=empresa_id)
+    empresa = Empresa.objects.first()
+    if not empresa:
+        return Response({"error": "No existe empresa configurada"}, status=status.HTTP_404_NOT_FOUND)
 
     configuracion = FacturaElectronica.objects.filter(
         empresa=empresa,
@@ -136,12 +119,6 @@ def obtener_configuracion_factura(request, empresa_id):
     ).first()
 
     if not configuracion:
-        return Response(
-            {"error": "No existe configuración para esta empresa"},
-            status=status.HTTP_404_NOT_FOUND
-        )
+        return Response({"error": "No existe configuración de factura"}, status=status.HTTP_404_NOT_FOUND)
 
-    return Response(
-        FacturaElectronicaSerializer(configuracion).data,
-        status=status.HTTP_200_OK
-    )
+    return Response(FacturaElectronicaSerializer(configuracion).data, status=status.HTTP_200_OK)
