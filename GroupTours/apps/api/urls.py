@@ -12,5 +12,6 @@ urlpatterns = [
     path('tipo_remuneracion/', include('apps.tipo_remuneracion.urls')),
     path('empleados/', include('apps.empleado.urls')),
     path('usuarios/', include('apps.usuario.urls')),
+    path('facturacion/', include('apps.facturacion.urls')),
     # Puedes seguir agregando aquí otras rutas
 ]
