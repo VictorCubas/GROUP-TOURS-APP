@@ -13,5 +13,6 @@ urlpatterns = [
     path('empleados/', include('apps.empleado.urls')),
     path('usuarios/', include('apps.usuario.urls')),
     path('facturacion/', include('apps.facturacion.urls')),
+    path('distribuidora/', include('apps.distribuidora.urls')),
     # Puedes seguir agregando aquí otras rutas
 ]
