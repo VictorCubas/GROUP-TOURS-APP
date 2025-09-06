@@ -8,7 +8,6 @@ from .models import Paquete
 from .serializers import PaqueteSerializer
 from .filters import PaqueteFilter
 
-
 # -------------------- PAGINACIÓN --------------------
 class PaquetePagination(PageNumberPagination):
     page_size = 5
@@ -23,7 +22,6 @@ class PaquetePagination(PageNumberPagination):
             'previous': self.get_previous_link(),
             'results': data
         })
-
 
 # -------------------- VIEWSET --------------------
 class PaqueteViewSet(viewsets.ModelViewSet):

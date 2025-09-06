@@ -18,10 +18,16 @@ class PaqueteSerializer(serializers.ModelSerializer):
             'destino_nombre',
             'distribuidora',
             'distribuidora_nombre',
+            'precio',
+            'sena',
+            'fecha_inicio',
+            'fecha_fin',
+            'personalizado',
+            'cantidad_pasajeros',
             'propio',
             'activo',
-            'imagen',       # Campo de imagen para subida
-            'imagen_url',   # URL completa de la imagen
+            'imagen',       # Para subida
+            'imagen_url',   # URL completa
             'fecha_creacion',
             'fecha_modificacion'
         ]
