@@ -97,6 +97,7 @@ INSTALLED_APPS = [
     'apps.facturacion',
     'apps.distribuidora',
     'apps.destino',
+    'apps.tipo_paquete',
 ]
 
 MIDDLEWARE = [
