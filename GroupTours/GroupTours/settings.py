@@ -100,6 +100,8 @@ INSTALLED_APPS = [
     'apps.tipo_paquete',
     'apps.paquete',
     'apps.servicio',
+    'apps.hotel',
+    'apps.moneda',
 ]
 
 MIDDLEWARE = [
