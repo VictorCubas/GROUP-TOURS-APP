@@ -99,6 +99,7 @@ INSTALLED_APPS = [
     'apps.destino',
     'apps.tipo_paquete',
     'apps.paquete',
+    'apps.servicio',
 ]
 
 MIDDLEWARE = [
