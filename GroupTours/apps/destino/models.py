@@ -1,5 +1,6 @@
 from django.db import models
 from apps.nacionalidad.models import Nacionalidad
+from apps.hotel.models import Hotel
 
 class Destino(models.Model):
     """
@@ -24,8 +25,17 @@ class Destino(models.Model):
         null=True,
         help_text="País al que pertenece el destino (opcional)."
     )
-    activo = models.BooleanField(default=True)   # Para inactivar sin borrar
-    en_uso = models.BooleanField(default=False)  # Para bloquear eliminación
+
+    # Relación muchos a muchos con hoteles
+    hoteles = models.ManyToManyField(
+        Hotel,
+        blank=True,
+        related_name="destinos",
+        help_text="Hoteles disponibles en este destino"
+    )
+
+    activo = models.BooleanField(default=True)
+    en_uso = models.BooleanField(default=False)
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     fecha_modificacion = models.DateTimeField(auto_now=True)
 

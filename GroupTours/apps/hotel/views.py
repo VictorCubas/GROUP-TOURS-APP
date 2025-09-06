@@ -23,7 +23,6 @@ class HotelPagination(PageNumberPagination):
             'results': data
         })
 
-
 # -------------------- VIEWSET --------------------
 class HotelViewSet(viewsets.ModelViewSet):
     queryset = Hotel.objects.select_related("moneda").order_by('-fecha_creacion')
@@ -39,7 +38,6 @@ class HotelViewSet(viewsets.ModelViewSet):
         total = Hotel.objects.count()
         activos = Hotel.objects.filter(activo=True).count()
         inactivos = Hotel.objects.filter(activo=False).count()
-
         return Response({
             'total': total,
             'total_activos': activos,

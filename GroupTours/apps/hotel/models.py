@@ -12,6 +12,7 @@ class Hotel(models.Model):
         decimal_places=2,
         help_text="Precio por habitación"
     )
+
     moneda = models.ForeignKey(
         Moneda,
         on_delete=models.PROTECT,
