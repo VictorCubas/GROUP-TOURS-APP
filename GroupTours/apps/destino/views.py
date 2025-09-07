@@ -22,13 +22,16 @@ class DestinoViewSet(viewsets.ModelViewSet):
         total = Destino.objects.count()
         activos = Destino.objects.filter(activo=True).count()
         inactivos = Destino.objects.filter(activo=False).count()
-        en_uso = Destino.objects.filter(en_uso=True).count()
-        return Response({
-            'total': total,
-            'total_activos': activos,
-            'total_inactivos': inactivos,
-            'total_en_uso': en_uso,
-        })
+        total_paises = Destino.objects.values('pais').distinct().count()
+        
+        data = [
+            {'texto': 'Total', 'valor': str(total)},
+            {'texto': 'Activos', 'valor': str(activos)},
+            {'texto': 'Inactivos', 'valor': str(inactivos)},
+            {'texto': 'Total Paises', 'valor': str(total_paises)},
+        ]
+        return Response(data)
+
 
     # ----- ENDPOINT EXTRA: todos -----
     @action(detail=False, methods=['get'], url_path='todos', pagination_class=None)

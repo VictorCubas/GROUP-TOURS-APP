@@ -21,9 +21,7 @@ class Destino(models.Model):
         Nacionalidad,
         on_delete=models.PROTECT,
         related_name='destinos',
-        blank=True,
-        null=True,
-        help_text="País al que pertenece el destino (opcional)."
+        help_text="País al que pertenece el destino."
     )
 
     # Relación muchos a muchos con hoteles

@@ -47,5 +47,36 @@ class HotelViewSet(viewsets.ModelViewSet):
     # ----- ENDPOINT EXTRA: todos -----
     @action(detail=False, methods=['get'], url_path='todos', pagination_class=None)
     def todos(self, request):
-        queryset = self.filter_queryset(self.get_queryset().filter(activo=True)).values('id', 'nombre')
-        return Response(list(queryset))
+        queryset = (
+            self.filter_queryset(
+                self.get_queryset()
+                .filter(activo=True)
+                .select_related("moneda")
+            )
+            .values(
+                "id",
+                "nombre",
+                "precio_habitacion",
+                "moneda__nombre",
+                "moneda__codigo",
+                "moneda__simbolo",
+            )
+        )
+
+        # Transformar a la estructura deseada
+        hoteles = [
+            {
+                "id": item["id"],
+                "nombre": item["nombre"],
+                "precio_habitacion": item["precio_habitacion"],
+                "moneda": {
+                    "nombre": item["moneda__nombre"],
+                    "codigo": item["moneda__codigo"],
+                    "simbolo": item["moneda__simbolo"],
+                },
+            }
+            for item in queryset
+        ]
+
+        return Response(hoteles)
+
