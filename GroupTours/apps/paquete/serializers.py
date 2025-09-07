@@ -4,12 +4,18 @@ from .models import Paquete
 from apps.tipo_paquete.models import TipoPaquete
 from apps.destino.models import Destino
 from apps.distribuidora.models import Distribuidora
+from apps.moneda.models import Moneda
 
 # Serializers simples para nested representation
 class TipoPaqueteSimpleSerializer(serializers.ModelSerializer):
     class Meta:
         model = TipoPaquete
         fields = ["id", "nombre"]
+        
+class MonedaSimpleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Moneda
+        fields = ["id", "nombre", "simbolo", "codigo"]
 
 class DestinoNestedSerializer(serializers.ModelSerializer):
     pais = serializers.SerializerMethodField()
@@ -35,23 +41,32 @@ class PaqueteSerializer(serializers.ModelSerializer):
     tipo_paquete = TipoPaqueteSimpleSerializer(read_only=True)
     destino = DestinoNestedSerializer(read_only=True)
     distribuidora = DistribuidoraSimpleSerializer(read_only=True, allow_null=True)
+    moneda = MonedaSimpleSerializer(read_only=True, allow_null=True)
 
     # Para escritura (PUT/PATCH/POST) por ID
     tipo_paquete_id = serializers.PrimaryKeyRelatedField(
         queryset=TipoPaquete.objects.all(),
         write_only=True,
-        source='tipo_paquete'
+        source='tipo_paquete',
+        required=False
     )
     destino_id = serializers.PrimaryKeyRelatedField(
         queryset=Destino.objects.all(),
         write_only=True,
-        source='destino'
+        source='destino',
+        required=False
     )
     distribuidora_id = serializers.PrimaryKeyRelatedField(
         queryset=Distribuidora.objects.all(),
         write_only=True,
         source='distribuidora',
         allow_null=True,
+        required=False
+    )
+    moneda_id = serializers.PrimaryKeyRelatedField(
+        queryset=Moneda.objects.all(),
+        write_only=True,
+        source='moneda',
         required=False
     )
 
@@ -68,6 +83,8 @@ class PaqueteSerializer(serializers.ModelSerializer):
             'destino_id',        # write only
             'distribuidora',     # nested read
             'distribuidora_id',  # write only
+            'moneda',     # nested read
+            'moneda_id',  # write only
             'precio',
             'sena',
             'fecha_inicio',
