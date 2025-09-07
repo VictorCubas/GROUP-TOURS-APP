@@ -8,6 +8,8 @@ from .models import Paquete
 from .serializers import PaqueteSerializer
 from .filters import PaqueteFilter
 
+from rest_framework.parsers import MultiPartParser, FormParser
+
 # -------------------- PAGINACIÓN --------------------
 class PaquetePagination(PageNumberPagination):
     page_size = 5
@@ -25,6 +27,7 @@ class PaquetePagination(PageNumberPagination):
 
 # -------------------- VIEWSET --------------------
 class PaqueteViewSet(viewsets.ModelViewSet):
+    parser_classes = (MultiPartParser, FormParser)
     queryset = Paquete.objects.select_related("tipo_paquete", "destino", "distribuidora").order_by('-fecha_creacion')
     serializer_class = PaqueteSerializer
     pagination_class = PaquetePagination
