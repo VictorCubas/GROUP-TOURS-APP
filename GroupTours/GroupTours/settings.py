@@ -95,6 +95,13 @@ INSTALLED_APPS = [
     'apps.empleado',
     'apps.usuario',
     'apps.facturacion',
+    'apps.distribuidora',
+    'apps.destino',
+    'apps.tipo_paquete',
+    'apps.paquete',
+    'apps.servicio',
+    'apps.hotel',
+    'apps.moneda',
 ]
 
 MIDDLEWARE = [
@@ -263,3 +270,6 @@ if not DEBUG:
 # https://docs.djangoproject.com/en/4.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
