@@ -5,6 +5,7 @@ from apps.tipo_paquete.models import TipoPaquete
 from apps.destino.models import Destino
 from apps.distribuidora.models import Distribuidora
 from apps.moneda.models import Moneda
+from apps.servicio.models import Servicio
 
 # Serializers simples para nested representation
 class TipoPaqueteSimpleSerializer(serializers.ModelSerializer):
@@ -16,6 +17,12 @@ class MonedaSimpleSerializer(serializers.ModelSerializer):
     class Meta:
         model = Moneda
         fields = ["id", "nombre", "simbolo", "codigo"]
+        
+        
+class ServicioSimpleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Servicio
+        fields = ["id", "nombre"]
 
 class DestinoNestedSerializer(serializers.ModelSerializer):
     pais = serializers.SerializerMethodField()
@@ -42,6 +49,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
     destino = DestinoNestedSerializer(read_only=True)
     distribuidora = DistribuidoraSimpleSerializer(read_only=True, allow_null=True)
     moneda = MonedaSimpleSerializer(read_only=True, allow_null=True)
+    servicios = ServicioSimpleSerializer(many=True, read_only=True)  
 
     # Para escritura (PUT/PATCH/POST) por ID
     tipo_paquete_id = serializers.PrimaryKeyRelatedField(
@@ -69,6 +77,13 @@ class PaqueteSerializer(serializers.ModelSerializer):
         source='moneda',
         required=False
     )
+    servicios_ids = serializers.PrimaryKeyRelatedField(  # escritura
+        queryset=Servicio.objects.all(),
+        many=True,
+        write_only=True,
+        source='servicios',
+        required=False
+    )
 
     imagen_url = serializers.SerializerMethodField()
 
@@ -85,6 +100,8 @@ class PaqueteSerializer(serializers.ModelSerializer):
             'distribuidora_id',  # write only
             'moneda',     # nested read
             'moneda_id',  # write only
+            'servicios',      # lectura
+            'servicios_ids',  # escritura
             'precio',
             'sena',
             'fecha_inicio',

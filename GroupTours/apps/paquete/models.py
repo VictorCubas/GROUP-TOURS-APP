@@ -4,6 +4,7 @@ from apps.tipo_paquete.models import TipoPaquete
 from apps.distribuidora.models import Distribuidora
 from apps.destino.models import Destino
 from apps.moneda.models import Moneda
+from apps.servicio.models import Servicio
 
 class Paquete(models.Model):
     nombre = models.CharField(max_length=150)
@@ -34,6 +35,13 @@ class Paquete(models.Model):
         related_name="paquetes",
         null=True,
         blank=True
+    )
+    
+    servicios = models.ManyToManyField(
+        Servicio,
+        related_name="paquetes",
+        blank=True,
+        help_text="Lista de servicios incluidos en el paquete"
     )
 
     propio = models.BooleanField(

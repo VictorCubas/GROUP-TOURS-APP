@@ -7,6 +7,7 @@ from .models import Destino
 from .serializers import DestinoSerializer
 from .filters import DestinoFilter
 from .pagination import DestinoPagination
+from django.db import models
 
 class DestinoViewSet(viewsets.ModelViewSet):
     queryset = Destino.objects.prefetch_related("hoteles").order_by('-fecha_creacion').all()
@@ -36,5 +37,12 @@ class DestinoViewSet(viewsets.ModelViewSet):
     # ----- ENDPOINT EXTRA: todos -----
     @action(detail=False, methods=['get'], url_path='todos', pagination_class=None)
     def todos(self, request):
-        queryset = self.filter_queryset(self.get_queryset().filter(activo=True)).values('id', 'nombre')
+        queryset = (
+            self.filter_queryset(
+                self.get_queryset().filter(activo=True)
+            )
+            .values('id', 'nombre', pais_nombre=models.F('pais__nombre'))  # ← cambio de alias
+        )
         return Response(list(queryset))
+
+

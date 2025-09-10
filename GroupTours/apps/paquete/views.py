@@ -8,7 +8,7 @@ from .models import Paquete
 from .serializers import PaqueteSerializer
 from .filters import PaqueteFilter
 
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 # -------------------- PAGINACIÓN --------------------
 class PaquetePagination(PageNumberPagination):
@@ -27,7 +27,7 @@ class PaquetePagination(PageNumberPagination):
 
 # -------------------- VIEWSET --------------------
 class PaqueteViewSet(viewsets.ModelViewSet):
-    parser_classes = (MultiPartParser, FormParser)
+    parser_classes = (MultiPartParser, FormParser, JSONParser)
     queryset = Paquete.objects.select_related("tipo_paquete", "destino", "distribuidora").order_by('-fecha_creacion')
     serializer_class = PaqueteSerializer
     pagination_class = PaquetePagination
@@ -43,14 +43,18 @@ class PaqueteViewSet(viewsets.ModelViewSet):
         inactivos = Paquete.objects.filter(activo=False).count()
         propios = Paquete.objects.filter(propio=True).count()
         de_distribuidora = Paquete.objects.filter(propio=False).count()
+        
+        
+        # --- Formatear respuesta como lista de objetos ---
+        data = [
+            {'texto': 'Total', 'valor': str(total)},
+            {'texto': 'Activos', 'valor': str(activos)},
+            # {'texto': 'Inactivos', 'valor': str(inactivos)},
+            {'texto': 'Propios', 'valor': str(propios)},
+            {'texto': 'Distribuidora', 'valor': str(de_distribuidora)},
+        ]
 
-        return Response({
-            'total': total,
-            'total_activos': activos,
-            'total_inactivos': inactivos,
-            'total_propios': propios,
-            'total_de_distribuidora': de_distribuidora
-        })
+        return Response(data)
 
     # ----- ENDPOINT EXTRA: todos -----
     @action(detail=False, methods=['get'], url_path='todos', pagination_class=None)
