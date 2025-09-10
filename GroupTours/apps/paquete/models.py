@@ -3,6 +3,8 @@ from django.core.exceptions import ValidationError
 from apps.tipo_paquete.models import TipoPaquete
 from apps.distribuidora.models import Distribuidora
 from apps.destino.models import Destino
+from apps.moneda.models import Moneda
+from apps.servicio.models import Servicio
 
 class Paquete(models.Model):
     nombre = models.CharField(max_length=150)
@@ -25,6 +27,21 @@ class Paquete(models.Model):
         Destino,
         on_delete=models.PROTECT,
         related_name="paquetes"
+    )
+    
+    moneda = models.ForeignKey(
+        Moneda,
+        on_delete=models.PROTECT,
+        related_name="paquetes",
+        null=True,
+        blank=True
+    )
+    
+    servicios = models.ManyToManyField(
+        Servicio,
+        related_name="paquetes",
+        blank=True,
+        help_text="Lista de servicios incluidos en el paquete"
     )
 
     propio = models.BooleanField(

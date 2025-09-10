@@ -1,6 +1,8 @@
 import django_filters
 from django.db.models import Q
 from .models import Paquete
+from django.utils.timezone import make_aware
+from datetime import datetime, timedelta
 
 class PaqueteFilter(django_filters.FilterSet):
     # Filtros directos
@@ -26,8 +28,14 @@ class PaqueteFilter(django_filters.FilterSet):
     )
     fecha_creacion_hasta = django_filters.DateFilter(
         field_name="fecha_creacion",
-        lookup_expr="lte"
+        lookup_expr="lte",
+        method='filter_fecha_hasta'
     )
+    
+    def filter_fecha_hasta(self, queryset, name, value):
+        siguiente_dia = datetime.combine(value, datetime.min.time()) + timedelta(days=1)
+        siguiente_dia = make_aware(siguiente_dia)
+        return queryset.filter(fecha_creacion__lt=siguiente_dia)
 
     # Filtro unificado
     busqueda = django_filters.CharFilter(method="filter_busqueda")
@@ -46,11 +54,12 @@ class PaqueteFilter(django_filters.FilterSet):
 
     def filter_busqueda(self, queryset, name, value):
         """
-        Filtra paquetes por nombre, tipo de paquete, distribuidora o destino.
+        Filtra paquetes por nombre, destino o país del destino.
         """
         return queryset.filter(
             Q(nombre__icontains=value) |
+            Q(destino__nombre__icontains=value) |
+            Q(destino__pais__nombre__icontains=value) |  # 🔹 Agregado: búsqueda por país
             Q(tipo_paquete__nombre__icontains=value) |
-            Q(distribuidora__nombre__icontains=value) |
-            Q(destino__nombre__icontains=value)
+            Q(distribuidora__nombre__icontains=value)
         )
