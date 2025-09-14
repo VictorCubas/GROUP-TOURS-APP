@@ -54,9 +54,23 @@ class ReservaSerializer(serializers.ModelSerializer):
             "fecha_reserva",
             "cantidad_pasajeros",
             "monto_pagado",
-            "estado",
+            "estado",              # 🔹 ya no es read-only
             "pasajeros",
             "activo",
             "fecha_modificacion",
         ]
-        read_only_fields = ["codigo", "fecha_reserva", "estado", "pasajeros"]
+        read_only_fields = ["codigo", "fecha_reserva", "pasajeros", "fecha_modificacion"]
+
+    def create(self, validated_data):
+        estado_manual = validated_data.get("estado", None)
+        instance = super().create(validated_data)
+        if not estado_manual:  # si no se pasó manualmente
+            instance.actualizar_estado()
+        return instance
+
+    def update(self, instance, validated_data):
+        estado_manual = validated_data.get("estado", None)
+        instance = super().update(instance, validated_data)
+        if not estado_manual:  # si no se pasó manualmente
+            instance.actualizar_estado()
+        return instance

@@ -83,7 +83,7 @@ class Timbrado(models.Model):
 class FacturaElectronica(models.Model):
     empresa = models.ForeignKey(Empresa, on_delete=models.PROTECT, related_name="facturas")
     establecimiento = models.ForeignKey(Establecimiento, on_delete=models.PROTECT)
-    punto_expedicion = models.ForeignKey(PuntoExpedicion, on_delete=models.PROTECT)
+    punto_expedicion = models.ForeignKey(PuntoExpedicion, on_delete=models.PROTECT, null=True, blank=True)  
     timbrado = models.ForeignKey(Timbrado, on_delete=models.PROTECT)
     es_configuracion = models.BooleanField(default=False)
 
@@ -103,9 +103,19 @@ class FacturaElectronica(models.Model):
         return f"{self.numero_factura} - {self.empresa.nombre}"
 
     def save(self, *args, **kwargs):
-        # Generar número de factura solo si no es configuración
-        if not self.es_configuracion and not self.numero_factura:
-            self.numero_factura = self.generar_numero_factura()
+        # Validar si es configuración
+        if self.es_configuracion:
+            # Si es configuración, no se requiere punto de expedición
+            self.punto_expedicion = None
+            self.numero_factura = None
+            self.fecha_emision = None
+        else:
+            # Si es factura real, se requiere punto de expedición
+            if not self.punto_expedicion:
+                raise ValueError("El punto de expedición es obligatorio para facturas reales")
+            if not self.numero_factura:
+                self.numero_factura = self.generar_numero_factura()
+
         super().save(*args, **kwargs)
 
     def generar_numero_factura(self):
