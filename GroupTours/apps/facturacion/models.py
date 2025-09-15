@@ -7,6 +7,7 @@ from django.utils.translation import gettext_lazy as _
 class TipoImpuesto(models.Model):
     nombre = models.CharField(max_length=50)  # Ej: "IVA", "IRP", "ISC"
     descripcion = models.TextField(blank=True, null=True)
+    activo = models.BooleanField(default=True)  # Nuevo campo
 
     def __str__(self):
         return self.nombre
@@ -16,6 +17,7 @@ class SubtipoImpuesto(models.Model):
     tipo_impuesto = models.ForeignKey(TipoImpuesto, on_delete=models.CASCADE, related_name="subtipos")
     nombre = models.CharField(max_length=50)  # Ej: "IVA 10%", "IVA 5%", "IVA 0%"
     porcentaje = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
+    activo = models.BooleanField(default=True)  # Nuevo campo
 
     def __str__(self):
         return f"{self.tipo_impuesto.nombre} - {self.nombre}"
@@ -30,6 +32,7 @@ class Empresa(models.Model):
     telefono = models.CharField(max_length=50, blank=True, null=True)
     correo = models.EmailField(blank=True, null=True)
     actividades = models.TextField(blank=True, null=True)
+    activo = models.BooleanField(default=True) 
 
     def save(self, *args, **kwargs):
         if not self.pk and Empresa.objects.exists():
@@ -46,6 +49,7 @@ class Establecimiento(models.Model):
     empresa = models.ForeignKey(Empresa, on_delete=models.CASCADE, related_name="establecimientos")
     codigo = models.CharField(max_length=3)  # Ej: "001"
     direccion = models.CharField(max_length=250, blank=True, null=True)
+    activo = models.BooleanField(default=True) 
 
     class Meta:
         unique_together = ("empresa", "codigo")
@@ -60,6 +64,7 @@ class PuntoExpedicion(models.Model):
     establecimiento = models.ForeignKey(Establecimiento, on_delete=models.CASCADE, related_name="puntos_expedicion")
     codigo = models.CharField(max_length=3)  # Ej: "001"
     descripcion = models.CharField(max_length=100, blank=True, null=True)
+    activo = models.BooleanField(default=True) 
 
     class Meta:
         unique_together = ("establecimiento", "codigo")
@@ -74,6 +79,7 @@ class Timbrado(models.Model):
     numero = models.CharField(max_length=20)
     inicio_vigencia = models.DateField()
     fin_vigencia = models.DateField(null=True, blank=True)
+    activo = models.BooleanField(default=True) 
 
     def __str__(self):
         return f"{self.numero} ({self.empresa.nombre})"
@@ -86,6 +92,7 @@ class FacturaElectronica(models.Model):
     punto_expedicion = models.ForeignKey(PuntoExpedicion, on_delete=models.PROTECT, null=True, blank=True)  
     timbrado = models.ForeignKey(Timbrado, on_delete=models.PROTECT)
     es_configuracion = models.BooleanField(default=False)
+    activo = models.BooleanField(default=True) 
 
     tipo_impuesto = models.ForeignKey(TipoImpuesto, on_delete=models.PROTECT)
     subtipo_impuesto = models.ForeignKey(SubtipoImpuesto, on_delete=models.SET_NULL, null=True, blank=True)

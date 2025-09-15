@@ -35,7 +35,7 @@ class EstablecimientoViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def todos(self, request):
-        establecimientos = self.get_queryset()
+        establecimientos = self.get_queryset().filter(activo=True)
         return Response(self.serializer_class(establecimientos, many=True).data)
 
 class PuntoExpedicionViewSet(viewsets.ModelViewSet):
@@ -45,7 +45,7 @@ class PuntoExpedicionViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def todos(self, request):
-        puntos = self.get_queryset()
+        puntos = self.get_queryset().filter(activo=True)
         return Response(self.serializer_class(puntos, many=True).data)
 
 class TipoImpuestoViewSet(viewsets.ModelViewSet):
@@ -55,7 +55,7 @@ class TipoImpuestoViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def todos(self, request):
-        tipos = self.get_queryset()
+        tipos = self.get_queryset().filter(activo=True)
         return Response(self.serializer_class(tipos, many=True).data)
 
 class TimbradoViewSet(viewsets.ModelViewSet):
@@ -65,7 +65,7 @@ class TimbradoViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def todos(self, request):
-        timbrados = self.get_queryset()
+        timbrados = self.get_queryset().filter(activo=True)
         return Response(self.serializer_class(timbrados, many=True).data)
 
 # ---------- API Endpoints ----------
