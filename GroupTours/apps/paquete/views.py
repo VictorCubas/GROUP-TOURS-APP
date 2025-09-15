@@ -59,7 +59,27 @@ class PaqueteViewSet(viewsets.ModelViewSet):
     # ----- ENDPOINT EXTRA: todos -----
     @action(detail=False, methods=['get'], url_path='todos', pagination_class=None)
     def todos(self, request):
-        queryset = self.filter_queryset(
-            self.get_queryset().filter(activo=True)
-        ).values('id', 'nombre')
-        return Response(list(queryset))
+        queryset = (
+            self.filter_queryset(
+                self.get_queryset().filter(activo=True)
+            )
+            .values(
+                'id',
+                'nombre',
+                'destino__nombre',
+                'destino__pais__nombre'
+            )
+        )
+
+        # Renombrar claves para que sea más legible
+        data = [
+            {
+                "id": item["id"],
+                "nombre": item["nombre"],
+                "destino": item["destino__nombre"],
+                "pais": item["destino__pais__nombre"],
+            }
+            for item in queryset
+        ]
+
+        return Response(data)
