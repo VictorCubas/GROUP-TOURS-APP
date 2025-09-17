@@ -8,7 +8,6 @@ from .models import Hotel
 from .serializers import HotelSerializer
 from .filters import HotelFilter
 
-# -------------------- PAGINACIÓN --------------------
 class HotelPagination(PageNumberPagination):
     page_size = 5
     page_size_query_param = 'page_size'
@@ -23,16 +22,18 @@ class HotelPagination(PageNumberPagination):
             'results': data
         })
 
-# -------------------- VIEWSET --------------------
 class HotelViewSet(viewsets.ModelViewSet):
-    queryset = Hotel.objects.select_related("moneda").order_by('-fecha_creacion')
+    queryset = (
+        Hotel.objects
+        .select_related("moneda", "ciudad", "ciudad__pais")
+        .order_by('-fecha_creacion')
+    )
     serializer_class = HotelSerializer
     pagination_class = HotelPagination
     permission_classes = []
     filter_backends = [DjangoFilterBackend]
     filterset_class = HotelFilter
 
-    # ----- ENDPOINT EXTRA: resumen -----
     @action(detail=False, methods=['get'], url_path='resumen')
     def resumen(self, request):
         total = Hotel.objects.count()
@@ -44,14 +45,11 @@ class HotelViewSet(viewsets.ModelViewSet):
             'total_inactivos': inactivos
         })
 
-    # ----- ENDPOINT EXTRA: todos -----
     @action(detail=False, methods=['get'], url_path='todos', pagination_class=None)
     def todos(self, request):
         queryset = (
             self.filter_queryset(
-                self.get_queryset()
-                .filter(activo=True)
-                .select_related("moneda")
+                self.get_queryset().filter(activo=True)
             )
             .values(
                 "id",
@@ -60,23 +58,23 @@ class HotelViewSet(viewsets.ModelViewSet):
                 "moneda__nombre",
                 "moneda__codigo",
                 "moneda__simbolo",
+                "ciudad__nombre",
+                "ciudad__pais__nombre",
             )
         )
-
-        # Transformar a la estructura deseada
         hoteles = [
             {
-                "id": item["id"],
-                "nombre": item["nombre"],
-                "precio_habitacion": item["precio_habitacion"],
+                "id": h["id"],
+                "nombre": h["nombre"],
+                "precio_habitacion": h["precio_habitacion"],
                 "moneda": {
-                    "nombre": item["moneda__nombre"],
-                    "codigo": item["moneda__codigo"],
-                    "simbolo": item["moneda__simbolo"],
+                    "nombre": h["moneda__nombre"],
+                    "codigo": h["moneda__codigo"],
+                    "simbolo": h["moneda__simbolo"],
                 },
+                "ciudad": h["ciudad__nombre"],
+                "pais": h["ciudad__pais__nombre"],
             }
-            for item in queryset
+            for h in queryset
         ]
-
         return Response(hoteles)
-

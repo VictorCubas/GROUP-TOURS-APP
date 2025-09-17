@@ -5,10 +5,11 @@ from apps.ciudad.models import Ciudad
 
 class CiudadSimpleSerializer(serializers.ModelSerializer):
     pais_nombre = serializers.CharField(source="pais.nombre", read_only=True)
+    pais_id = serializers.CharField(source="pais.id", read_only=True)
 
     class Meta:
         model = Ciudad
-        fields = ["id", "nombre", "pais_nombre"]
+        fields = ["id", "nombre", "pais_nombre", "pais_id"]
 
 class DestinoSerializer(serializers.ModelSerializer):
     ciudad = CiudadSimpleSerializer(read_only=True)
