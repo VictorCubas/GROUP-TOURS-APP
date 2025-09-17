@@ -25,19 +25,14 @@ class ServicioSimpleSerializer(serializers.ModelSerializer):
         fields = ["id", "nombre"]
 
 class DestinoNestedSerializer(serializers.ModelSerializer):
-    pais = serializers.SerializerMethodField()
+    # Muestra el nombre de la ciudad y el país relacionados
+    ciudad = serializers.CharField(source="ciudad.nombre", read_only=True)
+    pais = serializers.CharField(source="ciudad.pais.nombre", read_only=True)
 
     class Meta:
         model = Destino
-        fields = ['id', 'nombre', 'pais']
-
-    def get_pais(self, obj):
-        if obj.pais:
-            return {
-                'id': obj.pais.id,
-                'nombre': obj.pais.nombre
-            }
-        return None
+        # Quitamos el campo 'nombre' porque Destino ya no lo tiene
+        fields = ['id', 'ciudad', 'pais']
         
 class DistribuidoraSimpleSerializer(serializers.ModelSerializer):
     class Meta:

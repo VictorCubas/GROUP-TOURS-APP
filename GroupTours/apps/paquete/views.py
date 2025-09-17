@@ -66,8 +66,8 @@ class PaqueteViewSet(viewsets.ModelViewSet):
             .values(
                 'id',
                 'nombre',
-                'destino__nombre',
-                'destino__pais__nombre'
+                'destino__ciudad__nombre',
+                'destino__ciudad__pais__nombre'
             )
         )
 
@@ -76,8 +76,8 @@ class PaqueteViewSet(viewsets.ModelViewSet):
             {
                 "id": item["id"],
                 "nombre": item["nombre"],
-                "destino": item["destino__nombre"],
-                "pais": item["destino__pais__nombre"],
+                "destino": item["destino__ciudad__nombre"],
+                "pais": item["destino__ciudad__pais__nombre"],
             }
             for item in queryset
         ]
