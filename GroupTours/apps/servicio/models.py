@@ -12,16 +12,20 @@ class Servicio(models.Model):
     - Desayuno
     - Asistencia básica al pasajero
     """
-    nombre = models.CharField(
-        max_length=100,
-        unique=True,
-        help_text="Nombre del servicio, ej: 'Traslado in/out', 'Desayuno'."
+    nombre = models.CharField(max_length=150)
+    descripcion = models.TextField(blank=True, null=True)
+
+    TIPO_CHOICES = [
+        ('habitacion', 'Habitación'),
+        ('hotel', 'Hotel'),
+        ('paquete', 'Paquete'),
+    ]
+    tipo = models.CharField(
+        max_length=20,
+        choices=TIPO_CHOICES,
+        help_text="Define si el servicio es solo para Habitaciones o solo para Paquetes"
     )
-    descripcion = models.TextField(
-        blank=True,
-        null=True,
-        help_text="Detalles adicionales sobre el servicio."
-    )
+
     activo = models.BooleanField(default=True)
     en_uso = models.BooleanField(default=False)
     fecha_creacion = models.DateTimeField(auto_now_add=True)
@@ -30,7 +34,6 @@ class Servicio(models.Model):
     class Meta:
         verbose_name = "Servicio"
         verbose_name_plural = "Servicios"
-        db_table = "Servicio"
         ordering = ["nombre"]
 
     def __str__(self):
