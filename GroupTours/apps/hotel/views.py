@@ -5,7 +5,7 @@ from rest_framework.decorators import action
 from django_filters.rest_framework import DjangoFilterBackend
 
 from .models import CadenaHotelera, Hotel, Habitacion, Servicio
-from .serializers import CadenaHoteleraSerializer, HotelSerializer, HabitacionSerializer, ServicioSerializer
+from .serializers import CadenaHoteleraSerializer, HotelSerializer, HabitacionSerializer, ServicioSimpleSerializer
 from .filters import HotelFilter
 from apps.servicio.filters import ServicioFilter
 
@@ -78,7 +78,7 @@ class HotelViewSet(viewsets.ModelViewSet):
 # -------------------- SERVICIO --------------------
 class ServicioViewSet(viewsets.ModelViewSet):
     queryset = Servicio.objects.order_by('-fecha_creacion').all()
-    serializer_class = ServicioSerializer
+    serializer_class = ServicioSimpleSerializer
     pagination_class = HotelPagination
     permission_classes = []
     filter_backends = [DjangoFilterBackend]

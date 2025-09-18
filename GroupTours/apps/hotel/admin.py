@@ -9,6 +9,12 @@ class CadenaHoteleraAdmin(admin.ModelAdmin):
     readonly_fields = ('fecha_creacion', 'fecha_modificacion')
 
 
+class HabitacionInline(admin.TabularInline):  # o admin.StackedInline
+    model = Habitacion
+    extra = 1  # número de formularios extra vacíos
+    fields = ('numero', 'tipo', 'capacidad', 'precio_noche', 'moneda', 'activo')
+
+
 # -------------------- HOTEL --------------------
 @admin.register(Hotel)
 class HotelAdmin(admin.ModelAdmin):
@@ -19,6 +25,8 @@ class HotelAdmin(admin.ModelAdmin):
     list_filter = ('activo', 'ciudad__pais', 'cadena')
     search_fields = ('nombre', 'ciudad__nombre', 'ciudad__pais__nombre', 'cadena__nombre')
     readonly_fields = ('fecha_creacion', 'fecha_modificacion')
+    
+    inlines = [HabitacionInline]
 
     def get_pais(self, obj):
         return obj.ciudad.pais.nombre
