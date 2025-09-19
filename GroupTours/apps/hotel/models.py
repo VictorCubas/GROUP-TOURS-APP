@@ -70,7 +70,7 @@ class Habitacion(models.Model):
         ("doble", "Doble"),
         ("triple", "Triple"),
         ("suite", "Suite"),
-        ("standard", "Standard"),
+        ("premium", "Premium"),
     ]
 
     hotel = models.ForeignKey(

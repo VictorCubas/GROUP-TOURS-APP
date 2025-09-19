@@ -29,6 +29,13 @@ class CadenaHoteleraViewSet(viewsets.ModelViewSet):
     queryset = CadenaHotelera.objects.filter(activo=True)
     serializer_class = CadenaHoteleraSerializer
     permission_classes = []
+    
+    # Endpoint /cadenas/todos
+    @action(detail=False, methods=['get'], url_path='todos', pagination_class=None)
+    def todos(self, request):
+        queryset = self.filter_queryset(self.get_queryset().filter(activo=True))
+        data = list(queryset.values('id', 'nombre'))
+        return Response(data)
 
 # -------------------- HABITACION --------------------
 class HabitacionViewSet(viewsets.ModelViewSet):
@@ -38,7 +45,12 @@ class HabitacionViewSet(viewsets.ModelViewSet):
 
 # -------------------- HOTEL --------------------
 class HotelViewSet(viewsets.ModelViewSet):
-    queryset = Hotel.objects.select_related("ciudad", "ciudad__pais", "cadena").prefetch_related("habitaciones", "servicios")
+    queryset = (
+        Hotel.objects
+        .select_related("ciudad", "ciudad__pais", "cadena")
+        .prefetch_related("habitaciones", "servicios")
+        .order_by("-fecha_creacion")   # 👈 Orden descendente por fecha de creación
+    )
     serializer_class = HotelSerializer
     pagination_class = HotelPagination
     permission_classes = []
@@ -47,14 +59,18 @@ class HotelViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='resumen')
     def resumen(self, request):
-        total = Hotel.objects.count()
-        activos = Hotel.objects.filter(activo=True).count()
-        inactivos = Hotel.objects.filter(activo=False).count()
-        return Response({
-            'total': total,
-            'total_activos': activos,
-            'total_inactivos': inactivos
-        })
+        total_hoteles = Hotel.objects.count()
+        activos_hoteles = Hotel.objects.filter(activo=True).count()
+        inactivos_hoteles = Hotel.objects.filter(activo=False).count()
+
+        total_cadenas = CadenaHotelera.objects.count()
+
+        return Response([
+            {'texto': 'Total', 'valor': str(total_hoteles)},
+            {'texto': 'Activos', 'valor': str(activos_hoteles)},
+            {'texto': 'Inactivos', 'valor': str(inactivos_hoteles)},
+            {'texto': 'Total Cadenas', 'valor': str(total_cadenas)},
+        ])
 
     @action(detail=False, methods=['get'], url_path='todos', pagination_class=None)
     def todos(self, request):
