@@ -17,12 +17,13 @@ class ServicioSimpleSerializer(serializers.ModelSerializer):
 
 class HabitacionSerializer(serializers.ModelSerializer):
     moneda_nombre = serializers.CharField(source='moneda.nombre', read_only=True)
+    moneda_simbolo = serializers.CharField(source='moneda.simbolo', read_only=True)
 
     class Meta:
         model = Habitacion
         fields = [
             'id', 'hotel', 'numero', 'tipo', 'capacidad',
-            'precio_noche', 'moneda', 'moneda_nombre', 'servicios',
+            'precio_noche', 'moneda', 'moneda_nombre', 'moneda_simbolo', 'servicios',
             'activo', 'fecha_creacion', 'fecha_modificacion'
         ]
         read_only_fields = ['id', 'fecha_creacion', 'fecha_modificacion', 'hotel']
@@ -39,6 +40,7 @@ class HabitacionSerializer(serializers.ModelSerializer):
 class HotelSerializer(serializers.ModelSerializer):
     cadena_nombre = serializers.CharField(source='cadena.nombre', read_only=True)
     ciudad_nombre = serializers.CharField(source='ciudad.nombre', read_only=True)
+    pais_id = serializers.IntegerField(source='ciudad.pais.id', read_only=True)
     pais_nombre = serializers.CharField(source='ciudad.pais.nombre', read_only=True)
     habitaciones = HabitacionSerializer(many=True)
 
@@ -59,7 +61,7 @@ class HotelSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'nombre', 'descripcion', 'activo',
             'estrellas', 'direccion', 'ciudad', 'ciudad_nombre',
-            'pais_nombre', 'cadena', 'cadena_nombre',
+            'pais_id', 'pais_nombre', 'cadena', 'cadena_nombre',
             'servicios',          # ids para escritura
             'servicios_detalle',  # id y nombre para lectura
             'habitaciones',
