@@ -1,9 +1,9 @@
-# apps/ubicaciones/views.py
 from rest_framework import viewsets
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.decorators import action
 from django_filters.rest_framework import DjangoFilterBackend
+from django.db.models import Q
 
 from .models import Ciudad
 from .serializers import CiudadSerializer
@@ -24,13 +24,26 @@ class CiudadPagination(PageNumberPagination):
         })
 
 class CiudadViewSet(viewsets.ModelViewSet):
-    queryset = Ciudad.objects.order_by('-fecha_creacion').all()
     serializer_class = CiudadSerializer
     pagination_class = CiudadPagination
     permission_classes = []
-
     filter_backends = [DjangoFilterBackend]
     filterset_class = CiudadFilter
+
+    def get_queryset(self):
+        """
+        Sobrescribimos el queryset para:
+        - list: devolver solo ciudades activas y que no tengan destino asignado
+        - otros actions: devolver todas las ciudades (ordenadas por fecha de creación)
+        """
+        qs = Ciudad.objects.order_by('-fecha_creacion').all()
+
+        if self.action == 'list':
+            qs = qs.filter(
+                activo=True,
+                destinos__isnull=True  # solo ciudades sin destinos asignados
+            )
+        return qs
 
     @action(detail=False, methods=['get'], url_path='resumen')
     def resumen(self, request):
