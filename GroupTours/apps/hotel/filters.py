@@ -11,6 +11,8 @@ class HotelFilter(django_filters.FilterSet):
     ciudad = django_filters.CharFilter(field_name='ciudad__nombre', lookup_expr='icontains')
     pais = django_filters.CharFilter(field_name='ciudad__pais__nombre', lookup_expr='icontains')
     cadena = django_filters.CharFilter(field_name='cadena__nombre', lookup_expr='icontains')
+    estrellas = django_filters.NumberFilter(field_name='estrellas', lookup_expr='exact')  # NUEVO
+
 
     # Filtro unificado
     busqueda = django_filters.CharFilter(method='filter_busqueda')
@@ -31,7 +33,8 @@ class HotelFilter(django_filters.FilterSet):
         fields = [
             'nombre', 'activo', 'ciudad', 
             'pais', 'cadena', 'busqueda',
-            'fecha_creacion_desde', 'fecha_creacion_hasta'
+            'fecha_creacion_desde', 'fecha_creacion_hasta',
+            'estrellas'
         ]
 
     def filter_fecha_hasta(self, queryset, name, value):

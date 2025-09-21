@@ -23,6 +23,7 @@ class Servicio(models.Model):
     tipo = models.CharField(
         max_length=20,
         choices=TIPO_CHOICES,
+        default='paquete',
         help_text="Define si el servicio es solo para Habitaciones o solo para Paquetes"
     )
 
