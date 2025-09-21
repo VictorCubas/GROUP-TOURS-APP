@@ -28,7 +28,12 @@ class PaquetePagination(PageNumberPagination):
 # -------------------- VIEWSET --------------------
 class PaqueteViewSet(viewsets.ModelViewSet):
     parser_classes = (MultiPartParser, FormParser, JSONParser)
-    queryset = Paquete.objects.select_related("tipo_paquete", "destino", "distribuidora").order_by('-fecha_creacion')
+    queryset = Paquete.objects.select_related(
+                "tipo_paquete", "destino", "distribuidora", "moneda"
+            ).prefetch_related(
+                "servicios",
+                "salidas__moneda"
+            ).order_by('-fecha_creacion')
     serializer_class = PaqueteSerializer
     pagination_class = PaquetePagination
     permission_classes = []
