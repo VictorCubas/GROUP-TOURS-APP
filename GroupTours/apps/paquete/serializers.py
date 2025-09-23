@@ -47,6 +47,8 @@ class DistribuidoraSimpleSerializer(serializers.ModelSerializer):
 
 # ------------------- Serializer de SalidaPaquete -------------------
 class SalidaPaqueteSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(read_only=True)
+    
     moneda_id = serializers.PrimaryKeyRelatedField(
         queryset=Moneda.objects.all(),
         source='moneda',
@@ -68,6 +70,7 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
     class Meta:
         model = SalidaPaquete
         fields = [
+            'id',
             'fecha_salida',
             'moneda',       # lectura nested
             'moneda_id',    # escritura
@@ -77,7 +80,7 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
             'cupo',
             'activo'
         ]
-        read_only_fields = ['moneda', 'temporada']
+        read_only_fields = ['id', 'moneda', 'temporada']
 
     def get_moneda(self, obj):
         return {'id': obj.moneda.id, 'nombre': getattr(obj.moneda, 'nombre', None)} if obj.moneda else None
@@ -262,10 +265,15 @@ class PaqueteSerializer(serializers.ModelSerializer):
         if servicios_data:
             instance.servicios.set(servicios_data)
 
-        # Reemplazamos salidas solo si llegan
         if salidas_data is not None:
-            instance.salidas.all().delete()
+            # Map de salidas existentes
+            salidas_existentes = {s.id: s for s in instance.salidas.all()}
+
+            # IDs de salidas enviadas
+            enviados_ids = []
+
             for salida_data in salidas_data:
+                salida_id = salida_data.get('id')
                 moneda_val = salida_data.pop('moneda', None) or salida_data.pop('moneda_id', None)
                 temporada_val = salida_data.pop('temporada', None) or salida_data.pop('temporada_id', None)
 
@@ -281,12 +289,27 @@ class PaqueteSerializer(serializers.ModelSerializer):
                 if temporada_obj:
                     salida_data['temporada'] = temporada_obj
 
-                salida = SalidaPaquete.objects.create(paquete=instance, **salida_data)
+                if salida_id and salida_id in salidas_existentes:
+                    # Actualiza salida existente
+                    salida = salidas_existentes[salida_id]
+                    for attr, value in salida_data.items():
+                        setattr(salida, attr, value)
+                    salida.save()
+                    enviados_ids.append(salida_id)
+                else:
+                    # Crear nueva salida
+                    salida = SalidaPaquete.objects.create(paquete=instance, **salida_data)
 
+                # Historial de precio
                 HistorialPrecioPaquete.objects.create(
                     salida=salida,
                     precio=salida.precio_actual,
                     vigente=True
                 )
+
+            # Eliminar salidas que no fueron enviadas (opcional)
+            for s_id, salida in salidas_existentes.items():
+                if s_id not in enviados_ids:
+                    salida.delete()
 
         return instance
