@@ -90,6 +90,7 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
 
 
 # ------------------- Serializer de Paquete -------------------
+# ------------------- Serializer de Paquete -------------------
 class PaqueteSerializer(serializers.ModelSerializer):
     tipo_paquete = TipoPaqueteSimpleSerializer(read_only=True)
     destino = DestinoNestedSerializer(read_only=True)
@@ -134,6 +135,12 @@ class PaqueteSerializer(serializers.ModelSerializer):
     # Nested salidas
     salidas = SalidaPaqueteSerializer(many=True, required=False)
 
+    # Campos calculados a partir de la salida vigente
+    fecha_inicio = serializers.SerializerMethodField()
+    fecha_fin = serializers.SerializerMethodField()
+    precio = serializers.SerializerMethodField()
+    sena = serializers.SerializerMethodField()
+
     imagen_url = serializers.SerializerMethodField()
 
     class Meta:
@@ -167,6 +174,23 @@ class PaqueteSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['fecha_creacion', 'fecha_modificacion']
 
+    # -------------------- Campos calculados --------------------
+    def get_fecha_inicio(self, obj):
+        salida = obj.salidas.filter(activo=True).order_by('fecha_salida').first()
+        return salida.fecha_salida if salida else None
+
+    def get_fecha_fin(self, obj):
+        salida = obj.salidas.filter(activo=True).order_by('-fecha_salida').first()
+        return salida.fecha_salida if salida else None
+
+    def get_precio(self, obj):
+        salida = obj.salidas.filter(activo=True).order_by('fecha_salida').first()
+        return salida.precio_actual if salida else None
+
+    def get_sena(self, obj):
+        salida = obj.salidas.filter(activo=True).order_by('fecha_salida').first()
+        return getattr(salida, "sena", None)
+
     def get_imagen_url(self, obj):
         request = self.context.get('request')
         if obj.imagen and hasattr(obj.imagen, 'url'):
@@ -175,10 +199,6 @@ class PaqueteSerializer(serializers.ModelSerializer):
 
     # -------------------- Helpers --------------------
     def _resolve_fk_instance(self, field_name, value, model_class):
-        """
-        Devuelve la instancia del modelo si recibe un id o un dict con id.
-        Retorna None si no encuentra.
-        """
         if value is None:
             return None
         if isinstance(value, model_class):
@@ -190,10 +210,6 @@ class PaqueteSerializer(serializers.ModelSerializer):
             return None
 
     def _get_salidas_from_initial(self):
-        """
-        Recupera 'salidas' desde initial_data cuando usamos multipart/form-data
-        y llega como string JSON.
-        """
         raw = getattr(self, 'initial_data', {}).get('salidas')
         if not raw:
             return []
@@ -213,7 +229,6 @@ class PaqueteSerializer(serializers.ModelSerializer):
         salidas_data = validated_data.pop('salidas', None)
         servicios_data = validated_data.pop('servicios', [])
 
-        # Si no vino en validated_data, intentamos desde initial_data
         if not salidas_data:
             salidas_data = self._get_salidas_from_initial() or []
 
@@ -226,16 +241,12 @@ class PaqueteSerializer(serializers.ModelSerializer):
             moneda_val = salida_data.pop('moneda', None) or salida_data.pop('moneda_id', None)
             temporada_val = salida_data.pop('temporada', None) or salida_data.pop('temporada_id', None)
 
-            # Resolvemos FK obligatorias
             moneda_obj = self._resolve_fk_instance('moneda', moneda_val, Moneda)
             if not moneda_obj:
-                raise serializers.ValidationError({
-                    "salidas": "Cada salida debe incluir un 'moneda_id' válido."
-                })
+                raise serializers.ValidationError({"salidas": "Cada salida debe incluir un 'moneda_id' válido."})
 
             temporada_obj = self._resolve_fk_instance('temporada', temporada_val, Temporada)
 
-            # Insertamos el objeto directamente para que create no falle
             salida_data['moneda'] = moneda_obj
             if temporada_obj:
                 salida_data['temporada'] = temporada_obj
@@ -266,10 +277,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
             instance.servicios.set(servicios_data)
 
         if salidas_data is not None:
-            # Map de salidas existentes
             salidas_existentes = {s.id: s for s in instance.salidas.all()}
-
-            # IDs de salidas enviadas
             enviados_ids = []
 
             for salida_data in salidas_data:
@@ -279,9 +287,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
 
                 moneda_obj = self._resolve_fk_instance('moneda', moneda_val, Moneda)
                 if not moneda_obj:
-                    raise serializers.ValidationError({
-                        "salidas": "Cada salida debe incluir un 'moneda_id' válido."
-                    })
+                    raise serializers.ValidationError({"salidas": "Cada salida debe incluir un 'moneda_id' válido."})
 
                 temporada_obj = self._resolve_fk_instance('temporada', temporada_val, Temporada)
 
@@ -290,17 +296,14 @@ class PaqueteSerializer(serializers.ModelSerializer):
                     salida_data['temporada'] = temporada_obj
 
                 if salida_id and salida_id in salidas_existentes:
-                    # Actualiza salida existente
                     salida = salidas_existentes[salida_id]
                     for attr, value in salida_data.items():
                         setattr(salida, attr, value)
                     salida.save()
                     enviados_ids.append(salida_id)
                 else:
-                    # Crear nueva salida
                     salida = SalidaPaquete.objects.create(paquete=instance, **salida_data)
 
-                # Historial de precio
                 HistorialPrecioPaquete.objects.create(
                     salida=salida,
                     precio=salida.precio_actual,

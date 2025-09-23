@@ -7,8 +7,7 @@ from apps.distribuidora.models import Distribuidora
 from apps.destino.models import Destino
 from apps.moneda.models import Moneda
 from apps.servicio.models import Servicio
-from apps.hotel.models import Habitacion   # Usamos tu modelo de hotel/habitación existente
-
+from apps.hotel.models import Habitacion  # Usamos tu modelo de hotel/habitación existente
 
 # ---------------------------------------------------------------------
 #  PAQUETE
@@ -46,14 +45,6 @@ class Paquete(models.Model):
         help_text="Si es False, debe tener una distribuidora asociada."
     )
 
-    # Estos precios pueden ser referenciales (no obligatorios).
-    precio = models.IntegerField(default=0, help_text="Precio referencial")
-    sena = models.IntegerField(default=0, help_text="Pago inicial o seña referencial")
-
-    # Fechas generales del paquete (pueden abarcar varias salidas)
-    fecha_inicio = models.DateField(null=True, blank=True)
-    fecha_fin = models.DateField(null=True, blank=True)
-
     personalizado = models.BooleanField(
         default=False,
         help_text="Si está marcado, no requiere fechas de salida generales."
@@ -83,11 +74,6 @@ class Paquete(models.Model):
         return self.nombre
 
     def clean(self):
-        if not self.personalizado:
-            if not self.fecha_inicio or not self.fecha_fin:
-                raise ValidationError(
-                    "Las fechas de inicio y fin son requeridas para paquetes no personalizados."
-                )
         if (
             self.tipo_paquete and
             self.tipo_paquete.nombre.lower() == "terrestre" and
@@ -97,7 +83,6 @@ class Paquete(models.Model):
             raise ValidationError(
                 "La cantidad de pasajeros es requerida para paquetes terrestres propios."
             )
-
 
 # ---------------------------------------------------------------------
 #  TEMPORADA
@@ -126,7 +111,6 @@ class Temporada(models.Model):
     def __str__(self):
         return f"{self.nombre} ({self.fecha_inicio} → {self.fecha_fin})"
 
-
 # ---------------------------------------------------------------------
 #  SALIDA DE PAQUETE
 # ---------------------------------------------------------------------
@@ -153,9 +137,7 @@ class SalidaPaquete(models.Model):
         related_name="salidas"
     )
 
-    # Precio vigente
     precio_actual = models.DecimalField(max_digits=12, decimal_places=2)
-
     cupo = models.PositiveIntegerField(default=0, help_text="Cupo total de pasajeros")
     activo = models.BooleanField(default=True)
     fecha_creacion = models.DateTimeField(auto_now_add=True)
@@ -169,7 +151,6 @@ class SalidaPaquete(models.Model):
     def __str__(self):
         return f"{self.paquete.nombre} - {self.fecha_salida}"
 
-    # Método para cambiar precio y mantener historial
     def change_price(self, nuevo_precio):
         precio_actual_vigente = self.historial_precios.filter(vigente=True).first()
         if precio_actual_vigente:
@@ -182,7 +163,6 @@ class SalidaPaquete(models.Model):
         )
         self.precio_actual = nuevo_precio
         self.save()
-
 
 # ---------------------------------------------------------------------
 #  HISTORIAL DE PRECIO DE PAQUETE
@@ -207,7 +187,6 @@ class HistorialPrecioPaquete(models.Model):
 
     def __str__(self):
         return f"{self.salida} - {self.precio}"
-
 
 # ---------------------------------------------------------------------
 #  HISTORIAL DE PRECIO DE HABITACIÓN
