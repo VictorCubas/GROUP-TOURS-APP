@@ -72,12 +72,14 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'fecha_salida',
-            'moneda',       # lectura nested
-            'moneda_id',    # escritura
-            'temporada',    # lectura nested
-            'temporada_id', # escritura
+            'fecha_regreso',   # NUEVO
+            'moneda',       
+            'moneda_id',    
+            'temporada',    
+            'temporada_id',
             'precio_actual',
             'cupo',
+            'senia',          # NUEVO
             'activo'
         ]
         read_only_fields = ['id', 'moneda', 'temporada']
@@ -88,8 +90,6 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
     def get_temporada(self, obj):
         return {'id': obj.temporada.id, 'nombre': getattr(obj.temporada, 'nombre', None)} if obj.temporada else None
 
-
-# ------------------- Serializer de Paquete -------------------
 # ------------------- Serializer de Paquete -------------------
 class PaqueteSerializer(serializers.ModelSerializer):
     tipo_paquete = TipoPaqueteSimpleSerializer(read_only=True)
@@ -139,7 +139,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
     fecha_inicio = serializers.SerializerMethodField()
     fecha_fin = serializers.SerializerMethodField()
     precio = serializers.SerializerMethodField()
-    sena = serializers.SerializerMethodField()
+    senia = serializers.SerializerMethodField()
 
     imagen_url = serializers.SerializerMethodField()
 
@@ -159,7 +159,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
             'servicios',
             'servicios_ids',
             'precio',
-            'sena',
+            'senia',
             'fecha_inicio',
             'fecha_fin',
             'personalizado',
@@ -180,16 +180,16 @@ class PaqueteSerializer(serializers.ModelSerializer):
         return salida.fecha_salida if salida else None
 
     def get_fecha_fin(self, obj):
-        salida = obj.salidas.filter(activo=True).order_by('-fecha_salida').first()
-        return salida.fecha_salida if salida else None
+        salida = obj.salidas.filter(activo=True).order_by('-fecha_regreso').first()
+        return salida.fecha_regreso if salida else None
 
     def get_precio(self, obj):
         salida = obj.salidas.filter(activo=True).order_by('fecha_salida').first()
         return salida.precio_actual if salida else None
 
-    def get_sena(self, obj):
+    def get_senia(self, obj):
         salida = obj.salidas.filter(activo=True).order_by('fecha_salida').first()
-        return getattr(salida, "sena", None)
+        return getattr(salida, "senia", None)
 
     def get_imagen_url(self, obj):
         request = self.context.get('request')

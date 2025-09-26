@@ -125,6 +125,7 @@ class SalidaPaquete(models.Model):
         related_name="salidas"
     )
     fecha_salida = models.DateField()
+    fecha_regreso = models.DateField(null=True, blank=True)  # NUEVO
     temporada = models.ForeignKey(
         Temporada,
         on_delete=models.SET_NULL,
@@ -136,9 +137,12 @@ class SalidaPaquete(models.Model):
         on_delete=models.PROTECT,
         related_name="salidas"
     )
-
     precio_actual = models.DecimalField(max_digits=12, decimal_places=2)
     cupo = models.PositiveIntegerField(default=0, help_text="Cupo total de pasajeros")
+    senia = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text="Monto de la seña del pago"  # NUEVO
+    )
     activo = models.BooleanField(default=True)
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     fecha_modificacion = models.DateTimeField(auto_now=True)
