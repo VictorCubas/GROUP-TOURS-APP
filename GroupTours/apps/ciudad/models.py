@@ -12,6 +12,8 @@ class Ciudad(models.Model):
         unique=True,
         help_text="Nombre de la ciudad, ej: Asunción."
     )
+    
+    #pais
     pais = models.ForeignKey(
         Nacionalidad,
         on_delete=models.PROTECT,
