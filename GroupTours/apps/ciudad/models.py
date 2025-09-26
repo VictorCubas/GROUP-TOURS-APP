@@ -6,6 +6,7 @@ class Ciudad(models.Model):
     """
     Ciudad asociada a un país.
     """
+    #nombre unico
     nombre = models.CharField(
         max_length=150,
         unique=True,
