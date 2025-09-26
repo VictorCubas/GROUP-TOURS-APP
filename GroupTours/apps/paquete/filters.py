@@ -15,7 +15,7 @@ class PaqueteFilter(django_filters.FilterSet):
         lookup_expr="icontains"
     )
     destino = django_filters.CharFilter(
-        field_name="destino__nombre",
+        field_name="destino__ciudad__nombre",
         lookup_expr="icontains"
     )
     propio = django_filters.BooleanFilter(field_name="propio")
@@ -58,8 +58,8 @@ class PaqueteFilter(django_filters.FilterSet):
         """
         return queryset.filter(
             Q(nombre__icontains=value) |
-            Q(destino__nombre__icontains=value) |
-            Q(destino__pais__nombre__icontains=value) |  # 🔹 Agregado: búsqueda por país
+            Q(destino__ciudad__nombre__icontains=value) |       # ✅
+            Q(destino__ciudad__pais__nombre__icontains=value) | # ✅
             Q(tipo_paquete__nombre__icontains=value) |
             Q(distribuidora__nombre__icontains=value)
         )

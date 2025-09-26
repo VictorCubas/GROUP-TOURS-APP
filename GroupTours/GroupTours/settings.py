@@ -103,6 +103,7 @@ INSTALLED_APPS = [
     'apps.hotel',
     'apps.moneda',
     'apps.reserva',
+    'apps.ciudad',
 ]
 
 MIDDLEWARE = [
