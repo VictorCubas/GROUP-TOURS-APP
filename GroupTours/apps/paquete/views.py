@@ -28,7 +28,12 @@ class PaquetePagination(PageNumberPagination):
 # -------------------- VIEWSET --------------------
 class PaqueteViewSet(viewsets.ModelViewSet):
     parser_classes = (MultiPartParser, FormParser, JSONParser)
-    queryset = Paquete.objects.select_related("tipo_paquete", "destino", "distribuidora").order_by('-fecha_creacion')
+    queryset = Paquete.objects.select_related(
+                "tipo_paquete", "destino", "distribuidora", "moneda"
+            ).prefetch_related(
+                "servicios",
+                "salidas__moneda"
+            ).order_by('-fecha_creacion')
     serializer_class = PaqueteSerializer
     pagination_class = PaquetePagination
     permission_classes = []
@@ -59,7 +64,27 @@ class PaqueteViewSet(viewsets.ModelViewSet):
     # ----- ENDPOINT EXTRA: todos -----
     @action(detail=False, methods=['get'], url_path='todos', pagination_class=None)
     def todos(self, request):
-        queryset = self.filter_queryset(
-            self.get_queryset().filter(activo=True)
-        ).values('id', 'nombre')
-        return Response(list(queryset))
+        queryset = (
+            self.filter_queryset(
+                self.get_queryset().filter(activo=True)
+            )
+            .values(
+                'id',
+                'nombre',
+                'destino__ciudad__nombre',
+                'destino__ciudad__pais__nombre'
+            )
+        )
+
+        # Renombrar claves para que sea más legible
+        data = [
+            {
+                "id": item["id"],
+                "nombre": item["nombre"],
+                "destino": item["destino__ciudad__nombre"],
+                "pais": item["destino__ciudad__pais__nombre"],
+            }
+            for item in queryset
+        ]
+
+        return Response(data)
