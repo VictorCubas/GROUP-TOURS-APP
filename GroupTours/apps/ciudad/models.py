@@ -28,5 +28,6 @@ class Ciudad(models.Model):
         db_table = "Ciudad"
         ordering = ["nombre"]
 
+    # metodo de retorno
     def __str__(self):
         return f"{self.nombre} ({self.pais.nombre})"
