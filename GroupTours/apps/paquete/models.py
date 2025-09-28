@@ -1,4 +1,4 @@
-from django.db import models
+from django.db import models, transaction
 from django.core.exceptions import ValidationError
 
 # === Importaciones de tus apps existentes ===
@@ -7,7 +7,7 @@ from apps.distribuidora.models import Distribuidora
 from apps.destino.models import Destino
 from apps.moneda.models import Moneda
 from apps.servicio.models import Servicio
-from apps.hotel.models import Habitacion  # Usamos tu modelo de hotel/habitación existente
+from apps.hotel.models import Hotel, Habitacion  # Importamos también Hotel
 
 # ---------------------------------------------------------------------
 #  PAQUETE
@@ -117,7 +117,8 @@ class Temporada(models.Model):
 class SalidaPaquete(models.Model):
     """
     Representa una salida específica de un paquete en una fecha concreta.
-    Aquí va el precio 'vigente' y la moneda.
+    Aquí se guarda el rango de precios calculado en base a los hoteles
+    y habitaciones asociados.
     """
     paquete = models.ForeignKey(
         Paquete,
@@ -125,7 +126,7 @@ class SalidaPaquete(models.Model):
         related_name="salidas"
     )
     fecha_salida = models.DateField()
-    fecha_regreso = models.DateField(null=True, blank=True)  # NUEVO
+    fecha_regreso = models.DateField(null=True, blank=True)
     temporada = models.ForeignKey(
         Temporada,
         on_delete=models.SET_NULL,
@@ -137,12 +138,31 @@ class SalidaPaquete(models.Model):
         on_delete=models.PROTECT,
         related_name="salidas"
     )
-    precio_actual = models.DecimalField(max_digits=12, decimal_places=2)
+
+    # NUEVO: hoteles disponibles para esta salida
+    hoteles = models.ManyToManyField(
+        Hotel,
+        related_name="salidas_paquete",
+        help_text="Hoteles disponibles para esta salida del paquete"
+    )
+
+    # Rango oficial de precios (calculado en create_salida_paquete)
+    precio_actual = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        help_text="Precio mínimo calculado (por persona, según habitación más económica)"
+    )
+    precio_final = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        null=True, blank=True,
+        help_text="Precio máximo de las habitaciones por cantidad de noches (puede ser nulo)"
+    )
+
     cupo = models.PositiveIntegerField(default=0, help_text="Cupo total de pasajeros")
     senia = models.DecimalField(
         max_digits=12, decimal_places=2, null=True, blank=True,
-        help_text="Monto de la seña del pago"  # NUEVO
+        help_text="Monto de la seña del pago"
     )
+
     activo = models.BooleanField(default=True)
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     fecha_modificacion = models.DateTimeField(auto_now=True)
@@ -221,3 +241,45 @@ class HistorialPrecioHabitacion(models.Model):
 
     def __str__(self):
         return f"{self.habitacion.hotel.nombre} - {self.habitacion.numero} - {self.precio}"
+
+# ---------------------------------------------------------------------
+#  FUNCIÓN DE CREACIÓN DE SALIDA CON CÁLCULO DE RANGO
+# ---------------------------------------------------------------------
+@transaction.atomic
+def create_salida_paquete(data):
+    salida = SalidaPaquete.objects.create(
+        paquete_id=data["paquete_id"],
+        fecha_salida=data["fecha_salida"],
+        fecha_regreso=data.get("fecha_regreso"),
+        moneda_id=data["moneda_id"],
+        cupo=data.get("cupo", 0),
+        senia=data.get("senia"),
+        precio_actual=0,  # temporal, se recalcula abajo
+        precio_final=None  # puede ser nulo inicialmente
+    )
+
+    # Asociar hoteles
+    salida.hoteles.set(data["hoteles_ids"])
+
+    # Calcular cantidad de noches
+    if salida.fecha_regreso:
+        noches = (salida.fecha_regreso - salida.fecha_salida).days
+    else:
+        noches = 1  # si no hay fecha de regreso, consideramos 1 noche
+
+    # Buscar todas las habitaciones activas de los hoteles seleccionados
+    habitaciones = Habitacion.objects.filter(
+        hotel__in=data["hoteles_ids"], activo=True
+    )
+
+    if habitaciones.exists():
+        precios = [h.precio_noche * noches for h in habitaciones]
+        salida.precio_actual = min(precios)  # precio mínimo
+        salida.precio_final = max(precios) if precios else None  # precio máximo, puede ser nulo
+        salida.save(update_fields=["precio_actual", "precio_final"])
+    else:
+        salida.precio_actual = 0
+        salida.precio_final = None
+        salida.save(update_fields=["precio_actual", "precio_final"])
+
+    return salida

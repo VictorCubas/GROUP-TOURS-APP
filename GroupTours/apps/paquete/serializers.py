@@ -1,17 +1,20 @@
 from rest_framework import serializers
-from .models import Paquete, SalidaPaquete, HistorialPrecioPaquete, Temporada
+from .models import (
+    Paquete, SalidaPaquete, HistorialPrecioPaquete,
+    Temporada
+)
 from apps.tipo_paquete.models import TipoPaquete
 from apps.destino.models import Destino
 from apps.distribuidora.models import Distribuidora
 from apps.moneda.models import Moneda
 from apps.servicio.models import Servicio
+from apps.hotel.models import Hotel
 import json
 import logging
 
 logger = logging.getLogger(__name__)
 
-
-# ------------------- Serializers simples / nested -------------------
+# ------------------- Serializers simples -------------------
 class TipoPaqueteSimpleSerializer(serializers.ModelSerializer):
     class Meta:
         model = TipoPaquete
@@ -36,7 +39,7 @@ class DestinoNestedSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Destino
-        fields = ['id', 'ciudad', 'pais']
+        fields = ["id", "ciudad", "pais"]
 
 
 class DistribuidoraSimpleSerializer(serializers.ModelSerializer):
@@ -48,21 +51,32 @@ class DistribuidoraSimpleSerializer(serializers.ModelSerializer):
 # ------------------- Serializer de SalidaPaquete -------------------
 class SalidaPaqueteSerializer(serializers.ModelSerializer):
     id = serializers.IntegerField(read_only=True)
-    
+
     moneda_id = serializers.PrimaryKeyRelatedField(
         queryset=Moneda.objects.all(),
-        source='moneda',
+        source="moneda",
         write_only=True,
         required=False,
         allow_null=False
     )
     temporada_id = serializers.PrimaryKeyRelatedField(
         queryset=Temporada.objects.all(),
-        source='temporada',
+        source="temporada",
         write_only=True,
         required=False,
         allow_null=True
     )
+
+    # ✅ NUEVO: lista de hoteles para escritura
+    hoteles_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Hotel.objects.all(),
+        many=True,
+        write_only=True,
+        source="hoteles",
+        required=False
+    )
+    # ✅ Para lectura mostramos datos básicos del hotel
+    hoteles = serializers.SerializerMethodField(read_only=True)
 
     moneda = serializers.SerializerMethodField(read_only=True)
     temporada = serializers.SerializerMethodField(read_only=True)
@@ -70,25 +84,40 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
     class Meta:
         model = SalidaPaquete
         fields = [
-            'id',
-            'fecha_salida',
-            'fecha_regreso',   # NUEVO
-            'moneda',       
-            'moneda_id',    
-            'temporada',    
-            'temporada_id',
-            'precio_actual',
-            'cupo',
-            'senia',          # NUEVO
-            'activo'
+            "id",
+            "fecha_salida",
+            "fecha_regreso",
+            "moneda",
+            "moneda_id",
+            "temporada",
+            "temporada_id",
+            "precio_actual",
+            "precio_final",
+            "cupo",
+            "senia",
+            "activo",
+            "hoteles",
+            "hoteles_ids",
         ]
-        read_only_fields = ['id', 'moneda', 'temporada']
+        read_only_fields = ["id", "moneda", "temporada", "precio_actual", "precio_final"]
 
     def get_moneda(self, obj):
-        return {'id': obj.moneda.id, 'nombre': getattr(obj.moneda, 'nombre', None)} if obj.moneda else None
+        return (
+            {"id": obj.moneda.id, "nombre": getattr(obj.moneda, "nombre", None)}
+            if obj.moneda
+            else None
+        )
 
     def get_temporada(self, obj):
-        return {'id': obj.temporada.id, 'nombre': getattr(obj.temporada, 'nombre', None)} if obj.temporada else None
+        return (
+            {"id": obj.temporada.id, "nombre": getattr(obj.temporada, "nombre", None)}
+            if obj.temporada
+            else None
+        )
+
+    def get_hoteles(self, obj):
+        return [{"id": h.id, "nombre": h.nombre} for h in obj.hoteles.all()]
+
 
 # ------------------- Serializer de Paquete -------------------
 class PaqueteSerializer(serializers.ModelSerializer):
@@ -102,115 +131,112 @@ class PaqueteSerializer(serializers.ModelSerializer):
     tipo_paquete_id = serializers.PrimaryKeyRelatedField(
         queryset=TipoPaquete.objects.all(),
         write_only=True,
-        source='tipo_paquete',
+        source="tipo_paquete",
         required=False
     )
     destino_id = serializers.PrimaryKeyRelatedField(
         queryset=Destino.objects.all(),
         write_only=True,
-        source='destino',
+        source="destino",
         required=False
     )
     distribuidora_id = serializers.PrimaryKeyRelatedField(
         queryset=Distribuidora.objects.all(),
         write_only=True,
-        source='distribuidora',
+        source="distribuidora",
         allow_null=True,
         required=False
     )
     moneda_id = serializers.PrimaryKeyRelatedField(
         queryset=Moneda.objects.all(),
         write_only=True,
-        source='moneda',
+        source="moneda",
         required=False
     )
     servicios_ids = serializers.PrimaryKeyRelatedField(
         queryset=Servicio.objects.all(),
         many=True,
         write_only=True,
-        source='servicios',
+        source="servicios",
         required=False
     )
 
-    # Nested salidas
     salidas = SalidaPaqueteSerializer(many=True, required=False)
 
-    # Campos calculados a partir de la salida vigente
     fecha_inicio = serializers.SerializerMethodField()
     fecha_fin = serializers.SerializerMethodField()
     precio = serializers.SerializerMethodField()
     senia = serializers.SerializerMethodField()
-
     imagen_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Paquete
         fields = [
-            'id',
-            'nombre',
-            'tipo_paquete',
-            'tipo_paquete_id',
-            'destino',
-            'destino_id',
-            'distribuidora',
-            'distribuidora_id',
-            'moneda',
-            'moneda_id',
-            'servicios',
-            'servicios_ids',
-            'precio',
-            'senia',
-            'fecha_inicio',
-            'fecha_fin',
-            'personalizado',
-            'cantidad_pasajeros',
-            'propio',
-            'activo',
-            'imagen',
-            'imagen_url',
-            'fecha_creacion',
-            'fecha_modificacion',
-            'salidas'
+            "id",
+            "nombre",
+            "tipo_paquete",
+            "tipo_paquete_id",
+            "destino",
+            "destino_id",
+            "distribuidora",
+            "distribuidora_id",
+            "moneda",
+            "moneda_id",
+            "servicios",
+            "servicios_ids",
+            "precio",
+            "senia",
+            "fecha_inicio",
+            "fecha_fin",
+            "personalizado",
+            "cantidad_pasajeros",
+            "propio",
+            "activo",
+            "imagen",
+            "imagen_url",
+            "fecha_creacion",
+            "fecha_modificacion",
+            "salidas",
         ]
-        read_only_fields = ['fecha_creacion', 'fecha_modificacion']
+        read_only_fields = ["fecha_creacion", "fecha_modificacion"]
 
-    # -------------------- Campos calculados --------------------
+    # --------- Campos calculados ---------
     def get_fecha_inicio(self, obj):
-        salida = obj.salidas.filter(activo=True).order_by('fecha_salida').first()
+        salida = obj.salidas.filter(activo=True).order_by("fecha_salida").first()
         return salida.fecha_salida if salida else None
 
     def get_fecha_fin(self, obj):
-        salida = obj.salidas.filter(activo=True).order_by('-fecha_regreso').first()
+        salida = obj.salidas.filter(activo=True).order_by("-fecha_regreso").first()
         return salida.fecha_regreso if salida else None
 
     def get_precio(self, obj):
-        salida = obj.salidas.filter(activo=True).order_by('fecha_salida').first()
+        salida = obj.salidas.filter(activo=True).order_by("fecha_salida").first()
         return salida.precio_actual if salida else None
 
     def get_senia(self, obj):
-        salida = obj.salidas.filter(activo=True).order_by('fecha_salida').first()
+        salida = obj.salidas.filter(activo=True).order_by("fecha_salida").first()
         return getattr(salida, "senia", None)
 
     def get_imagen_url(self, obj):
-        request = self.context.get('request')
-        if obj.imagen and hasattr(obj.imagen, 'url'):
+        request = self.context.get("request")
+        if obj.imagen and hasattr(obj.imagen, "url"):
             return request.build_absolute_uri(obj.imagen.url) if request else obj.imagen.url
         return None
 
-    # -------------------- Helpers --------------------
+    # --------- Helpers ---------
     def _resolve_fk_instance(self, field_name, value, model_class):
         if value is None:
             return None
         if isinstance(value, model_class):
             return value
-        pk = value.get('id') if isinstance(value, dict) else value
+        pk = value.get("id") if isinstance(value, dict) else value
         try:
             return model_class.objects.get(pk=pk)
         except model_class.DoesNotExist:
             return None
 
     def _get_salidas_from_initial(self):
-        raw = getattr(self, 'initial_data', {}).get('salidas')
+        raw = getattr(self, "initial_data", {}).get("salidas")
         if not raw:
             return []
         if isinstance(raw, str):
@@ -224,10 +250,10 @@ class PaqueteSerializer(serializers.ModelSerializer):
             return raw
         return []
 
-    # -------------------- Create & Update --------------------
+    # --------- Create & Update ---------
     def create(self, validated_data):
-        salidas_data = validated_data.pop('salidas', None)
-        servicios_data = validated_data.pop('servicios', [])
+        salidas_data = validated_data.pop("salidas", None)
+        servicios_data = validated_data.pop("servicios", [])
 
         if not salidas_data:
             salidas_data = self._get_salidas_from_initial() or []
@@ -238,37 +264,42 @@ class PaqueteSerializer(serializers.ModelSerializer):
             paquete.servicios.set(servicios_data)
 
         for salida_data in salidas_data:
-            moneda_val = salida_data.pop('moneda', None) or salida_data.pop('moneda_id', None)
-            temporada_val = salida_data.pop('temporada', None) or salida_data.pop('temporada_id', None)
+            hoteles_ids = salida_data.pop("hoteles", [])
+            moneda_val = salida_data.pop("moneda", None) or salida_data.pop("moneda_id", None)
+            temporada_val = salida_data.pop("temporada", None) or salida_data.pop("temporada_id", None)
 
-            moneda_obj = self._resolve_fk_instance('moneda', moneda_val, Moneda)
+            moneda_obj = self._resolve_fk_instance("moneda", moneda_val, Moneda)
             if not moneda_obj:
-                raise serializers.ValidationError({"salidas": "Cada salida debe incluir un 'moneda_id' válido."})
+                raise serializers.ValidationError(
+                    {"salidas": "Cada salida debe incluir un 'moneda_id' válido."}
+                )
 
-            temporada_obj = self._resolve_fk_instance('temporada', temporada_val, Temporada)
+            temporada_obj = self._resolve_fk_instance("temporada", temporada_val, Temporada)
 
-            salida_data['moneda'] = moneda_obj
-            if temporada_obj:
-                salida_data['temporada'] = temporada_obj
-
-            salida = SalidaPaquete.objects.create(paquete=paquete, **salida_data)
+            salida = SalidaPaquete.objects.create(
+                paquete=paquete,
+                moneda=moneda_obj,
+                temporada=temporada_obj,
+                **{k: v for k, v in salida_data.items() if k not in ["hoteles"]}
+            )
+            if hoteles_ids:
+                salida.hoteles.set(hoteles_ids)
 
             HistorialPrecioPaquete.objects.create(
                 salida=salida,
                 precio=salida.precio_actual,
-                vigente=True
+                vigente=True,
             )
 
         return paquete
 
     def update(self, instance, validated_data):
-        salidas_data = validated_data.pop('salidas', None)
-        servicios_data = validated_data.pop('servicios', [])
+        salidas_data = validated_data.pop("salidas", None)
+        servicios_data = validated_data.pop("servicios", [])
 
         if not salidas_data:
             salidas_data = self._get_salidas_from_initial() or []
 
-        # Actualiza campos simples
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
@@ -281,36 +312,46 @@ class PaqueteSerializer(serializers.ModelSerializer):
             enviados_ids = []
 
             for salida_data in salidas_data:
-                salida_id = salida_data.get('id')
-                moneda_val = salida_data.pop('moneda', None) or salida_data.pop('moneda_id', None)
-                temporada_val = salida_data.pop('temporada', None) or salida_data.pop('temporada_id', None)
+                salida_id = salida_data.get("id")
+                hoteles_ids = salida_data.pop("hoteles", [])
+                moneda_val = salida_data.pop("moneda", None) or salida_data.pop("moneda_id", None)
+                temporada_val = salida_data.pop("temporada", None) or salida_data.pop("temporada_id", None)
 
-                moneda_obj = self._resolve_fk_instance('moneda', moneda_val, Moneda)
+                moneda_obj = self._resolve_fk_instance("moneda", moneda_val, Moneda)
                 if not moneda_obj:
-                    raise serializers.ValidationError({"salidas": "Cada salida debe incluir un 'moneda_id' válido."})
+                    raise serializers.ValidationError(
+                        {"salidas": "Cada salida debe incluir un 'moneda_id' válido."}
+                    )
 
-                temporada_obj = self._resolve_fk_instance('temporada', temporada_val, Temporada)
-
-                salida_data['moneda'] = moneda_obj
-                if temporada_obj:
-                    salida_data['temporada'] = temporada_obj
+                temporada_obj = self._resolve_fk_instance("temporada", temporada_val, Temporada)
 
                 if salida_id and salida_id in salidas_existentes:
                     salida = salidas_existentes[salida_id]
                     for attr, value in salida_data.items():
                         setattr(salida, attr, value)
+                    salida.moneda = moneda_obj
+                    salida.temporada = temporada_obj
                     salida.save()
+                    if hoteles_ids:
+                        salida.hoteles.set(hoteles_ids)
                     enviados_ids.append(salida_id)
                 else:
-                    salida = SalidaPaquete.objects.create(paquete=instance, **salida_data)
+                    salida = SalidaPaquete.objects.create(
+                        paquete=instance,
+                        moneda=moneda_obj,
+                        temporada=temporada_obj,
+                        **{k: v for k, v in salida_data.items() if k not in ["hoteles"]}
+                    )
+                    if hoteles_ids:
+                        salida.hoteles.set(hoteles_ids)
 
                 HistorialPrecioPaquete.objects.create(
                     salida=salida,
                     precio=salida.precio_actual,
-                    vigente=True
+                    vigente=True,
                 )
 
-            # Eliminar salidas que no fueron enviadas (opcional)
+            # Opcional: eliminar salidas no enviadas
             for s_id, salida in salidas_existentes.items():
                 if s_id not in enviados_ids:
                     salida.delete()
