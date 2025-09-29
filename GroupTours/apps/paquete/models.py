@@ -157,7 +157,7 @@ class SalidaPaquete(models.Model):
         help_text="Precio máximo de las habitaciones por cantidad de noches (puede ser nulo)"
     )
 
-    cupo = models.PositiveIntegerField(default=0, help_text="Cupo total de pasajeros")
+    cupo = models.PositiveIntegerField(default=0, help_text="Cupo total de pasajeros", null=True, blank=True)
     senia = models.DecimalField(
         max_digits=12, decimal_places=2, null=True, blank=True,
         help_text="Monto de la seña del pago"
