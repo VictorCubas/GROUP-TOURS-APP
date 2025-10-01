@@ -23,6 +23,25 @@ class Paquete(models.Model):
     tipo_paquete = models.ForeignKey(
         TipoPaquete, on_delete=models.PROTECT, related_name="paquetes"
     )
+    
+    FLEXIBLE = 'flexible'
+    FIJO = 'fijo'
+    TIPO_SELECCION = [
+        (FLEXIBLE, 'Flexible'),
+        (FIJO, 'Fijo'),
+    ]
+
+    modalidad = models.CharField(
+        max_length=10,
+        choices=TIPO_SELECCION,
+        default=FLEXIBLE,
+        help_text=(
+            "Define si el paquete es 'flexible' (varios hoteles/rooms a elegir) "
+            "o 'fijo' (hotel y habitación predefinidos)."
+        )
+    )
+    
+    
     distribuidora = models.ForeignKey(
         Distribuidora, on_delete=models.PROTECT,
         null=True, blank=True, related_name="paquetes"
@@ -127,6 +146,7 @@ class SalidaPaquete(models.Model):
     )
     fecha_salida = models.DateField()
     fecha_regreso = models.DateField(null=True, blank=True)
+    
     temporada = models.ForeignKey(
         Temporada,
         on_delete=models.SET_NULL,
@@ -144,6 +164,14 @@ class SalidaPaquete(models.Model):
         Hotel,
         related_name="salidas_paquete",
         help_text="Hoteles disponibles para esta salida del paquete"
+    )
+    
+    habitacion_fija = models.ForeignKey(
+        Habitacion,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="salidas_fijas",
+        help_text="Sólo para paquetes fijos: la habitación concreta de esta salida."
     )
 
     # Rango oficial de precios (calculado en create_salida_paquete)

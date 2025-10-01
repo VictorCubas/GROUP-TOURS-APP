@@ -10,35 +10,49 @@ from .filters import PaqueteFilter
 
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
+
 # -------------------- PAGINACIÓN --------------------
 class PaquetePagination(PageNumberPagination):
     page_size = 5
-    page_size_query_param = 'page_size'
+    page_size_query_param = "page_size"
 
     def get_paginated_response(self, data):
         return Response({
-            'totalItems': self.page.paginator.count,
-            'pageSize': self.get_page_size(self.request),
-            'totalPages': self.page.paginator.num_pages,
-            'next': self.get_next_link(),
-            'previous': self.get_previous_link(),
-            'results': data
+            "totalItems": self.page.paginator.count,
+            "pageSize": self.get_page_size(self.request),
+            "totalPages": self.page.paginator.num_pages,
+            "next": self.get_next_link(),
+            "previous": self.get_previous_link(),
+            "results": data,
         })
+
 
 # -------------------- VIEWSET --------------------
 class PaqueteViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet para Paquete con soporte de:
+    - Subida de imagen (MultiPartParser / FormData)
+    - Filtrado por DjangoFilterBackend (incluye modalidad y habitacion_fija)
+    - Paginación personalizada
+    - Endpoints extra: resumen y todos
+    """
     parser_classes = (MultiPartParser, FormParser, JSONParser)
-    queryset = Paquete.objects.select_related(
-                "tipo_paquete", "destino", "distribuidora", "moneda"
-            ).prefetch_related(
-                "servicios",
-                "salidas__moneda"
-            ).order_by('-fecha_creacion')
+    queryset = (
+        Paquete.objects.select_related(
+            "tipo_paquete", "destino", "distribuidora", "moneda"
+        )
+        .prefetch_related(
+            "servicios",
+            "salidas__moneda",
+            "salidas__hoteles",
+        )
+        .order_by("-fecha_creacion")
+    )
     serializer_class = PaqueteSerializer
     pagination_class = PaquetePagination
     permission_classes = []
     filter_backends = [DjangoFilterBackend]
-    filterset_class = PaqueteFilter
+    filterset_class = PaqueteFilter  # ➜ asegúrate que el filter incluya modalidad y habitacion_fija
 
     # ----- ENDPOINT EXTRA: resumen -----
     @action(detail=False, methods=['get'], url_path='resumen')
@@ -62,29 +76,34 @@ class PaqueteViewSet(viewsets.ModelViewSet):
         return Response(data)
 
     # ----- ENDPOINT EXTRA: todos -----
-    @action(detail=False, methods=['get'], url_path='todos', pagination_class=None)
+    @action(detail=False, methods=["get"], url_path="todos", pagination_class=None)
     def todos(self, request):
+        """
+        Devuelve todos los paquetes activos con datos mínimos para combos o selects.
+        """
         queryset = (
             self.filter_queryset(
                 self.get_queryset().filter(activo=True)
             )
             .values(
-                'id',
-                'nombre',
-                'destino__ciudad__nombre',
-                'destino__ciudad__pais__nombre'
+                "id",
+                "nombre",
+                "destino__ciudad__nombre",
+                "destino__ciudad__pais__nombre",
+                "modalidad",
+                "habitacion_fija",
             )
         )
 
-        # Renombrar claves para que sea más legible
         data = [
             {
                 "id": item["id"],
                 "nombre": item["nombre"],
                 "destino": item["destino__ciudad__nombre"],
                 "pais": item["destino__ciudad__pais__nombre"],
+                "modalidad": item["modalidad"],
+                "habitacion_fija": item["habitacion_fija"],
             }
             for item in queryset
         ]
-
         return Response(data)

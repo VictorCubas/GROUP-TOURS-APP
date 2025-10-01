@@ -1,20 +1,21 @@
 from rest_framework import serializers
 from .models import (
-    Paquete, SalidaPaquete, HistorialPrecioPaquete,
-    Temporada
+    Paquete, SalidaPaquete, HistorialPrecioPaquete, Temporada
 )
 from apps.tipo_paquete.models import TipoPaquete
 from apps.destino.models import Destino
 from apps.distribuidora.models import Distribuidora
 from apps.moneda.models import Moneda
 from apps.servicio.models import Servicio
-from apps.hotel.models import Hotel
+from apps.hotel.models import Hotel, Habitacion   # ✅ NUEVO para habitacion_fija
 import json
 import logging
 
 logger = logging.getLogger(__name__)
 
-# ------------------- Serializers simples -------------------
+# ---------------------------------------------------------------------
+# Serializers simples
+# ---------------------------------------------------------------------
 class TipoPaqueteSimpleSerializer(serializers.ModelSerializer):
     class Meta:
         model = TipoPaquete
@@ -48,7 +49,9 @@ class DistribuidoraSimpleSerializer(serializers.ModelSerializer):
         fields = ["id", "nombre"]
 
 
-# ------------------- Serializer de SalidaPaquete -------------------
+# ---------------------------------------------------------------------
+# SalidaPaquete Serializer
+# ---------------------------------------------------------------------
 class SalidaPaqueteSerializer(serializers.ModelSerializer):
     id = serializers.IntegerField(read_only=True)
 
@@ -67,7 +70,7 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
         allow_null=True
     )
 
-    # ✅ NUEVO: lista de hoteles para escritura
+    # Hoteles (M2M)
     hoteles_ids = serializers.PrimaryKeyRelatedField(
         queryset=Hotel.objects.all(),
         many=True,
@@ -75,8 +78,17 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
         source="hoteles",
         required=False
     )
-    # ✅ Para lectura mostramos datos básicos del hotel
     hoteles = serializers.SerializerMethodField(read_only=True)
+
+    # ✅ NUEVO: habitacion fija (solo si el paquete es modalidad 'fijo')
+    habitacion_fija_id = serializers.PrimaryKeyRelatedField(
+        queryset=Habitacion.objects.all(),
+        source="habitacion_fija",
+        write_only=True,
+        required=False,
+        allow_null=True
+    )
+    habitacion_fija = serializers.SerializerMethodField(read_only=True)
 
     moneda = serializers.SerializerMethodField(read_only=True)
     temporada = serializers.SerializerMethodField(read_only=True)
@@ -98,28 +110,42 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
             "activo",
             "hoteles",
             "hoteles_ids",
+            "habitacion_fija",
+            "habitacion_fija_id",   # ✅ NUEVO
         ]
-        read_only_fields = ["id", "moneda", "temporada", "precio_actual", "precio_final"]
+        read_only_fields = [
+            "id", "moneda", "temporada", "precio_actual", "precio_final", "habitacion_fija"
+        ]
 
     def get_moneda(self, obj):
         return (
             {"id": obj.moneda.id, "nombre": getattr(obj.moneda, "nombre", None)}
-            if obj.moneda
-            else None
+            if obj.moneda else None
         )
 
     def get_temporada(self, obj):
         return (
             {"id": obj.temporada.id, "nombre": getattr(obj.temporada, "nombre", None)}
-            if obj.temporada
-            else None
+            if obj.temporada else None
         )
 
     def get_hoteles(self, obj):
         return [{"id": h.id, "nombre": h.nombre} for h in obj.hoteles.all()]
 
+    def get_habitacion_fija(self, obj):
+        return (
+            {
+                "id": obj.habitacion_fija.id,
+                "hotel": obj.habitacion_fija.hotel.nombre,
+                "tipo": obj.habitacion_fija.tipo,
+            }
+            if obj.habitacion_fija else None
+        )
 
-# ------------------- Serializer de Paquete -------------------
+
+# ---------------------------------------------------------------------
+# Paquete Serializer
+# ---------------------------------------------------------------------
 class PaqueteSerializer(serializers.ModelSerializer):
     tipo_paquete = TipoPaqueteSimpleSerializer(read_only=True)
     destino = DestinoNestedSerializer(read_only=True)
@@ -129,35 +155,27 @@ class PaqueteSerializer(serializers.ModelSerializer):
 
     # Escritura por ID
     tipo_paquete_id = serializers.PrimaryKeyRelatedField(
-        queryset=TipoPaquete.objects.all(),
-        write_only=True,
-        source="tipo_paquete",
-        required=False
+        queryset=TipoPaquete.objects.all(), write_only=True, source="tipo_paquete"
     )
     destino_id = serializers.PrimaryKeyRelatedField(
-        queryset=Destino.objects.all(),
-        write_only=True,
-        source="destino",
-        required=False
+        queryset=Destino.objects.all(), write_only=True, source="destino"
     )
     distribuidora_id = serializers.PrimaryKeyRelatedField(
         queryset=Distribuidora.objects.all(),
-        write_only=True,
-        source="distribuidora",
-        allow_null=True,
-        required=False
+        write_only=True, source="distribuidora", allow_null=True, required=False
     )
     moneda_id = serializers.PrimaryKeyRelatedField(
-        queryset=Moneda.objects.all(),
-        write_only=True,
-        source="moneda",
-        required=False
+        queryset=Moneda.objects.all(), write_only=True, source="moneda", required=False
     )
     servicios_ids = serializers.PrimaryKeyRelatedField(
         queryset=Servicio.objects.all(),
-        many=True,
-        write_only=True,
-        source="servicios",
+        many=True, write_only=True, source="servicios", required=False
+    )
+
+    # ✅ NUEVO: modalidad de paquete
+    modalidad = serializers.ChoiceField(
+        choices=Paquete.TIPO_SELECCION,
+        default=Paquete.FLEXIBLE,
         required=False
     )
 
@@ -184,6 +202,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
             "moneda_id",
             "servicios",
             "servicios_ids",
+            "modalidad",        # ✅ NUEVO
             "precio",
             "senia",
             "fecha_inicio",
@@ -267,6 +286,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
             hoteles_ids = salida_data.pop("hoteles", [])
             moneda_val = salida_data.pop("moneda", None) or salida_data.pop("moneda_id", None)
             temporada_val = salida_data.pop("temporada", None) or salida_data.pop("temporada_id", None)
+            habitacion_fija_val = salida_data.pop("habitacion_fija", None) or salida_data.pop("habitacion_fija_id", None)
 
             moneda_obj = self._resolve_fk_instance("moneda", moneda_val, Moneda)
             if not moneda_obj:
@@ -275,11 +295,13 @@ class PaqueteSerializer(serializers.ModelSerializer):
                 )
 
             temporada_obj = self._resolve_fk_instance("temporada", temporada_val, Temporada)
+            habitacion_obj = self._resolve_fk_instance("habitacion_fija", habitacion_fija_val, Habitacion)
 
             salida = SalidaPaquete.objects.create(
                 paquete=paquete,
                 moneda=moneda_obj,
                 temporada=temporada_obj,
+                habitacion_fija=habitacion_obj,
                 **{k: v for k, v in salida_data.items() if k not in ["hoteles"]}
             )
             if hoteles_ids:
@@ -316,6 +338,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
                 hoteles_ids = salida_data.pop("hoteles", [])
                 moneda_val = salida_data.pop("moneda", None) or salida_data.pop("moneda_id", None)
                 temporada_val = salida_data.pop("temporada", None) or salida_data.pop("temporada_id", None)
+                habitacion_fija_val = salida_data.pop("habitacion_fija", None) or salida_data.pop("habitacion_fija_id", None)
 
                 moneda_obj = self._resolve_fk_instance("moneda", moneda_val, Moneda)
                 if not moneda_obj:
@@ -324,6 +347,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
                     )
 
                 temporada_obj = self._resolve_fk_instance("temporada", temporada_val, Temporada)
+                habitacion_obj = self._resolve_fk_instance("habitacion_fija", habitacion_fija_val, Habitacion)
 
                 if salida_id and salida_id in salidas_existentes:
                     salida = salidas_existentes[salida_id]
@@ -331,6 +355,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
                         setattr(salida, attr, value)
                     salida.moneda = moneda_obj
                     salida.temporada = temporada_obj
+                    salida.habitacion_fija = habitacion_obj
                     salida.save()
                     if hoteles_ids:
                         salida.hoteles.set(hoteles_ids)
@@ -340,6 +365,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
                         paquete=instance,
                         moneda=moneda_obj,
                         temporada=temporada_obj,
+                        habitacion_fija=habitacion_obj,
                         **{k: v for k, v in salida_data.items() if k not in ["hoteles"]}
                     )
                     if hoteles_ids:
@@ -351,7 +377,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
                     vigente=True,
                 )
 
-            # Opcional: eliminar salidas no enviadas
+            # Eliminar salidas no enviadas
             for s_id, salida in salidas_existentes.items():
                 if s_id not in enviados_ids:
                     salida.delete()
