@@ -76,34 +76,29 @@ class PaqueteViewSet(viewsets.ModelViewSet):
         return Response(data)
 
     # ----- ENDPOINT EXTRA: todos -----
-    @action(detail=False, methods=["get"], url_path="todos", pagination_class=None)
+    @action(detail=False, methods=['get'], url_path='todos', pagination_class=None)
     def todos(self, request):
-        """
-        Devuelve todos los paquetes activos con datos mínimos para combos o selects.
-        """
         queryset = (
             self.filter_queryset(
                 self.get_queryset().filter(activo=True)
             )
             .values(
-                "id",
-                "nombre",
-                "destino__ciudad__nombre",
-                "destino__ciudad__pais__nombre",
-                "modalidad",
-                "habitacion_fija",
+                'id',
+                'nombre',
+                'destino__ciudad__nombre',
+                'destino__ciudad__pais__nombre'
             )
         )
 
+        # Renombrar claves para que sea más legible
         data = [
             {
                 "id": item["id"],
                 "nombre": item["nombre"],
                 "destino": item["destino__ciudad__nombre"],
                 "pais": item["destino__ciudad__pais__nombre"],
-                "modalidad": item["modalidad"],
-                "habitacion_fija": item["habitacion_fija"],
             }
             for item in queryset
         ]
+
         return Response(data)
