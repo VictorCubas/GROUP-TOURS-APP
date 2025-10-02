@@ -171,8 +171,25 @@ class PaqueteSerializer(serializers.ModelSerializer):
     )
     servicios_ids = serializers.PrimaryKeyRelatedField(
         queryset=Servicio.objects.all(),
-        many=True, write_only=True, source="servicios", required=False
+        many=True, write_only=True, source="servicios", required=False, allow_empty=True
     )
+    
+    def to_internal_value(self, data):
+        data = data.copy()
+
+        # Si viene como string → intentar parsear
+        servicios_raw = data.get("servicios_ids")
+        if isinstance(servicios_raw, str):
+            try:
+                parsed = json.loads(servicios_raw)
+                if isinstance(parsed, list):
+                    data.setlist("servicios_ids", parsed)  # for QueryDict de form-data
+            except Exception:
+                # Si falla, dejamos pasar y DRF se encargará de marcar error
+                pass
+
+        return super().to_internal_value(data)
+
 
     modalidad = serializers.ChoiceField(
         choices=Paquete.TIPO_SELECCION,
@@ -272,17 +289,21 @@ class PaqueteSerializer(serializers.ModelSerializer):
 
     # --------- Create & Update ---------
     def create(self, validated_data):
-        salidas_data = validated_data.pop("salidas", None)
+        # Extraemos servicios y salidas
         servicios_data = validated_data.pop("servicios", [])
+        salidas_data = validated_data.pop("salidas", None)
 
+        # Si no vienen salidas, intentar obtenerlas del initial_data
         if not salidas_data:
             salidas_data = self._get_salidas_from_initial() or []
 
+        # Creamos el paquete
         paquete = Paquete.objects.create(**validated_data)
 
-        if servicios_data:
-            paquete.servicios.set(servicios_data)
+        # Asignamos servicios (lista vacía limpia la relación)
+        paquete.servicios.set(servicios_data)
 
+        # Creamos las salidas asociadas
         for salida_data in salidas_data:
             hoteles_ids = salida_data.pop("hoteles", [])
             moneda_val = salida_data.pop("moneda", None) or salida_data.pop("moneda_id", None)
@@ -291,9 +312,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
 
             moneda_obj = self._resolve_fk_instance("moneda", moneda_val, Moneda)
             if not moneda_obj:
-                raise serializers.ValidationError(
-                    {"salidas": "Cada salida debe incluir un 'moneda_id' válido."}
-                )
+                raise serializers.ValidationError({"salidas": "Cada salida debe incluir un 'moneda_id' válido."})
 
             temporada_obj = self._resolve_fk_instance("temporada", temporada_val, Temporada)
             habitacion_obj = self._resolve_fk_instance("habitacion_fija", habitacion_fija_val, Habitacion)
@@ -308,9 +327,10 @@ class PaqueteSerializer(serializers.ModelSerializer):
             if hoteles_ids:
                 salida.hoteles.set(hoteles_ids)
 
-            # 🔹 calcular precios sugeridos
+            # Calcular precios sugeridos
             salida.calcular_precio_venta()
 
+            # Crear historial de precios
             HistorialPrecioPaquete.objects.create(
                 salida=salida,
                 precio=salida.precio_actual,
@@ -320,19 +340,24 @@ class PaqueteSerializer(serializers.ModelSerializer):
         return paquete
 
     def update(self, instance, validated_data):
+        # Extraemos servicios y salidas
+        servicios_data = validated_data.pop("servicios", None)
         salidas_data = validated_data.pop("salidas", None)
-        servicios_data = validated_data.pop("servicios", [])
 
+        # Si no vienen salidas, intentar obtenerlas del initial_data
         if not salidas_data:
             salidas_data = self._get_salidas_from_initial() or []
 
+        # Actualizamos los campos simples del paquete
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
 
-        if servicios_data:
+        # Actualizamos servicios: si viene lista vacía limpia la relación
+        if servicios_data is not None:
             instance.servicios.set(servicios_data)
 
+        # Actualizamos o creamos salidas
         if salidas_data is not None:
             salidas_existentes = {s.id: s for s in instance.salidas.all()}
             enviados_ids = []
@@ -346,14 +371,13 @@ class PaqueteSerializer(serializers.ModelSerializer):
 
                 moneda_obj = self._resolve_fk_instance("moneda", moneda_val, Moneda)
                 if not moneda_obj:
-                    raise serializers.ValidationError(
-                        {"salidas": "Cada salida debe incluir un 'moneda_id' válido."}
-                    )
+                    raise serializers.ValidationError({"salidas": "Cada salida debe incluir un 'moneda_id' válido."})
 
                 temporada_obj = self._resolve_fk_instance("temporada", temporada_val, Temporada)
                 habitacion_obj = self._resolve_fk_instance("habitacion_fija", habitacion_fija_val, Habitacion)
 
                 if salida_id and salida_id in salidas_existentes:
+                    # Actualizamos salida existente
                     salida = salidas_existentes[salida_id]
                     for attr, value in salida_data.items():
                         setattr(salida, attr, value)
@@ -365,6 +389,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
                         salida.hoteles.set(hoteles_ids)
                     enviados_ids.append(salida_id)
                 else:
+                    # Creamos nueva salida
                     salida = SalidaPaquete.objects.create(
                         paquete=instance,
                         moneda=moneda_obj,
@@ -375,15 +400,17 @@ class PaqueteSerializer(serializers.ModelSerializer):
                     if hoteles_ids:
                         salida.hoteles.set(hoteles_ids)
 
-                # 🔹 recalcular precios sugeridos
+                # Recalcular precios sugeridos
                 salida.calcular_precio_venta()
 
+                # Crear historial de precios
                 HistorialPrecioPaquete.objects.create(
                     salida=salida,
                     precio=salida.precio_actual,
                     vigente=True,
                 )
 
+            # Borrar salidas que no se enviaron
             for s_id, salida in salidas_existentes.items():
                 if s_id not in enviados_ids:
                     salida.delete()
