@@ -81,7 +81,7 @@ class Habitacion(models.Model):
     numero = models.CharField(max_length=20)
     tipo = models.CharField(max_length=20, choices=TIPO_CHOICES)
     capacidad = models.PositiveSmallIntegerField(default=1)
-    precio_noche = models.DecimalField(max_digits=10, decimal_places=2)
+    precio_noche = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True )
     moneda = models.ForeignKey(Moneda, on_delete=models.PROTECT, related_name="habitaciones")
     servicios = models.ManyToManyField(Servicio, blank=True, related_name="habitaciones")
     activo = models.BooleanField(default=True)

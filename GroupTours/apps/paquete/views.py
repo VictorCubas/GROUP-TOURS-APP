@@ -10,51 +10,61 @@ from .filters import PaqueteFilter
 
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
+
 # -------------------- PAGINACIÓN --------------------
 class PaquetePagination(PageNumberPagination):
     page_size = 5
-    page_size_query_param = 'page_size'
+    page_size_query_param = "page_size"
 
     def get_paginated_response(self, data):
         return Response({
-            'totalItems': self.page.paginator.count,
-            'pageSize': self.get_page_size(self.request),
-            'totalPages': self.page.paginator.num_pages,
-            'next': self.get_next_link(),
-            'previous': self.get_previous_link(),
-            'results': data
+            "totalItems": self.page.paginator.count,
+            "pageSize": self.get_page_size(self.request),
+            "totalPages": self.page.paginator.num_pages,
+            "next": self.get_next_link(),
+            "previous": self.get_previous_link(),
+            "results": data,
         })
+
 
 # -------------------- VIEWSET --------------------
 class PaqueteViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet para Paquete con soporte de:
+    - Subida de imagen (MultiPartParser / FormData)
+    - Filtrado por DjangoFilterBackend (incluye modalidad y habitacion_fija)
+    - Paginación personalizada
+    - Endpoints extra: resumen y todos
+    """
     parser_classes = (MultiPartParser, FormParser, JSONParser)
-    queryset = Paquete.objects.select_related(
-                "tipo_paquete", "destino", "distribuidora", "moneda"
-            ).prefetch_related(
-                "servicios",
-                "salidas__moneda"
-            ).order_by('-fecha_creacion')
+    queryset = (
+        Paquete.objects.select_related(
+            "tipo_paquete", "destino", "distribuidora", "moneda"
+        )
+        .prefetch_related(
+            "servicios",
+            "salidas__moneda",
+            "salidas__hoteles",
+        )
+        .order_by("-fecha_creacion")
+    )
     serializer_class = PaqueteSerializer
     pagination_class = PaquetePagination
     permission_classes = []
     filter_backends = [DjangoFilterBackend]
-    filterset_class = PaqueteFilter
+    filterset_class = PaqueteFilter  # ➜ incluye modalidad y habitacion_fija
 
     # ----- ENDPOINT EXTRA: resumen -----
     @action(detail=False, methods=['get'], url_path='resumen')
     def resumen(self, request):
         total = Paquete.objects.count()
         activos = Paquete.objects.filter(activo=True).count()
-        inactivos = Paquete.objects.filter(activo=False).count()
         propios = Paquete.objects.filter(propio=True).count()
         de_distribuidora = Paquete.objects.filter(propio=False).count()
-        
-        
-        # --- Formatear respuesta como lista de objetos ---
+
         data = [
             {'texto': 'Total', 'valor': str(total)},
             {'texto': 'Activos', 'valor': str(activos)},
-            # {'texto': 'Inactivos', 'valor': str(inactivos)},
             {'texto': 'Propios', 'valor': str(propios)},
             {'texto': 'Distribuidora', 'valor': str(de_distribuidora)},
         ]
@@ -76,7 +86,6 @@ class PaqueteViewSet(viewsets.ModelViewSet):
             )
         )
 
-        # Renombrar claves para que sea más legible
         data = [
             {
                 "id": item["id"],
