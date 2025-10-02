@@ -8,7 +8,18 @@ from apps.destino.models import Destino
 from apps.moneda.models import Moneda
 from apps.servicio.models import Servicio
 from apps.hotel.models import Hotel, Habitacion  # Importamos también Hotel
+from decimal import Decimal, InvalidOperation
 
+def _to_decimal(value):
+    """Convierte strings/números a Decimal de forma segura"""
+    if value is None:
+        return Decimal("0")
+    try:
+        # soporta valores con coma decimal "12,5" o con punto "12.5"
+        return Decimal(str(value).replace(",", "."))
+    except (InvalidOperation, ValueError, TypeError):
+        return Decimal("0")
+    
 # ---------------------------------------------------------------------
 #  PAQUETE
 # ---------------------------------------------------------------------
@@ -40,7 +51,6 @@ class Paquete(models.Model):
             "o 'fijo' (hotel y habitación predefinidos)."
         )
     )
-    
     
     distribuidora = models.ForeignKey(
         Distribuidora, on_delete=models.PROTECT,
@@ -136,8 +146,8 @@ class Temporada(models.Model):
 class SalidaPaquete(models.Model):
     """
     Representa una salida específica de un paquete en una fecha concreta.
-    Aquí se guarda el rango de precios calculado en base a los hoteles
-    y habitaciones asociados.
+    Maneja precios base (precio_actual, precio_final) y los precios de
+    venta sugeridos aplicando ganancia o comisión.
     """
     paquete = models.ForeignKey(
         Paquete,
@@ -159,7 +169,6 @@ class SalidaPaquete(models.Model):
         related_name="salidas"
     )
 
-    # NUEVO: hoteles disponibles para esta salida
     hoteles = models.ManyToManyField(
         Hotel,
         related_name="salidas_paquete",
@@ -174,15 +183,35 @@ class SalidaPaquete(models.Model):
         help_text="Sólo para paquetes fijos: la habitación concreta de esta salida."
     )
 
-    # Rango oficial de precios (calculado en create_salida_paquete)
+    # Precios base
     precio_actual = models.DecimalField(
         max_digits=12, decimal_places=2,
-        help_text="Precio mínimo calculado (por persona, según habitación más económica)"
+        help_text="Precio mínimo calculado (por persona, base sin comisión/ganancia)"
     )
     precio_final = models.DecimalField(
         max_digits=12, decimal_places=2,
         null=True, blank=True,
-        help_text="Precio máximo de las habitaciones por cantidad de noches (puede ser nulo)"
+        help_text="Precio máximo calculado (puede ser nulo)"
+    )
+
+    # Ajustes económicos
+    ganancia = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text="Ganancia % aplicada si el paquete es propio"
+    )
+    comision = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text="Comisión % aplicada si el paquete es de distribuidora"
+    )
+
+    # Precios sugeridos
+    precio_venta_sugerido_min = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text="Precio de venta sugerido mínimo"
+    )
+    precio_venta_sugerido_max = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text="Precio de venta sugerido máximo"
     )
 
     cupo = models.PositiveIntegerField(default=0, help_text="Cupo total de pasajeros", null=True, blank=True)
@@ -203,6 +232,33 @@ class SalidaPaquete(models.Model):
     def __str__(self):
         return f"{self.paquete.nombre} - {self.fecha_salida}"
 
+    def calcular_precio_venta(self):
+        """
+        Calcula y actualiza los precios de venta sugeridos según:
+        - Si paquete.propio => aplica ganancia %
+        - Si es distribuidora => aplica comisión %
+        """
+        # ✅ Aseguramos que todos los valores sean Decimals
+        min_base = _to_decimal(self.precio_actual)
+        max_base = _to_decimal(self.precio_final) or min_base
+
+        ganancia = _to_decimal(self.ganancia)
+        comision = _to_decimal(self.comision)
+
+        # ✅ Determinamos factor según tipo de paquete
+        if self.paquete.propio and ganancia > 0:
+            factor = Decimal("1") + (ganancia / Decimal("100"))
+        elif not self.paquete.propio and comision > 0:
+            factor = Decimal("1") + (comision / Decimal("100"))
+        else:
+            factor = Decimal("1")
+
+        # ✅ Calculamos y guardamos sugeridos
+        self.precio_venta_sugerido_min = min_base * factor
+        self.precio_venta_sugerido_max = max_base * factor
+
+        self.save(update_fields=["precio_venta_sugerido_min", "precio_venta_sugerido_max"])
+
     def change_price(self, nuevo_precio):
         precio_actual_vigente = self.historial_precios.filter(vigente=True).first()
         if precio_actual_vigente:
@@ -220,9 +276,6 @@ class SalidaPaquete(models.Model):
 #  HISTORIAL DE PRECIO DE PAQUETE
 # ---------------------------------------------------------------------
 class HistorialPrecioPaquete(models.Model):
-    """
-    Registra todos los cambios de precio para una salida concreta.
-    """
     salida = models.ForeignKey(
         SalidaPaquete,
         on_delete=models.CASCADE,
@@ -244,10 +297,6 @@ class HistorialPrecioPaquete(models.Model):
 #  HISTORIAL DE PRECIO DE HABITACIÓN
 # ---------------------------------------------------------------------
 class HistorialPrecioHabitacion(models.Model):
-    """
-    Permite llevar un control histórico de precios de habitaciones
-    de hotel vinculadas a un paquete/salida.
-    """
     habitacion = models.ForeignKey(
         Habitacion,
         on_delete=models.CASCADE,
@@ -282,32 +331,35 @@ def create_salida_paquete(data):
         moneda_id=data["moneda_id"],
         cupo=data.get("cupo", 0),
         senia=data.get("senia"),
-        precio_actual=0,  # temporal, se recalcula abajo
-        precio_final=None  # puede ser nulo inicialmente
+        precio_actual=0,
+        precio_final=None,
+        ganancia=data.get("ganancia"),
+        comision=data.get("comision")
     )
 
-    # Asociar hoteles
     salida.hoteles.set(data["hoteles_ids"])
 
-    # Calcular cantidad de noches
+    # Calcular noches
     if salida.fecha_regreso:
         noches = (salida.fecha_regreso - salida.fecha_salida).days
     else:
-        noches = 1  # si no hay fecha de regreso, consideramos 1 noche
+        noches = 1
 
-    # Buscar todas las habitaciones activas de los hoteles seleccionados
     habitaciones = Habitacion.objects.filter(
         hotel__in=data["hoteles_ids"], activo=True
     )
 
     if habitaciones.exists():
         precios = [h.precio_noche * noches for h in habitaciones]
-        salida.precio_actual = min(precios)  # precio mínimo
-        salida.precio_final = max(precios) if precios else None  # precio máximo, puede ser nulo
+        salida.precio_actual = min(precios)
+        salida.precio_final = max(precios) if precios else None
         salida.save(update_fields=["precio_actual", "precio_final"])
     else:
         salida.precio_actual = 0
         salida.precio_final = None
         salida.save(update_fields=["precio_actual", "precio_final"])
+
+    # Calcular el precio de venta sugerido
+    salida.calcular_precio_venta()
 
     return salida

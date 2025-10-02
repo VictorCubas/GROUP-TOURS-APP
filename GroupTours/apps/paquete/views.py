@@ -52,23 +52,19 @@ class PaqueteViewSet(viewsets.ModelViewSet):
     pagination_class = PaquetePagination
     permission_classes = []
     filter_backends = [DjangoFilterBackend]
-    filterset_class = PaqueteFilter  # ➜ asegúrate que el filter incluya modalidad y habitacion_fija
+    filterset_class = PaqueteFilter  # ➜ incluye modalidad y habitacion_fija
 
     # ----- ENDPOINT EXTRA: resumen -----
     @action(detail=False, methods=['get'], url_path='resumen')
     def resumen(self, request):
         total = Paquete.objects.count()
         activos = Paquete.objects.filter(activo=True).count()
-        inactivos = Paquete.objects.filter(activo=False).count()
         propios = Paquete.objects.filter(propio=True).count()
         de_distribuidora = Paquete.objects.filter(propio=False).count()
-        
-        
-        # --- Formatear respuesta como lista de objetos ---
+
         data = [
             {'texto': 'Total', 'valor': str(total)},
             {'texto': 'Activos', 'valor': str(activos)},
-            # {'texto': 'Inactivos', 'valor': str(inactivos)},
             {'texto': 'Propios', 'valor': str(propios)},
             {'texto': 'Distribuidora', 'valor': str(de_distribuidora)},
         ]
@@ -90,7 +86,6 @@ class PaqueteViewSet(viewsets.ModelViewSet):
             )
         )
 
-        # Renombrar claves para que sea más legible
         data = [
             {
                 "id": item["id"],

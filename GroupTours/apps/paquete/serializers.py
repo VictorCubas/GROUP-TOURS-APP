@@ -7,7 +7,7 @@ from apps.destino.models import Destino
 from apps.distribuidora.models import Distribuidora
 from apps.moneda.models import Moneda
 from apps.servicio.models import Servicio
-from apps.hotel.models import Hotel, Habitacion   # ✅ NUEVO para habitacion_fija
+from apps.hotel.models import Hotel, Habitacion
 import json
 import logging
 
@@ -48,7 +48,6 @@ class DistribuidoraSimpleSerializer(serializers.ModelSerializer):
         model = Distribuidora
         fields = ["id", "nombre"]
 
-
 # ---------------------------------------------------------------------
 # SalidaPaquete Serializer
 # ---------------------------------------------------------------------
@@ -59,8 +58,7 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
         queryset=Moneda.objects.all(),
         source="moneda",
         write_only=True,
-        required=False,
-        allow_null=False
+        required=True
     )
     temporada_id = serializers.PrimaryKeyRelatedField(
         queryset=Temporada.objects.all(),
@@ -70,7 +68,6 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
         allow_null=True
     )
 
-    # Hoteles (M2M)
     hoteles_ids = serializers.PrimaryKeyRelatedField(
         queryset=Hotel.objects.all(),
         many=True,
@@ -80,7 +77,6 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
     )
     hoteles = serializers.SerializerMethodField(read_only=True)
 
-    # ✅ NUEVO: habitacion fija (solo si el paquete es modalidad 'fijo')
     habitacion_fija_id = serializers.PrimaryKeyRelatedField(
         queryset=Habitacion.objects.all(),
         source="habitacion_fija",
@@ -105,16 +101,23 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
             "temporada_id",
             "precio_actual",
             "precio_final",
+            "ganancia",                  # ✅ NUEVO
+            "comision",                  # ✅ NUEVO
+            "precio_venta_sugerido_min", # ✅ NUEVO
+            "precio_venta_sugerido_max", # ✅ NUEVO
             "cupo",
             "senia",
             "activo",
             "hoteles",
             "hoteles_ids",
             "habitacion_fija",
-            "habitacion_fija_id",   # ✅ NUEVO
+            "habitacion_fija_id",
         ]
         read_only_fields = [
-            "id", "moneda", "temporada", "precio_actual", "precio_final", "habitacion_fija"
+            "id", "moneda", "temporada",
+            "precio_actual", "precio_final",
+            "precio_venta_sugerido_min", "precio_venta_sugerido_max",
+            "habitacion_fija"
         ]
 
     def get_moneda(self, obj):
@@ -141,7 +144,6 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
             }
             if obj.habitacion_fija else None
         )
-
 
 # ---------------------------------------------------------------------
 # Paquete Serializer
@@ -172,7 +174,6 @@ class PaqueteSerializer(serializers.ModelSerializer):
         many=True, write_only=True, source="servicios", required=False
     )
 
-    # ✅ NUEVO: modalidad de paquete
     modalidad = serializers.ChoiceField(
         choices=Paquete.TIPO_SELECCION,
         default=Paquete.FLEXIBLE,
@@ -202,7 +203,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
             "moneda_id",
             "servicios",
             "servicios_ids",
-            "modalidad",        # ✅ NUEVO
+            "modalidad",
             "precio",
             "senia",
             "fecha_inicio",
@@ -307,6 +308,9 @@ class PaqueteSerializer(serializers.ModelSerializer):
             if hoteles_ids:
                 salida.hoteles.set(hoteles_ids)
 
+            # 🔹 calcular precios sugeridos
+            salida.calcular_precio_venta()
+
             HistorialPrecioPaquete.objects.create(
                 salida=salida,
                 precio=salida.precio_actual,
@@ -371,13 +375,15 @@ class PaqueteSerializer(serializers.ModelSerializer):
                     if hoteles_ids:
                         salida.hoteles.set(hoteles_ids)
 
+                # 🔹 recalcular precios sugeridos
+                salida.calcular_precio_venta()
+
                 HistorialPrecioPaquete.objects.create(
                     salida=salida,
                     precio=salida.precio_actual,
                     vigente=True,
                 )
 
-            # Eliminar salidas no enviadas
             for s_id, salida in salidas_existentes.items():
                 if s_id not in enviados_ids:
                     salida.delete()
