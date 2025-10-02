@@ -189,6 +189,20 @@ class PaqueteSerializer(serializers.ModelSerializer):
                 pass
 
         return super().to_internal_value(data)
+    
+    # ------------------
+    # Validación condicional
+    # ------------------
+    def validate(self, attrs):
+        # attrs["servicios"] viene de servicios_ids gracias al source
+        servicios = attrs.get("servicios", [])
+        propio = attrs.get("propio", getattr(self.instance, "propio", False))
+
+        if propio and len(servicios) == 0:
+            raise serializers.ValidationError({
+                "servicios_ids": "Para paquetes propios es obligatorio enviar al menos un servicio."
+            })
+        return super().validate(attrs)
 
 
     modalidad = serializers.ChoiceField(
