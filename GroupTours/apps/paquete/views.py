@@ -3,12 +3,11 @@ from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.decorators import action
 from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 from .models import Paquete
 from .serializers import PaqueteSerializer
 from .filters import PaqueteFilter
-
-from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 
 # -------------------- PAGINACIÓN --------------------
@@ -36,18 +35,25 @@ class PaqueteViewSet(viewsets.ModelViewSet):
     - Paginación personalizada
     - Endpoints extra: resumen y todos
     """
+
     parser_classes = (MultiPartParser, FormParser, JSONParser)
+
     queryset = (
         Paquete.objects.select_related(
-            "tipo_paquete", "destino", "distribuidora", "moneda"
+            "tipo_paquete",
+            "destino",
+            "distribuidora",
+            "moneda"
         )
         .prefetch_related(
-            "servicios",
+            "paquete_servicios__servicio",  # usamos paquete_servicios internamente
             "salidas__moneda",
             "salidas__hoteles",
+            "salidas__habitacion_fija__hotel",
         )
         .order_by("-fecha_creacion")
     )
+
     serializer_class = PaqueteSerializer
     pagination_class = PaquetePagination
     permission_classes = []
@@ -63,12 +69,11 @@ class PaqueteViewSet(viewsets.ModelViewSet):
         de_distribuidora = Paquete.objects.filter(propio=False).count()
 
         data = [
-            {'texto': 'Total', 'valor': str(total)},
-            {'texto': 'Activos', 'valor': str(activos)},
-            {'texto': 'Propios', 'valor': str(propios)},
-            {'texto': 'Distribuidora', 'valor': str(de_distribuidora)},
+            {"texto": "Total", "valor": str(total)},
+            {"texto": "Activos", "valor": str(activos)},
+            {"texto": "Propios", "valor": str(propios)},
+            {"texto": "Distribuidora", "valor": str(de_distribuidora)},
         ]
-
         return Response(data)
 
     # ----- ENDPOINT EXTRA: todos -----
@@ -79,10 +84,10 @@ class PaqueteViewSet(viewsets.ModelViewSet):
                 self.get_queryset().filter(activo=True)
             )
             .values(
-                'id',
-                'nombre',
-                'destino__ciudad__nombre',
-                'destino__ciudad__pais__nombre'
+                "id",
+                "nombre",
+                "destino__ciudad__nombre",
+                "destino__ciudad__pais__nombre"
             )
         )
 
@@ -95,5 +100,4 @@ class PaqueteViewSet(viewsets.ModelViewSet):
             }
             for item in queryset
         ]
-
         return Response(data)

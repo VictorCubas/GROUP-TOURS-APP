@@ -14,6 +14,13 @@ class Servicio(models.Model):
     """
     nombre = models.CharField(max_length=150)
     descripcion = models.TextField(blank=True, null=True)
+    
+    # Precio base del servicio
+    precio = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        help_text="Precio base del servicio. Puede ser sobreescrito en PaqueteServicio."
+    )
 
     TIPO_CHOICES = [
         ('habitacion', 'Habitación'),
