@@ -1,6 +1,10 @@
 from rest_framework import serializers
 from .models import (
-    Paquete, SalidaPaquete, HistorialPrecioPaquete, Temporada
+    Paquete,
+    PaqueteServicio,
+    SalidaPaquete,
+    HistorialPrecioPaquete,
+    Temporada
 )
 from apps.tipo_paquete.models import TipoPaquete
 from apps.destino.models import Destino
@@ -10,8 +14,10 @@ from apps.servicio.models import Servicio
 from apps.hotel.models import Hotel, Habitacion
 import json
 import logging
+from decimal import Decimal
 
 logger = logging.getLogger(__name__)
+
 
 # ---------------------------------------------------------------------
 # Serializers simples
@@ -48,6 +54,7 @@ class DistribuidoraSimpleSerializer(serializers.ModelSerializer):
         model = Distribuidora
         fields = ["id", "nombre"]
 
+
 # ---------------------------------------------------------------------
 # SalidaPaquete Serializer
 # ---------------------------------------------------------------------
@@ -67,7 +74,6 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True
     )
-
     hoteles_ids = serializers.PrimaryKeyRelatedField(
         queryset=Hotel.objects.all(),
         many=True,
@@ -101,10 +107,10 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
             "temporada_id",
             "precio_actual",
             "precio_final",
-            "ganancia",                  # ✅ NUEVO
-            "comision",                  # ✅ NUEVO
-            "precio_venta_sugerido_min", # ✅ NUEVO
-            "precio_venta_sugerido_max", # ✅ NUEVO
+            "ganancia",
+            "comision",
+            "precio_venta_sugerido_min",
+            "precio_venta_sugerido_max",
             "cupo",
             "senia",
             "activo",
@@ -114,10 +120,14 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
             "habitacion_fija_id",
         ]
         read_only_fields = [
-            "id", "moneda", "temporada",
-            "precio_actual", "precio_final",
-            "precio_venta_sugerido_min", "precio_venta_sugerido_max",
-            "habitacion_fija"
+            "id",
+            "moneda",
+            "temporada",
+            "precio_actual",
+            "precio_final",
+            "precio_venta_sugerido_min",
+            "precio_venta_sugerido_max",
+            "habitacion_fija",
         ]
 
     def get_moneda(self, obj):
@@ -145,6 +155,31 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
             if obj.habitacion_fija else None
         )
 
+
+# ---------------------------------------------------------------------
+# PaqueteServicio Serializer
+# ---------------------------------------------------------------------
+class PaqueteServicioSerializer(serializers.ModelSerializer):
+    servicio_id = serializers.PrimaryKeyRelatedField(
+        queryset=Servicio.objects.all(),
+        source="servicio"
+    )
+    nombre_servicio = serializers.CharField(
+        source="servicio.nombre",
+        read_only=True
+    )
+    precio = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+
+    class Meta:
+        model = PaqueteServicio
+        fields = ["servicio_id", "nombre_servicio", "precio"]
+
+    def validate_precio(self, value):
+        if value in ("", None):
+            return Decimal("0")
+        return Decimal(value)
+
+
 # ---------------------------------------------------------------------
 # Paquete Serializer
 # ---------------------------------------------------------------------
@@ -153,64 +188,48 @@ class PaqueteSerializer(serializers.ModelSerializer):
     destino = DestinoNestedSerializer(read_only=True)
     distribuidora = DistribuidoraSimpleSerializer(read_only=True, allow_null=True)
     moneda = MonedaSimpleSerializer(read_only=True, allow_null=True)
-    servicios = ServicioSimpleSerializer(many=True, read_only=True)
 
-    # Escritura por ID
+    servicios = PaqueteServicioSerializer(
+        source="paquete_servicios",
+        many=True,
+        read_only=True
+    )
+
+    servicios_data = PaqueteServicioSerializer(
+        many=True,
+        write_only=True,
+        required=False
+    )
+
     tipo_paquete_id = serializers.PrimaryKeyRelatedField(
-        queryset=TipoPaquete.objects.all(), write_only=True, source="tipo_paquete"
+        queryset=TipoPaquete.objects.all(),
+        write_only=True,
+        source="tipo_paquete"
     )
     destino_id = serializers.PrimaryKeyRelatedField(
-        queryset=Destino.objects.all(), write_only=True, source="destino"
+        queryset=Destino.objects.all(),
+        write_only=True,
+        source="destino"
     )
     distribuidora_id = serializers.PrimaryKeyRelatedField(
         queryset=Distribuidora.objects.all(),
-        write_only=True, source="distribuidora", allow_null=True, required=False
+        write_only=True,
+        source="distribuidora",
+        allow_null=True,
+        required=False
     )
     moneda_id = serializers.PrimaryKeyRelatedField(
-        queryset=Moneda.objects.all(), write_only=True, source="moneda", required=False
+        queryset=Moneda.objects.all(),
+        write_only=True,
+        source="moneda",
+        required=False
     )
-    servicios_ids = serializers.PrimaryKeyRelatedField(
-        queryset=Servicio.objects.all(),
-        many=True, write_only=True, source="servicios", required=False, allow_empty=True
-    )
-    
-    def to_internal_value(self, data):
-        data = data.copy()
-
-        # Si viene como string → intentar parsear
-        servicios_raw = data.get("servicios_ids")
-        if isinstance(servicios_raw, str):
-            try:
-                parsed = json.loads(servicios_raw)
-                if isinstance(parsed, list):
-                    data.setlist("servicios_ids", parsed)  # for QueryDict de form-data
-            except Exception:
-                # Si falla, dejamos pasar y DRF se encargará de marcar error
-                pass
-
-        return super().to_internal_value(data)
-    
-    # ------------------
-    # Validación condicional
-    # ------------------
-    def validate(self, attrs):
-        # attrs["servicios"] viene de servicios_ids gracias al source
-        servicios = attrs.get("servicios", [])
-        propio = attrs.get("propio", getattr(self.instance, "propio", False))
-
-        if propio and len(servicios) == 0:
-            raise serializers.ValidationError({
-                "servicios_ids": "Para paquetes propios es obligatorio enviar al menos un servicio."
-            })
-        return super().validate(attrs)
-
 
     modalidad = serializers.ChoiceField(
         choices=Paquete.TIPO_SELECCION,
         default=Paquete.FLEXIBLE,
         required=False
     )
-
     salidas = SalidaPaqueteSerializer(many=True, required=False)
 
     fecha_inicio = serializers.SerializerMethodField()
@@ -233,7 +252,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
             "moneda",
             "moneda_id",
             "servicios",
-            "servicios_ids",
+            "servicios_data",
             "modalidad",
             "precio",
             "senia",
@@ -250,6 +269,67 @@ class PaqueteSerializer(serializers.ModelSerializer):
             "salidas",
         ]
         read_only_fields = ["fecha_creacion", "fecha_modificacion"]
+
+    # ------------------
+    # Parseo de servicios_data desde FormData (JSON string → lista)
+    # ------------------
+    def _get_servicios_from_initial(self):
+        raw = getattr(self, "initial_data", {}).get("servicios_data")
+        if not raw:
+            return []
+        if isinstance(raw, str):
+            try:
+                data = json.loads(raw)
+                return data if isinstance(data, list) else []
+            except Exception:
+                logger.exception("Error parseando servicios_data desde initial_data")
+                return []
+        if isinstance(raw, list):
+            return raw
+        return []
+
+    def to_internal_value(self, data):
+        data = data.copy()
+        servicios_raw = data.get("servicios_data")
+        parsed_list = []
+
+        if servicios_raw:
+            if isinstance(servicios_raw, str):
+                try:
+                    parsed = json.loads(servicios_raw)
+                    if isinstance(parsed, list):
+                        parsed_list = parsed
+                except Exception:
+                    parsed_list = []
+            elif isinstance(servicios_raw, list):
+                parsed_list = servicios_raw
+
+        servicios_cleaned = []
+        for item in parsed_list:    
+            servicio_id = item.get("servicio_id")
+            if not servicio_id:
+                continue
+            servicios_cleaned.append({
+                "servicio": servicio_id,  # resolveremos en create/update
+                "precio": Decimal(item.get("precio", 0) or 0)
+            })
+
+
+        data["servicios_data"] = servicios_cleaned
+        return super().to_internal_value(data)
+
+    # ------------------
+    # Validación condicional
+    # ------------------
+    def validate(self, attrs):
+        servicios = attrs.get("servicios_data") or self._get_servicios_from_initial()
+        propio = attrs.get("propio", getattr(self.instance, "propio", False))
+
+        if propio and not servicios:
+            raise serializers.ValidationError({
+                "servicios_data": "Para paquetes propios es obligatorio enviar al menos un servicio."
+            })
+        return super().validate(attrs)
 
     # --------- Campos calculados ---------
     def get_fecha_inicio(self, obj):
@@ -303,21 +383,28 @@ class PaqueteSerializer(serializers.ModelSerializer):
 
     # --------- Create & Update ---------
     def create(self, validated_data):
-        # Extraemos servicios y salidas
-        servicios_data = validated_data.pop("servicios", [])
+        servicios_data = validated_data.pop("servicios_data", None)
         salidas_data = validated_data.pop("salidas", None)
 
-        # Si no vienen salidas, intentar obtenerlas del initial_data
+        if servicios_data is None:
+            servicios_data = self._get_servicios_from_initial() or []
         if not salidas_data:
             salidas_data = self._get_salidas_from_initial() or []
 
-        # Creamos el paquete
         paquete = Paquete.objects.create(**validated_data)
+    
+        # Crear servicios
+        for servicio_item in servicios_data:
+            servicio_obj = self._resolve_fk_instance("servicio", servicio_item.get("servicio") or servicio_item.get("servicio_id"), Servicio)
+            precio_val = Decimal(servicio_item.get("precio", 0) or 0)
+            if servicio_obj:
+                PaqueteServicio.objects.create(
+                    paquete=paquete,
+                    servicio=servicio_obj,
+                    precio=precio_val
+                )
 
-        # Asignamos servicios (lista vacía limpia la relación)
-        paquete.servicios.set(servicios_data)
-
-        # Creamos las salidas asociadas
+        # Crear salidas
         for salida_data in salidas_data:
             hoteles_ids = salida_data.pop("hoteles", [])
             moneda_val = salida_data.pop("moneda", None) or salida_data.pop("moneda_id", None)
@@ -338,13 +425,11 @@ class PaqueteSerializer(serializers.ModelSerializer):
                 habitacion_fija=habitacion_obj,
                 **{k: v for k, v in salida_data.items() if k not in ["hoteles"]}
             )
+
             if hoteles_ids:
                 salida.hoteles.set(hoteles_ids)
 
-            # Calcular precios sugeridos
             salida.calcular_precio_venta()
-
-            # Crear historial de precios
             HistorialPrecioPaquete.objects.create(
                 salida=salida,
                 precio=salida.precio_actual,
@@ -354,24 +439,36 @@ class PaqueteSerializer(serializers.ModelSerializer):
         return paquete
 
     def update(self, instance, validated_data):
-        # Extraemos servicios y salidas
-        servicios_data = validated_data.pop("servicios", None)
+        # servicios_data = validated_data.pop("servicios_data", self.initial_data.get("servicios_data"))
+        servicios_data = validated_data.pop("servicios_data", None)
         salidas_data = validated_data.pop("salidas", None)
+    
+        if servicios_data is None:
+            servicios_data = self._get_servicios_from_initial() or []
 
-        # Si no vienen salidas, intentar obtenerlas del initial_data
-        if not salidas_data:
-            salidas_data = self._get_salidas_from_initial() or []
-
-        # Actualizamos los campos simples del paquete
+        # Actualizar atributos básicos
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
 
-        # Actualizamos servicios: si viene lista vacía limpia la relación
-        if servicios_data is not None:
-            instance.servicios.set(servicios_data)
+        # Actualizar servicios
+        if servicios_data:
+            instance.paquete_servicios.all().delete()
+            for servicio_item in servicios_data:
+                servicio_obj = self._resolve_fk_instance(
+                    "servicio",
+                    servicio_item.get("servicio") or servicio_item.get("servicio_id"),
+                    Servicio
+                )
+                precio_val = Decimal(servicio_item.get("precio", 0) or 0)
+                if servicio_obj:
+                    PaqueteServicio.objects.create(
+                        paquete=instance,
+                        servicio=servicio_obj,
+                        precio=precio_val
+                    )
 
-        # Actualizamos o creamos salidas
+        # Actualizar salidas
         if salidas_data is not None:
             salidas_existentes = {s.id: s for s in instance.salidas.all()}
             enviados_ids = []
@@ -391,19 +488,20 @@ class PaqueteSerializer(serializers.ModelSerializer):
                 habitacion_obj = self._resolve_fk_instance("habitacion_fija", habitacion_fija_val, Habitacion)
 
                 if salida_id and salida_id in salidas_existentes:
-                    # Actualizamos salida existente
                     salida = salidas_existentes[salida_id]
                     for attr, value in salida_data.items():
                         setattr(salida, attr, value)
+
                     salida.moneda = moneda_obj
                     salida.temporada = temporada_obj
                     salida.habitacion_fija = habitacion_obj
                     salida.save()
+
                     if hoteles_ids:
                         salida.hoteles.set(hoteles_ids)
+
                     enviados_ids.append(salida_id)
                 else:
-                    # Creamos nueva salida
                     salida = SalidaPaquete.objects.create(
                         paquete=instance,
                         moneda=moneda_obj,
@@ -411,20 +509,18 @@ class PaqueteSerializer(serializers.ModelSerializer):
                         habitacion_fija=habitacion_obj,
                         **{k: v for k, v in salida_data.items() if k not in ["hoteles"]}
                     )
+
                     if hoteles_ids:
                         salida.hoteles.set(hoteles_ids)
 
-                # Recalcular precios sugeridos
-                salida.calcular_precio_venta()
+                    salida.calcular_precio_venta()
+                    HistorialPrecioPaquete.objects.create(
+                        salida=salida,
+                        precio=salida.precio_actual,
+                        vigente=True,
+                    )
 
-                # Crear historial de precios
-                HistorialPrecioPaquete.objects.create(
-                    salida=salida,
-                    precio=salida.precio_actual,
-                    vigente=True,
-                )
-
-            # Borrar salidas que no se enviaron
+            # Eliminar las no enviadas
             for s_id, salida in salidas_existentes.items():
                 if s_id not in enviados_ids:
                     salida.delete()
