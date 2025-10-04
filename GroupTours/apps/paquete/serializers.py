@@ -314,6 +314,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
                 "precio": Decimal(item.get("precio", 0) or 0)
             })
 
+
         data["servicios_data"] = servicios_cleaned
         return super().to_internal_value(data)
 
@@ -438,8 +439,12 @@ class PaqueteSerializer(serializers.ModelSerializer):
         return paquete
 
     def update(self, instance, validated_data):
+        # servicios_data = validated_data.pop("servicios_data", self.initial_data.get("servicios_data"))
         servicios_data = validated_data.pop("servicios_data", None)
         salidas_data = validated_data.pop("salidas", None)
+    
+        if servicios_data is None:
+            servicios_data = self._get_servicios_from_initial() or []
 
         # Actualizar atributos básicos
         for attr, value in validated_data.items():
@@ -447,10 +452,14 @@ class PaqueteSerializer(serializers.ModelSerializer):
         instance.save()
 
         # Actualizar servicios
-        if servicios_data is not None:
+        if servicios_data:
             instance.paquete_servicios.all().delete()
             for servicio_item in servicios_data:
-                servicio_obj = self._resolve_fk_instance("servicio", servicio_item.get("servicio"), Servicio)
+                servicio_obj = self._resolve_fk_instance(
+                    "servicio",
+                    servicio_item.get("servicio") or servicio_item.get("servicio_id"),
+                    Servicio
+                )
                 precio_val = Decimal(servicio_item.get("precio", 0) or 0)
                 if servicio_obj:
                     PaqueteServicio.objects.create(
