@@ -322,6 +322,14 @@ class PaqueteSerializer(serializers.ModelSerializer):
     # Validación condicional
     # ------------------
     def validate(self, attrs):
+        # 🚩 Detectar si es un PATCH parcial sin servicios_data
+        request = self.context.get("request")
+        is_partial = request and request.method == "PATCH"
+
+        # Si es PATCH y no se está enviando 'servicios_data', no validamos eso
+        if is_partial and "servicios_data" not in self.initial_data:
+            return super().validate(attrs)
+
         servicios = attrs.get("servicios_data") or self._get_servicios_from_initial()
         propio = attrs.get("propio", getattr(self.instance, "propio", False))
 
@@ -329,7 +337,9 @@ class PaqueteSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({
                 "servicios_data": "Para paquetes propios es obligatorio enviar al menos un servicio."
             })
+
         return super().validate(attrs)
+
 
     # --------- Campos calculados ---------
     def get_fecha_inicio(self, obj):
