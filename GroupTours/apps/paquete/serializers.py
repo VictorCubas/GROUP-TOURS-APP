@@ -455,6 +455,9 @@ class PaqueteSerializer(serializers.ModelSerializer):
     
         if servicios_data is None:
             servicios_data = self._get_servicios_from_initial() or []
+            
+        if salidas_data is None:
+            salidas_data = self._get_salidas_from_initial() or []
 
         # Actualizar atributos básicos
         for attr, value in validated_data.items():
