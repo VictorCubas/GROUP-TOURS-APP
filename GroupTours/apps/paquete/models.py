@@ -196,7 +196,12 @@ class SalidaPaquete(models.Model):
     precio_venta_sugerido_min = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     precio_venta_sugerido_max = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
 
-    cupo = models.PositiveIntegerField(default=0, null=True, blank=True)
+    # Cupo global (asientos en terrestre propio)
+    cupo = models.PositiveIntegerField(
+        default=0, null=True, blank=True,
+        help_text="Cantidad de asientos disponibles (solo aplica para paquetes terrestres propios)."
+    )
+
     senia = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
 
     activo = models.BooleanField(default=True)
@@ -248,6 +253,31 @@ class SalidaPaquete(models.Model):
 
         self.precio_actual = nuevo_precio
         self.save()
+
+
+# ---------------------------------------------------------------------
+# CUPO DE HABITACIÓN POR SALIDA
+# ---------------------------------------------------------------------
+class CupoHabitacionSalida(models.Model):
+    salida = models.ForeignKey(
+        SalidaPaquete,
+        on_delete=models.CASCADE,
+        related_name="cupos_habitaciones"
+    )
+    habitacion = models.ForeignKey(
+        Habitacion,
+        on_delete=models.CASCADE,
+        related_name="cupos_salidas"
+    )
+    cupo = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        unique_together = ("salida", "habitacion")
+        verbose_name = "Cupo de Habitación por Salida"
+        verbose_name_plural = "Cupos de Habitaciones por Salida"
+
+    def __str__(self):
+        return f"{self.salida} - {self.habitacion} ({self.cupo} disponibles)"
 
 
 # ---------------------------------------------------------------------
