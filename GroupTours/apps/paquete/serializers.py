@@ -495,7 +495,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
         servicios_data = validated_data.pop("servicios_data", None)
         salidas_data = validated_data.pop("salidas", None)
 
-        # 🩵 Si viene como string (por FormData), parsear JSON
+        # Si viene como string (por FormData)
         if not salidas_data:
             raw_salidas = getattr(self, "initial_data", {}).get("salidas")
             if isinstance(raw_salidas, str):
@@ -505,25 +505,31 @@ class PaqueteSerializer(serializers.ModelSerializer):
                     salidas_data = []
             elif isinstance(raw_salidas, list):
                 salidas_data = raw_salidas
+            else:
+                salidas_data = []
 
-        # --- Actualizar atributos básicos del paquete ---
+        # Modalidad se mantiene (no se puede cambiar desde el front)
+        modalidad_actual = instance.modalidad
+
+        # --- Actualizar atributos base del paquete ---
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
 
-        # --- Servicios ---
+        # --- Actualizar servicios ---
         if servicios_data is not None:
             instance.paquete_servicios.all().delete()
             for servicio_item in servicios_data:
-                servicio_obj = servicio_item["servicio"]
+                servicio_obj = servicio_item.get("servicio")
                 precio_val = servicio_item.get("precio", Decimal("0"))
-                PaqueteServicio.objects.create(
-                    paquete=instance,
-                    servicio=servicio_obj,
-                    precio=precio_val
-                )
+                if servicio_obj:
+                    PaqueteServicio.objects.create(
+                        paquete=instance,
+                        servicio=servicio_obj,
+                        precio=precio_val
+                    )
 
-        # --- Salidas ---
+        # --- Actualizar salidas ---
         if salidas_data:
             salidas_existentes = {s.id: s for s in instance.salidas.all()}
             enviados_ids = []
@@ -531,70 +537,95 @@ class PaqueteSerializer(serializers.ModelSerializer):
             for salida_data in salidas_data:
                 salida_id = salida_data.get("id")
                 hoteles_ids = salida_data.pop("hoteles", [])
-                cupos_habitaciones_data = salida_data.pop("cupos_habitaciones", [])
+                cupos_habitaciones_data = salida_data.pop("cupos_habitaciones", []) or []
                 moneda_val = salida_data.pop("moneda", None) or salida_data.pop("moneda_id", None)
                 temporada_val = salida_data.pop("temporada", None) or salida_data.pop("temporada_id", None)
                 habitacion_fija_val = salida_data.pop("habitacion_fija", None) or salida_data.pop("habitacion_fija_id", None)
 
                 moneda_obj = self._resolve_fk_instance("moneda", moneda_val, Moneda)
-                temporada_obj = self._resolve_fk_instance("temporada", temporada_val, Temporada)
-                habitacion_obj = self._resolve_fk_instance("habitacion_fija", habitacion_fija_val, Habitacion)
+                if not moneda_obj:
+                    raise serializers.ValidationError({"salidas": "Cada salida debe incluir un 'moneda_id' válido."})
 
+                temporada_obj = self._resolve_fk_instance("temporada", temporada_val, Temporada)
+                habitacion_fija_obj = self._resolve_fk_instance("habitacion_fija", habitacion_fija_val, Habitacion)
+
+                # 🔸 Validación: si el paquete es fijo, solo debe tener un cupo_habitacion
+                if modalidad_actual == Paquete.FIJO and len(cupos_habitaciones_data) > 1:
+                    raise serializers.ValidationError({
+                        "salidas": "Los paquetes en modalidad 'fijo' solo pueden tener un 'cupo_habitacion'."
+                    })
+
+                # Actualizar salida existente
                 if salida_id and salida_id in salidas_existentes:
-                    # --- Actualizar salida existente ---
                     salida = salidas_existentes[salida_id]
+
                     for attr, value in salida_data.items():
                         setattr(salida, attr, value)
 
                     salida.moneda = moneda_obj
                     salida.temporada = temporada_obj
-                    salida.habitacion_fija = habitacion_obj
+                    salida.habitacion_fija = habitacion_fija_obj
                     salida.save()
 
                     if hoteles_ids:
                         salida.hoteles.set(hoteles_ids)
 
-                    # --- Actualizar/crear/eliminar cupos ---
+                    # --- Cupos ---
                     enviados_habitaciones = []
                     for cupo_item in cupos_habitaciones_data:
-                        habitacion_id = cupo_item.get("habitacion_id")
+                        habitacion_id = (
+                            cupo_item.get("habitacion_id")
+                            or (cupo_item.get("habitacion", {}).get("id") if isinstance(cupo_item.get("habitacion"), dict) else None)
+                        )
                         if not habitacion_id:
                             continue
-                        habitacion_obj = Habitacion.objects.get(id=habitacion_id)
+
+                        habitacion_obj = self._resolve_fk_instance("habitacion", habitacion_id, Habitacion)
+                        if not habitacion_obj:
+                            continue
 
                         CupoHabitacionSalida.objects.update_or_create(
                             salida=salida,
                             habitacion=habitacion_obj,
-                            defaults={"cupo": cupo_item.get("cupo", 0)}
+                            defaults={"cupo": cupo_item.get("cupo", 0)},
                         )
-                        enviados_habitaciones.append(habitacion_id)
+                        enviados_habitaciones.append(habitacion_obj.id)
 
-                    # Eliminar cupos no enviados
-                    salida.cupos_habitaciones.exclude(habitacion__id__in=enviados_habitaciones).delete()
+                    if cupos_habitaciones_data:
+                        salida.cupos_habitaciones.exclude(habitacion__id__in=enviados_habitaciones).delete()
 
                     enviados_ids.append(salida_id)
+
                 else:
-                    # --- Crear nueva salida ---
+                    # Crear nueva salida
                     salida = SalidaPaquete.objects.create(
                         paquete=instance,
                         moneda=moneda_obj,
                         temporada=temporada_obj,
-                        habitacion_fija=habitacion_obj,
-                        **salida_data
+                        habitacion_fija=habitacion_fija_obj,
+                        **{k: v for k, v in salida_data.items() if k not in ["hoteles"]}
                     )
 
                     if hoteles_ids:
                         salida.hoteles.set(hoteles_ids)
 
+                    # Crear cupos
                     for cupo_item in cupos_habitaciones_data:
-                        habitacion_id = cupo_item.get("habitacion_id")
+                        habitacion_id = (
+                            cupo_item.get("habitacion_id")
+                            or (cupo_item.get("habitacion", {}).get("id") if isinstance(cupo_item.get("habitacion"), dict) else None)
+                        )
                         if not habitacion_id:
                             continue
-                        habitacion_obj = Habitacion.objects.get(id=habitacion_id)
+
+                        habitacion_obj = self._resolve_fk_instance("habitacion", habitacion_id, Habitacion)
+                        if not habitacion_obj:
+                            continue
+
                         CupoHabitacionSalida.objects.create(
                             salida=salida,
                             habitacion=habitacion_obj,
-                            cupo=cupo_item.get("cupo", 0)
+                            cupo=cupo_item.get("cupo", 0),
                         )
 
                     salida.calcular_precio_venta()
@@ -606,7 +637,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
 
                     enviados_ids.append(salida.id)
 
-            # --- Eliminar salidas no enviadas ---
+            # Eliminar salidas que no fueron enviadas
             for s_id, salida in salidas_existentes.items():
                 if s_id not in enviados_ids:
                     salida.delete()
