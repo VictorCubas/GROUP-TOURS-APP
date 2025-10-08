@@ -1,6 +1,8 @@
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
+from apps.zona_geografica.models import ZonaGeografica
+
 class Nacionalidad(models.Model):
     nombre = models.CharField(max_length=100, unique=True,
             error_messages={
@@ -12,6 +14,17 @@ class Nacionalidad(models.Model):
         error_messages={
             'unique': _('Ya existe una nacionalidad con este código alpha2.'),
         }) 
+    
+    # 🔹 Nueva relación con Zona Geográfica
+    zona_geografica = models.ForeignKey(
+        ZonaGeografica,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="paises",
+        verbose_name="Zona Geográfica"
+    )
+    
     activo = models.BooleanField(default=True)              # Para inactivar sin borrar
     en_uso = models.BooleanField(default=False)              # Para inactivar sin borrar
     fecha_creacion = models.DateTimeField(auto_now_add=True)

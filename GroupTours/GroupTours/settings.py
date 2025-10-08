@@ -104,6 +104,7 @@ INSTALLED_APPS = [
     'apps.moneda',
     'apps.reserva',
     'apps.ciudad',
+    'apps.zona_geografica',
 ]
 
 MIDDLEWARE = [
