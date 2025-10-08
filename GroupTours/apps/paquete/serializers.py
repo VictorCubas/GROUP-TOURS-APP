@@ -547,8 +547,21 @@ class PaqueteSerializer(serializers.ModelSerializer):
         servicios_data = validated_data.pop("servicios_data", None)
         salidas_data = validated_data.pop("salidas", None)
 
-        # Si viene como string (por FormData)
-        if not salidas_data:
+        # Si servicios_data viene como string (FormData) o ausencia en validated_data:
+        if servicios_data is None:
+            raw_servicios = getattr(self, "initial_data", {}).get("servicios_data")
+            if isinstance(raw_servicios, str):
+                try:
+                    servicios_data = json.loads(raw_servicios)
+                except Exception:
+                    servicios_data = []
+            elif isinstance(raw_servicios, list):
+                servicios_data = raw_servicios
+            else:
+                servicios_data = []
+
+        # Si salidas viene como string (FormData)
+        if salidas_data is None:
             raw_salidas = getattr(self, "initial_data", {}).get("salidas")
             if isinstance(raw_salidas, str):
                 try:
@@ -569,17 +582,51 @@ class PaqueteSerializer(serializers.ModelSerializer):
         instance.save()
 
         # --- Actualizar servicios ---
+        # Normalizamos servicios_data: puede venir con 'servicio_id' o 'servicio'
         if servicios_data is not None:
-            instance.paquete_servicios.all().delete()
-            for servicio_item in servicios_data:
-                servicio_obj = servicio_item.get("servicio")
-                precio_val = servicio_item.get("precio", Decimal("0"))
-                if servicio_obj:
+            # Map de servicios actuales en DB: {servicio_id: PaqueteServicio obj}
+            servicios_existentes = {ps.servicio.id: ps for ps in instance.paquete_servicios.all()}
+            enviados_ids_servicios = []
+
+            for item in servicios_data:
+                # item puede ser {"servicio_id": 9, "precio": ""} ó {"servicio": 9, "precio": 10}
+                servicio_val = item.get("servicio") or item.get("servicio_id")
+                # Resolver instancia Servicio
+                servicio_obj = self._resolve_fk_instance("servicio", servicio_val, Servicio)
+                if not servicio_obj:
+                    # omitir entradas inválidas
+                    continue
+
+                # Determinar precio (vacío => 0)
+                precio_raw = item.get("precio", None)
+                try:
+                    precio_val = Decimal(precio_raw) if precio_raw not in (None, "") else Decimal("0")
+                except Exception:
+                    precio_val = Decimal("0")
+
+                # Si ya existe, actualizar; si no, crear
+                if servicio_obj.id in servicios_existentes:
+                    ps_obj = servicios_existentes[servicio_obj.id]
+                    # actualizar solo si cambió (opcional)
+                    if ps_obj.precio != precio_val:
+                        ps_obj.precio = precio_val
+                        ps_obj.save()
+                else:
                     PaqueteServicio.objects.create(
                         paquete=instance,
                         servicio=servicio_obj,
                         precio=precio_val
                     )
+
+                enviados_ids_servicios.append(servicio_obj.id)
+
+            # Eliminar servicios que no fueron enviados (si quieres mantener los que no se envían, comenta esta sección)
+            # Actualmente tu flujo de "reemplazar" hacía esto (borrabas todo y creabas), así que mantenemos esa lógica.
+            if enviados_ids_servicios:
+                instance.paquete_servicios.exclude(servicio__id__in=enviados_ids_servicios).delete()
+            else:
+                # Si enviaste un array vacío explícito queremos eliminar todos
+                instance.paquete_servicios.all().delete()
 
         # --- Actualizar salidas ---
         if salidas_data:
@@ -595,22 +642,21 @@ class PaqueteSerializer(serializers.ModelSerializer):
                 habitacion_fija_val = salida_data.pop("habitacion_fija", None) or salida_data.pop("habitacion_fija_id", None)
 
                 moneda_obj = self._resolve_fk_instance("moneda", moneda_val, Moneda)
-                if not moneda_obj:
-                    raise serializers.ValidationError({"salidas": "Cada salida debe incluir un 'moneda_id' válido."})
-
                 temporada_obj = self._resolve_fk_instance("temporada", temporada_val, Temporada)
                 habitacion_fija_obj = self._resolve_fk_instance("habitacion_fija", habitacion_fija_val, Habitacion)
 
-                # 🔸 Validación: si el paquete es fijo, solo debe tener un cupo_habitacion
+                if not moneda_obj:
+                    raise serializers.ValidationError({"salidas": "Cada salida debe incluir un 'moneda_id' válido."})
+
+                # Validación: si el paquete es fijo, solo puede tener 1 cupo_habitacion
                 if modalidad_actual == Paquete.FIJO and len(cupos_habitaciones_data) > 1:
                     raise serializers.ValidationError({
                         "salidas": "Los paquetes en modalidad 'fijo' solo pueden tener un 'cupo_habitacion'."
                     })
 
-                # Actualizar salida existente
                 if salida_id and salida_id in salidas_existentes:
                     salida = salidas_existentes[salida_id]
-
+                    # actualizar campos simples
                     for attr, value in salida_data.items():
                         setattr(salida, attr, value)
 
@@ -622,16 +668,12 @@ class PaqueteSerializer(serializers.ModelSerializer):
                     if hoteles_ids:
                         salida.hoteles.set(hoteles_ids)
 
-                    # --- Cupos ---
+                    # --- Cupos habitaciones: update_or_create y eliminación de los no enviados ---
                     enviados_habitaciones = []
                     for cupo_item in cupos_habitaciones_data:
-                        habitacion_id = (
-                            cupo_item.get("habitacion_id")
-                            or (cupo_item.get("habitacion", {}).get("id") if isinstance(cupo_item.get("habitacion"), dict) else None)
-                        )
+                        habitacion_id = cupo_item.get("habitacion_id") or (cupo_item.get("habitacion", {}).get("id") if isinstance(cupo_item.get("habitacion"), dict) else None)
                         if not habitacion_id:
                             continue
-
                         habitacion_obj = self._resolve_fk_instance("habitacion", habitacion_id, Habitacion)
                         if not habitacion_obj:
                             continue
@@ -639,7 +681,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
                         CupoHabitacionSalida.objects.update_or_create(
                             salida=salida,
                             habitacion=habitacion_obj,
-                            defaults={"cupo": cupo_item.get("cupo", 0)},
+                            defaults={"cupo": cupo_item.get("cupo", 0)}
                         )
                         enviados_habitaciones.append(habitacion_obj.id)
 
@@ -647,9 +689,8 @@ class PaqueteSerializer(serializers.ModelSerializer):
                         salida.cupos_habitaciones.exclude(habitacion__id__in=enviados_habitaciones).delete()
 
                     enviados_ids.append(salida_id)
-
                 else:
-                    # Crear nueva salida
+                    # crear nueva salida
                     salida = SalidaPaquete.objects.create(
                         paquete=instance,
                         moneda=moneda_obj,
@@ -661,15 +702,10 @@ class PaqueteSerializer(serializers.ModelSerializer):
                     if hoteles_ids:
                         salida.hoteles.set(hoteles_ids)
 
-                    # Crear cupos
                     for cupo_item in cupos_habitaciones_data:
-                        habitacion_id = (
-                            cupo_item.get("habitacion_id")
-                            or (cupo_item.get("habitacion", {}).get("id") if isinstance(cupo_item.get("habitacion"), dict) else None)
-                        )
+                        habitacion_id = cupo_item.get("habitacion_id") or (cupo_item.get("habitacion", {}).get("id") if isinstance(cupo_item.get("habitacion"), dict) else None)
                         if not habitacion_id:
                             continue
-
                         habitacion_obj = self._resolve_fk_instance("habitacion", habitacion_id, Habitacion)
                         if not habitacion_obj:
                             continue
@@ -689,7 +725,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
 
                     enviados_ids.append(salida.id)
 
-            # Eliminar salidas que no fueron enviadas
+            # Eliminar salidas no enviadas
             for s_id, salida in salidas_existentes.items():
                 if s_id not in enviados_ids:
                     salida.delete()
