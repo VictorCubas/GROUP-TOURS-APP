@@ -197,11 +197,23 @@ class PaqueteServicioSerializer(serializers.ModelSerializer):
         source="servicio.nombre",
         read_only=True
     )
+    
+    # es el precio personalizado (el actual definido en PaqueteServicio.precio)
     precio = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    precio_base = serializers.SerializerMethodField()
 
     class Meta:
         model = PaqueteServicio
-        fields = ["servicio_id", "nombre_servicio", "precio"]
+        fields = ["servicio_id", "nombre_servicio", "precio", "precio_base"]
+
+    def get_precio_base(self, obj):
+        """
+        Devuelve el precio base del servicio asociado.
+        Si no tiene precio, retorna 0.
+        """
+        if hasattr(obj.servicio, "precio") and obj.servicio.precio is not None:
+            return obj.servicio.precio
+        return Decimal("0")
 
     def validate_precio(self, value):
         if value in ("", None):
@@ -379,9 +391,41 @@ class PaqueteSerializer(serializers.ModelSerializer):
         salida = obj.salidas.filter(activo=True).order_by("-fecha_regreso").first()
         return salida.fecha_regreso if salida else None
 
+
     def get_precio(self, obj):
-        salida = obj.salidas.filter(activo=True).order_by("fecha_salida").first()
-        return salida.precio_actual if salida else None
+        """
+        Calcula dinámicamente el precio total del paquete:
+        - Siempre busca el menor precio_actual y el mayor precio_final de las salidas activas.
+        - Si el paquete es propio, suma también el total de los servicios.
+        - Si no es propio, devuelve solo el menor precio_actual (sin sumar servicios).
+        """
+
+        total_servicios = Decimal("0")
+        for ps in obj.paquete_servicios.all():
+            if ps.precio and ps.precio > 0:
+                total_servicios += ps.precio
+            elif hasattr(ps.servicio, "precio") and ps.servicio.precio:
+                total_servicios += ps.servicio.precio
+
+        salidas = obj.salidas.filter(activo=True)
+        if not salidas.exists():
+            return total_servicios if getattr(obj, "es_propio", False) else Decimal("0")
+
+        precios_actual = [s.precio_actual for s in salidas if s.precio_actual is not None]
+        precios_final = [s.precio_final for s in salidas if s.precio_final is not None]
+
+        menor_precio_actual = min(precios_actual) if precios_actual else Decimal("0")
+        mayor_precio_final = max(precios_final) if precios_final else Decimal("0")
+        
+
+        # ✅ Lógica invertida: propio → suma servicios; no propio → no suma
+        if getattr(obj, "propio", False):
+            print(f"menor_precio_actual + total_servicios: {menor_precio_actual + total_servicios}")
+            return menor_precio_actual + total_servicios
+        else:
+            return menor_precio_actual
+
+
 
     def get_senia(self, obj):
         salida = obj.salidas.filter(activo=True).order_by("fecha_salida").first()
