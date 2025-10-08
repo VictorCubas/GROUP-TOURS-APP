@@ -473,6 +473,14 @@ class PaqueteSerializer(serializers.ModelSerializer):
             servicios_data = self._get_servicios_from_initial() or []
         if not salidas_data:
             salidas_data = self._get_salidas_from_initial() or []
+            
+            
+        # 🧩 Resolver tipo_paquete (viene como tipo_paquete o tipo_paquete_id)
+        tipo_paquete_val = validated_data.pop("tipo_paquete", None) or validated_data.pop("tipo_paquete_id", None)
+        if tipo_paquete_val:
+            tipo_paquete_obj = self._resolve_fk_instance("tipo_paquete", tipo_paquete_val, TipoPaquete)
+            if tipo_paquete_obj:
+                validated_data["tipo_paquete"] = tipo_paquete_obj
 
         paquete = Paquete.objects.create(**validated_data)
     
