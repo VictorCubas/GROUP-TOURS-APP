@@ -24,6 +24,8 @@ class DestinoFilter(django_filters.FilterSet):
         field_name="ciudad__pais__nombre",
         lookup_expr="icontains"
     )
+    
+    zona_geografica = django_filters.CharFilter(field_name="ciudad__pais__zona_geografica__nombre", lookup_expr="icontains")  # 🔹 agregado
 
     activo = django_filters.BooleanFilter(field_name="activo")
 
@@ -63,5 +65,6 @@ class DestinoFilter(django_filters.FilterSet):
         """
         return queryset.filter(
             Q(ciudad__nombre__icontains=value) |
-            Q(ciudad__pais__nombre__icontains=value)
+            Q(ciudad__pais__nombre__icontains=value) |
+            Q(ciudad__pais__zona_geografica__nombre__icontains=value)  # 🔹 búsqueda por zona
         )

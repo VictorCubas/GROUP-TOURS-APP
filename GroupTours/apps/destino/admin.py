@@ -8,6 +8,7 @@ class DestinoAdmin(admin.ModelAdmin):
         'nombre_destino',
         'ciudad',
         'pais',                 # se muestra el país derivado de ciudad.pais
+        'zona_geografica',
         'activo',
         'en_uso',
         'fecha_creacion',
@@ -19,11 +20,13 @@ class DestinoAdmin(admin.ModelAdmin):
         'fecha_creacion',
         'ciudad__pais',         # filtrado por país a través de la ciudad
         'ciudad',
+        'ciudad__pais__zona_geografica',
     )
     search_fields = (
         'descripcion',
         'ciudad__nombre',
         'ciudad__pais__nombre',
+        'ciudad__pais__zona_geografica__nombre',  # 🔹 búsqueda por zona
         'hoteles__nombre',
     )
     readonly_fields = ('fecha_creacion', 'fecha_modificacion')
@@ -31,15 +34,12 @@ class DestinoAdmin(admin.ModelAdmin):
 
     @admin.display(description="Nombre del destino")
     def nombre_destino(self, obj):
-        """
-        Si no tienes un campo 'nombre' propio y solo usas la ciudad
-        como nombre de destino, mostramos el nombre de la ciudad.
-        """
         return obj.ciudad.nombre
 
     @admin.display(description="País")
     def pais(self, obj):
-        """
-        Muestra el país de la ciudad asociada.
-        """
         return obj.ciudad.pais.nombre
+
+    @admin.display(description="Zona Geográfica")
+    def zona_geografica(self, obj):
+        return obj.zona_geografica.nombre if obj.zona_geografica else None
