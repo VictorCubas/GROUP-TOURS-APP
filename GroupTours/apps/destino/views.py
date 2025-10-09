@@ -63,6 +63,7 @@ class DestinoViewSet(viewsets.ModelViewSet):
                 "id",
                 ciudad_nombre=models.F("ciudad__nombre"),
                 pais_nombre=models.F("ciudad__pais__nombre"),
+                zona_geografica_nombre=models.F("ciudad__pais__zona_geografica__nombre"), 
             )
         )
         return Response(list(queryset))
