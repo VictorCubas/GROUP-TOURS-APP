@@ -40,3 +40,16 @@ class Destino(models.Model):
     def __str__(self):
         # Ejemplo: "París (Francia)"
         return f"{self.ciudad.nombre} ({self.ciudad.pais.nombre})"
+    
+    
+    # 🔹 Propiedad de solo lectura (no se guarda en BD)
+    @property
+    def zona_geografica(self):
+        """
+        Devuelve la zona geográfica asociada al país de la ciudad.
+        Retorna None si no hay país o zona asociada.
+        """
+        try:
+            return self.ciudad.pais.zona_geografica
+        except AttributeError:
+            return None

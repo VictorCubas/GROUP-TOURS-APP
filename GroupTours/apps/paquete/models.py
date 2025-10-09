@@ -98,6 +98,19 @@ class Paquete(models.Model):
 
     def __str__(self):
         return self.nombre
+    
+    
+    @property
+    def zona_geografica(self):
+        """
+        Devuelve la zona geográfica asociada al país del destino del paquete.
+        Retorna None si no hay zona asociada.
+        """
+        try:
+            return self.destino.zona_geografica
+        except AttributeError:
+            return None
+        
 
     def clean(self):
         if (

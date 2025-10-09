@@ -66,7 +66,14 @@ class NacionalidadViewSet(viewsets.ModelViewSet):
         """
         Retorna todas las nacionalidades sin paginación (solo id y nombre)
         """
-        queryset = self.filter_queryset(self.get_queryset().filter(activo=True)).values('id', 'nombre', 'codigo_alpha2',)
+        queryset = self.filter_queryset(
+                self.get_queryset().filter(activo=True)
+            ).values(
+                'id',
+                'nombre',
+                'codigo_alpha2',
+                'zona_geografica__nombre',  # nombre de la zona geográfica
+            )
         return Response(list(queryset))
 
     class Meta:
