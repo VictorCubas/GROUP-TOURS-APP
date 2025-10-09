@@ -6,10 +6,11 @@ from apps.ciudad.models import Ciudad
 class CiudadSimpleSerializer(serializers.ModelSerializer):
     pais_nombre = serializers.CharField(source="pais.nombre", read_only=True)
     pais_id = serializers.CharField(source="pais.id", read_only=True)
+    zona_geografica = serializers.CharField(source="pais.zona_geografica.nombre", read_only=True)  # 🔹 agregado
 
     class Meta:
         model = Ciudad
-        fields = ["id", "nombre", "pais_nombre", "pais_id"]
+        fields = ["id", "nombre", "pais_nombre", "pais_id", "zona_geografica"]
 
 class DestinoSerializer(serializers.ModelSerializer):
     ciudad = CiudadSimpleSerializer(read_only=True)
@@ -25,6 +26,7 @@ class DestinoSerializer(serializers.ModelSerializer):
         queryset=Destino.hoteles.field.related_model.objects.all(),
         source="hoteles"
     )
+    zona_geografica = serializers.CharField(source="zona_geografica.nombre", read_only=True)  # 🔹 agregado
 
     class Meta:
         model = Destino
@@ -35,6 +37,7 @@ class DestinoSerializer(serializers.ModelSerializer):
             "descripcion",
             "hoteles",
             "hoteles_ids",
+            "zona_geografica",
             "activo",
             "en_uso",
             "fecha_creacion",

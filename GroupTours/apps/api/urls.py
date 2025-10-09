@@ -22,5 +22,6 @@ urlpatterns = [
     path('moneda/', include('apps.moneda.urls')),
     path('reservas/', include('apps.reserva.urls')),
     path('ciudad/', include('apps.ciudad.urls')),
+    path('zona_geografica/', include('apps.zona_geografica.urls')),
     # Puedes seguir agregando aquí otras rutas
 ]

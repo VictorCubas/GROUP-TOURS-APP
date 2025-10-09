@@ -42,11 +42,12 @@ class PaqueteViewSet(viewsets.ModelViewSet):
         Paquete.objects.select_related(
             "tipo_paquete",
             "destino",
+            "destino__ciudad__pais__zona_geografica",  # ✅ acceso optimizado
             "distribuidora",
             "moneda"
         )
         .prefetch_related(
-            "paquete_servicios__servicio",  # usamos paquete_servicios internamente
+            "paquete_servicios__servicio",
             "salidas__moneda",
             "salidas__hoteles",
             "salidas__habitacion_fija__hotel",
@@ -58,7 +59,7 @@ class PaqueteViewSet(viewsets.ModelViewSet):
     pagination_class = PaquetePagination
     permission_classes = []
     filter_backends = [DjangoFilterBackend]
-    filterset_class = PaqueteFilter  # ➜ incluye modalidad y habitacion_fija
+    filterset_class = PaqueteFilter
 
     # ----- ENDPOINT EXTRA: resumen -----
     @action(detail=False, methods=['get'], url_path='resumen')
@@ -87,7 +88,8 @@ class PaqueteViewSet(viewsets.ModelViewSet):
                 "id",
                 "nombre",
                 "destino__ciudad__nombre",
-                "destino__ciudad__pais__nombre"
+                "destino__ciudad__pais__nombre",
+                "destino__ciudad__pais__zona_geografica__nombre",  # ✅ nueva línea
             )
         )
 
@@ -97,6 +99,7 @@ class PaqueteViewSet(viewsets.ModelViewSet):
                 "nombre": item["nombre"],
                 "destino": item["destino__ciudad__nombre"],
                 "pais": item["destino__ciudad__pais__nombre"],
+                "zona_geografica": item["destino__ciudad__pais__zona_geografica__nombre"],
             }
             for item in queryset
         ]
