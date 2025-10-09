@@ -44,10 +44,29 @@ class ServicioSimpleSerializer(serializers.ModelSerializer):
 class DestinoNestedSerializer(serializers.ModelSerializer):
     ciudad = serializers.CharField(source="ciudad.nombre", read_only=True)
     pais = serializers.CharField(source="ciudad.pais.nombre", read_only=True)
+    # zona_geografica = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Destino
-        fields = ["id", "ciudad", "pais"]
+        fields = ["id", "ciudad", "pais", ]
+
+    # def get_zona_geografica(self, obj):
+    #     """
+    #     Retorna la zona geográfica asociada al país de la ciudad, si existe.
+    #     Formato: { "id": .., "nombre": .., "descripcion": .. } o None.
+    #     """
+    #     try:
+    #         zona = obj.ciudad.pais.zona_geografica
+    #         if not zona:
+    #             return None
+    #         # si la zona tiene descripción, la incluimos; si no, devolvemos solo id/nombre
+    #         return {
+    #             "id": zona.id,
+    #             "nombre": getattr(zona, "nombre", None),
+    #             "descripcion": getattr(zona, "descripcion", None)
+    #         }
+    #     except Exception:
+    #         return None
 
 
 class DistribuidoraSimpleSerializer(serializers.ModelSerializer):
@@ -230,6 +249,9 @@ class PaqueteSerializer(serializers.ModelSerializer):
     distribuidora = DistribuidoraSimpleSerializer(read_only=True, allow_null=True)
     moneda = MonedaSimpleSerializer(read_only=True, allow_null=True)
 
+    # Zona geográfica a nivel de paquete (lectura, derivada del destino)
+    zona_geografica = serializers.SerializerMethodField(read_only=True)
+
     servicios = PaqueteServicioSerializer(
         source="paquete_servicios",
         many=True,
@@ -288,6 +310,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
             "tipo_paquete_id",
             "destino",
             "destino_id",
+            "zona_geografica",      # <-- agregado aquí (lectura)
             "distribuidora",
             "distribuidora_id",
             "moneda",
@@ -409,7 +432,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
 
         salidas = obj.salidas.filter(activo=True)
         if not salidas.exists():
-            return total_servicios if getattr(obj, "es_propio", False) else Decimal("0")
+            return total_servicios if getattr(obj, "propio", False) else Decimal("0")
 
         precios_actual = [s.precio_actual for s in salidas if s.precio_actual is not None]
         precios_final = [s.precio_final for s in salidas if s.precio_final is not None]
@@ -418,9 +441,8 @@ class PaqueteSerializer(serializers.ModelSerializer):
         mayor_precio_final = max(precios_final) if precios_final else Decimal("0")
         
 
-        # ✅ Lógica invertida: propio → suma servicios; no propio → no suma
+        # ✅ Lógica: si es propio → suma servicios; si no → retorna solo menor_precio_actual
         if getattr(obj, "propio", False):
-            print(f"menor_precio_actual + total_servicios: {menor_precio_actual + total_servicios}")
             return menor_precio_actual + total_servicios
         else:
             return menor_precio_actual
@@ -436,6 +458,24 @@ class PaqueteSerializer(serializers.ModelSerializer):
         if obj.imagen and hasattr(obj.imagen, "url"):
             return request.build_absolute_uri(obj.imagen.url) if request else obj.imagen.url
         return None
+
+    def get_zona_geografica(self, obj):
+        """
+        Zona geográfica del paquete (derivada del país del destino).
+        Mismo formato que en DestinoNestedSerializer.
+        """
+        try:
+            pais = obj.destino.ciudad.pais
+            zona = getattr(pais, "zona_geografica", None)
+            if not zona:
+                return None
+            return {
+                "id": zona.id,
+                "nombre": getattr(zona, "nombre", None),
+                "descripcion": getattr(zona, "descripcion", None)
+            }
+        except Exception:
+            return None
 
     # --------- Helpers ---------
     def _resolve_fk_instance(self, field_name, value, model_class):
@@ -607,7 +647,6 @@ class PaqueteSerializer(serializers.ModelSerializer):
                 # Si ya existe, actualizar; si no, crear
                 if servicio_obj.id in servicios_existentes:
                     ps_obj = servicios_existentes[servicio_obj.id]
-                    # actualizar solo si cambió (opcional)
                     if ps_obj.precio != precio_val:
                         ps_obj.precio = precio_val
                         ps_obj.save()
@@ -620,12 +659,11 @@ class PaqueteSerializer(serializers.ModelSerializer):
 
                 enviados_ids_servicios.append(servicio_obj.id)
 
-            # Eliminar servicios que no fueron enviados (si quieres mantener los que no se envían, comenta esta sección)
-            # Actualmente tu flujo de "reemplazar" hacía esto (borrabas todo y creabas), así que mantenemos esa lógica.
+            # Eliminar servicios que no fueron enviados (si se envió un listado)
             if enviados_ids_servicios:
                 instance.paquete_servicios.exclude(servicio__id__in=enviados_ids_servicios).delete()
             else:
-                # Si enviaste un array vacío explícito queremos eliminar todos
+                # si enviaste un array vacío explícito → eliminar todos
                 instance.paquete_servicios.all().delete()
 
         # --- Actualizar salidas ---
@@ -725,7 +763,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
 
                     enviados_ids.append(salida.id)
 
-            # Eliminar salidas no enviadas
+            # Eliminar salidas que no fueron enviadas
             for s_id, salida in salidas_existentes.items():
                 if s_id not in enviados_ids:
                     salida.delete()
