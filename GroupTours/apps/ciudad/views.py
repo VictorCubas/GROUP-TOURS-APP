@@ -32,17 +32,20 @@ class CiudadViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """
-        Sobrescribimos el queryset para:
-        - list: devolver solo ciudades activas y que no tengan destino asignado
-        - otros actions: devolver todas las ciudades (ordenadas por fecha de creación)
+        - Si se pasa ?all=true → devuelve todas las ciudades activas.
+        - Si no se pasa o es false → solo ciudades activas sin destino asociado.
         """
         qs = Ciudad.objects.order_by('-fecha_creacion').all()
 
         if self.action == 'list':
-            qs = qs.filter(
-                activo=True,
-                destinos__isnull=True  # solo ciudades sin destinos asignados
-            )
+            all_param = self.request.query_params.get('all', 'false').lower()
+            include_all = all_param in ['true', '1', 'yes']
+
+            if include_all:
+                qs = qs.filter(activo=True)
+            else:
+                qs = qs.filter(activo=True, destinos__isnull=True)
+
         return qs
 
     @action(detail=False, methods=['get'], url_path='resumen')
