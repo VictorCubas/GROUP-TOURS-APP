@@ -8,6 +8,8 @@ urlpatterns = [
     path('resumen/', HotelViewSet.as_view({'get':'resumen'}), name='hotel-resumen'),
     path('todos/', HotelViewSet.as_view({'get':'todos'}), name='hotel-todos'),
     path('cadenas/todos/', CadenaHoteleraViewSet.as_view({'get':'todos'}), name='cadena-todos'),
+    path('cadenas/todos/', CadenaHoteleraViewSet.as_view({'get':'todos'}), name='cadena-todos'),
+    path('por-salida/<int:salida_id>/', HotelViewSet.as_view({'get': 'por_salida'}), name='hotel-por-salida'),
 ]
 
 urlpatterns = format_suffix_patterns(urlpatterns)
