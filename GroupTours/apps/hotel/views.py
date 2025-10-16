@@ -4,6 +4,8 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.decorators import action
 from django_filters.rest_framework import DjangoFilterBackend
 
+from apps.paquete.models import SalidaPaquete
+
 from .models import CadenaHotelera, Hotel, Habitacion, Servicio
 from .serializers import CadenaHoteleraSerializer, HotelSerializer, HabitacionSerializer, ServicioSimpleSerializer
 from .filters import HotelFilter
@@ -90,6 +92,29 @@ class HotelViewSet(viewsets.ModelViewSet):
             for h in queryset
         ]
         return Response(hoteles)
+    
+    
+    @action(detail=False, methods=['get'], url_path='por-salida/(?P<salida_id>[^/.]+)', pagination_class=None)
+    def por_salida(self, request, salida_id=None):
+        """
+        Devuelve los hoteles y habitaciones asociados a una salida de paquete.
+        """
+        try:
+            salida = SalidaPaquete.objects.get(pk=salida_id)
+        except SalidaPaquete.DoesNotExist:
+            return Response({"detail": "Salida no encontrada."}, status=404)
+
+        # Hoteles asociados
+        hoteles = salida.hoteles.prefetch_related(
+            "habitaciones__servicios",
+            "servicios",
+            "ciudad",
+            "ciudad__pais",
+            "cadena"
+        )
+
+        serializer = self.get_serializer(hoteles, many=True)
+        return Response(serializer.data)
 
 # -------------------- SERVICIO --------------------
 class ServicioViewSet(viewsets.ModelViewSet):

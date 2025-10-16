@@ -136,7 +136,7 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
     )
     habitacion_fija = serializers.SerializerMethodField(read_only=True)
 
-    moneda = serializers.SerializerMethodField(read_only=True)
+    moneda = MonedaSimpleSerializer(read_only=True, allow_null=True)
     temporada = serializers.SerializerMethodField(read_only=True)
     
     cupos_habitaciones = CupoHabitacionSalidaSerializer(many=True, read_only=True)
