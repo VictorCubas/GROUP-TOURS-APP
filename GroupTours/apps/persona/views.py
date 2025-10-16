@@ -38,6 +38,18 @@ class PersonaFilter(FilterSet):
         choices=[('fisica', 'PersonaFisica'), ('juridica', 'PersonaJuridica')],
         method='filter_tipo'
     )
+    
+    busqueda = django_filters.CharFilter(method='filter_busqueda')
+    
+    def filter_busqueda(self, queryset, name, value):
+        """
+        Permite buscar personas físicas por nombre, apellido o documento.
+        """
+        return queryset.filter(
+            Q(personafisica__nombre__icontains=value) |
+            Q(personafisica__apellido__icontains=value) |
+            Q(documento__icontains=value)
+        ).distinct()
 
     def filter_fecha_hasta(self, queryset, name, value):
         siguiente_dia = datetime.combine(value, datetime.min.time()) + timedelta(days=1)
