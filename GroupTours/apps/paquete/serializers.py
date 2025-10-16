@@ -138,8 +138,12 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
 
     moneda = MonedaSimpleSerializer(read_only=True, allow_null=True)
     temporada = serializers.SerializerMethodField(read_only=True)
-    
+
     cupos_habitaciones = CupoHabitacionSalidaSerializer(many=True, read_only=True)
+
+    # Campos calculados para precio total (hotel + ganancia/comisión + servicios)
+    precio_venta_total_min = serializers.SerializerMethodField(read_only=True)
+    precio_venta_total_max = serializers.SerializerMethodField(read_only=True)
 
 
     class Meta:
@@ -158,6 +162,8 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
             "comision",
             "precio_venta_sugerido_min",
             "precio_venta_sugerido_max",
+            "precio_venta_total_min",
+            "precio_venta_total_max",
             "cupo",
             "senia",
             "activo",
@@ -202,6 +208,40 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
             }
             if obj.habitacion_fija else None
         )
+
+    def get_precio_venta_total_min(self, obj):
+        """
+        Calcula el precio de venta total mínimo:
+        precio_venta_sugerido_min + total de servicios del paquete
+        """
+        precio_venta_min = obj.precio_venta_sugerido_min or Decimal("0")
+
+        # Calcular total de servicios del paquete
+        total_servicios = Decimal("0")
+        for ps in obj.paquete.paquete_servicios.all():
+            if ps.precio and ps.precio > 0:
+                total_servicios += ps.precio
+            elif hasattr(ps.servicio, "precio") and ps.servicio.precio:
+                total_servicios += ps.servicio.precio
+
+        return precio_venta_min + total_servicios
+
+    def get_precio_venta_total_max(self, obj):
+        """
+        Calcula el precio de venta total máximo:
+        precio_venta_sugerido_max + total de servicios del paquete
+        """
+        precio_venta_max = obj.precio_venta_sugerido_max or Decimal("0")
+
+        # Calcular total de servicios del paquete
+        total_servicios = Decimal("0")
+        for ps in obj.paquete.paquete_servicios.all():
+            if ps.precio and ps.precio > 0:
+                total_servicios += ps.precio
+            elif hasattr(ps.servicio, "precio") and ps.servicio.precio:
+                total_servicios += ps.servicio.precio
+
+        return precio_venta_max + total_servicios
 
 
 # ---------------------------------------------------------------------
@@ -298,6 +338,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
     fecha_inicio = serializers.SerializerMethodField()
     fecha_fin = serializers.SerializerMethodField()
     precio = serializers.SerializerMethodField()
+    precio_venta_desde = serializers.SerializerMethodField()
     senia = serializers.SerializerMethodField()
     imagen_url = serializers.SerializerMethodField()
 
@@ -319,6 +360,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
             "servicios_data",
             "modalidad",
             "precio",
+            "precio_venta_desde",
             "senia",
             "fecha_inicio",
             "fecha_fin",
@@ -447,7 +489,33 @@ class PaqueteSerializer(serializers.ModelSerializer):
         else:
             return menor_precio_actual
 
+    def get_precio_venta_desde(self, obj):
+        """
+        Calcula el precio de venta mínimo para mostrar al cliente:
+        Obtiene el menor precio_venta_total_min de todas las salidas activas.
+        Este es el precio completo final (habitación + ganancia/comisión + servicios).
+        """
+        salidas = obj.salidas.filter(activo=True)
+        if not salidas.exists():
+            return Decimal("0")
 
+        # Calcular total de servicios del paquete
+        total_servicios = Decimal("0")
+        for ps in obj.paquete_servicios.all():
+            if ps.precio and ps.precio > 0:
+                total_servicios += ps.precio
+            elif hasattr(ps.servicio, "precio") and ps.servicio.precio:
+                total_servicios += ps.servicio.precio
+
+        # Obtener todos los precio_venta_sugerido_min y sumarles los servicios
+        precios_venta_totales = []
+        for salida in salidas:
+            if salida.precio_venta_sugerido_min:
+                precio_total = salida.precio_venta_sugerido_min + total_servicios
+                precios_venta_totales.append(precio_total)
+
+        # Retornar el menor precio de venta total
+        return min(precios_venta_totales) if precios_venta_totales else Decimal("0")
 
     def get_senia(self, obj):
         salida = obj.salidas.filter(activo=True).order_by("fecha_salida").first()

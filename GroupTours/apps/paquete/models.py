@@ -238,6 +238,19 @@ class SalidaPaquete(models.Model):
         ganancia = _to_decimal(self.ganancia)
         comision = _to_decimal(self.comision)
 
+        # Sumar servicios incluidos en el paquete
+        total_servicios = Decimal("0")
+        for ps in self.paquete.paquete_servicios.all():
+            if ps.precio and ps.precio > 0:
+                total_servicios += _to_decimal(ps.precio)
+            elif hasattr(ps.servicio, "precio") and ps.servicio.precio:
+                total_servicios += _to_decimal(ps.servicio.precio)
+
+        # Costo total incluye habitación + servicios
+        costo_total_min = min_base + total_servicios
+        costo_total_max = max_base + total_servicios
+
+        # Aplicar ganancia o comisión sobre el costo total
         if self.paquete.propio and ganancia > 0:
             factor = Decimal("1") + (ganancia / Decimal("100"))
         elif not self.paquete.propio and comision > 0:
@@ -245,8 +258,8 @@ class SalidaPaquete(models.Model):
         else:
             factor = Decimal("1")
 
-        self.precio_venta_sugerido_min = min_base * factor
-        self.precio_venta_sugerido_max = max_base * factor
+        self.precio_venta_sugerido_min = costo_total_min * factor
+        self.precio_venta_sugerido_max = costo_total_max * factor
         self.save(update_fields=["precio_venta_sugerido_min", "precio_venta_sugerido_max"])
 
     # -----------------------------
