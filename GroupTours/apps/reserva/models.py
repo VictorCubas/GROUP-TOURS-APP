@@ -96,6 +96,10 @@ class Reserva(models.Model):
         default="pendiente",
         help_text="Estado actual de la reserva"
     )
+    datos_completos = models.BooleanField(
+        default=False,
+        help_text="Indica si todos los datos de pasajeros están cargados"
+    )
 
     class Meta:
         verbose_name = "Reserva"
@@ -147,20 +151,64 @@ class Reserva(models.Model):
         """
         return self.cantidad_pasajeros > 0 and self.monto_pagado >= self.seña_total
 
+    def esta_totalmente_pagada(self):
+        """
+        Verifica si se ha pagado el costo total estimado de la reserva
+        """
+        return self.monto_pagado >= self.costo_total_estimado
+
     def actualizar_estado(self):
-        """Actualiza el estado de la reserva según pago y carga de pasajeros"""
+        """
+        Actualiza el estado de la reserva según pago y carga de pasajeros.
+
+        Lógica de estados:
+        - Pendiente: Sin pago o pago insuficiente para la seña
+        - Confirmada: Seña pagada, cupo asegurado
+        - Finalizada: Pago total completo
+        - Cancelada: Reserva cancelada
+
+        El campo 'datos_completos' indica si todos los pasajeros están cargados.
+        """
         if self.estado == "cancelada":
             return
 
-        if self.puede_confirmarse():
-            if self.faltan_datos_pasajeros:
-                self.estado = "incompleta"
-            else:
-                self.estado = "finalizada"
+        # Actualizar flag de datos completos
+        self.datos_completos = not self.faltan_datos_pasajeros
+
+        # Actualizar estado según pago
+        if self.esta_totalmente_pagada():
+            self.estado = "finalizada"
+        elif self.puede_confirmarse():
+            self.estado = "confirmada"
         else:
             self.estado = "pendiente"
 
-        self.save(update_fields=["estado"])
+        self.save(update_fields=["estado", "datos_completos"])
+
+    @property
+    def estado_display(self):
+        """
+        Retorna un texto descriptivo del estado incluyendo datos completos.
+        Útil para mostrar en UI.
+        """
+        estados_base = {
+            "pendiente": "Pendiente de pago",
+            "confirmada": "Confirmada",
+            "finalizada": "Finalizada",
+            "cancelada": "Cancelada",
+            "incompleta": "Confirmada",  # Legacy: mapear incompleta a confirmada
+        }
+
+        estado_texto = estados_base.get(self.estado, self.estado.capitalize())
+
+        # Agregar información de datos si está confirmada o incompleta (legacy)
+        if self.estado in ["confirmada", "incompleta"]:
+            if not self.datos_completos:
+                return f"{estado_texto} Incompleto"
+            else:
+                return f"{estado_texto} Completo"
+
+        return estado_texto
 
     def calcular_precio_unitario(self):
         """

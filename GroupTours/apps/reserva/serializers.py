@@ -119,6 +119,10 @@ class ReservaSerializer(serializers.ModelSerializer):
         read_only=True,
         help_text="Seña total requerida según cantidad de pasajeros"
     )
+    estado_display = serializers.CharField(
+        read_only=True,
+        help_text="Texto descriptivo del estado para mostrar en UI"
+    )
 
     class Meta:
         model = Reserva
@@ -143,6 +147,8 @@ class ReservaSerializer(serializers.ModelSerializer):
             "seña_total",
             "monto_pagado",
             "estado",
+            "datos_completos",
+            "estado_display",
             "pasajeros",
             "pasajeros_data",
             "activo",
@@ -157,7 +163,9 @@ class ReservaSerializer(serializers.ModelSerializer):
             "hotel",
             "precio_base_paquete",
             "costo_total_estimado",
-            "seña_total"
+            "seña_total",
+            "datos_completos",
+            "estado_display"
         ]
 
     def create(self, validated_data):
