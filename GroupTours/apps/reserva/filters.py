@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 
 class ReservaFilter(django_filters.FilterSet):
     estado = django_filters.CharFilter(field_name="estado", lookup_expr="iexact")
+    datos_completos = django_filters.BooleanFilter(field_name="datos_completos")
     titular = django_filters.CharFilter(field_name="titular__nombre", lookup_expr="icontains")
     paquete = django_filters.CharFilter(field_name="paquete__nombre", lookup_expr="icontains")
     codigo = django_filters.CharFilter(field_name="codigo", lookup_expr="icontains")
@@ -27,7 +28,7 @@ class ReservaFilter(django_filters.FilterSet):
     class Meta:
         model = Reserva
         fields = [
-            "estado", "titular", "paquete", "codigo", "observacion",
+            "estado", "datos_completos", "titular", "paquete", "codigo", "observacion",
             "fecha_reserva_desde", "fecha_reserva_hasta", "activo", "documento"
         ]
 
