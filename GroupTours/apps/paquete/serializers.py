@@ -211,37 +211,31 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
 
     def get_precio_venta_total_min(self, obj):
         """
-        Calcula el precio de venta total mínimo:
-        precio_venta_sugerido_min + total de servicios del paquete
+        Retorna el precio de venta total mínimo por pasajero.
+
+        Este valor ya está calculado en precio_venta_sugerido_min e incluye:
+        - Precio de habitación (precio_actual)
+        - Servicios del paquete
+        - Ganancia/comisión aplicada
+
+        No se deben sumar los servicios nuevamente ya que precio_venta_sugerido_min
+        ya los incluye (calculado en SalidaPaquete.calcular_precio_venta()).
         """
-        precio_venta_min = obj.precio_venta_sugerido_min or Decimal("0")
-
-        # Calcular total de servicios del paquete
-        total_servicios = Decimal("0")
-        for ps in obj.paquete.paquete_servicios.all():
-            if ps.precio and ps.precio > 0:
-                total_servicios += ps.precio
-            elif hasattr(ps.servicio, "precio") and ps.servicio.precio:
-                total_servicios += ps.servicio.precio
-
-        return precio_venta_min + total_servicios
+        return obj.precio_venta_sugerido_min or Decimal("0")
 
     def get_precio_venta_total_max(self, obj):
         """
-        Calcula el precio de venta total máximo:
-        precio_venta_sugerido_max + total de servicios del paquete
+        Retorna el precio de venta total máximo por pasajero.
+
+        Este valor ya está calculado en precio_venta_sugerido_max e incluye:
+        - Precio de habitación (precio_final)
+        - Servicios del paquete
+        - Ganancia/comisión aplicada
+
+        No se deben sumar los servicios nuevamente ya que precio_venta_sugerido_max
+        ya los incluye (calculado en SalidaPaquete.calcular_precio_venta()).
         """
-        precio_venta_max = obj.precio_venta_sugerido_max or Decimal("0")
-
-        # Calcular total de servicios del paquete
-        total_servicios = Decimal("0")
-        for ps in obj.paquete.paquete_servicios.all():
-            if ps.precio and ps.precio > 0:
-                total_servicios += ps.precio
-            elif hasattr(ps.servicio, "precio") and ps.servicio.precio:
-                total_servicios += ps.servicio.precio
-
-        return precio_venta_max + total_servicios
+        return obj.precio_venta_sugerido_max or Decimal("0")
 
 
 # ---------------------------------------------------------------------

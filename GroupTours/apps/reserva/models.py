@@ -1,7 +1,7 @@
 from django.db import models
 from django.core.exceptions import ValidationError
 from django.utils.timezone import now
-from apps.paquete.models import Paquete, SalidaPaquete
+from apps.paquete.models import CupoHabitacionSalida, Paquete, SalidaPaquete
 from apps.persona.models import PersonaFisica
 from apps.servicio.models import Servicio
 from apps.hotel.models import Hotel, Habitacion
@@ -110,6 +110,8 @@ class Reserva(models.Model):
         return f"Reserva {self.codigo} - Titular: {self.titular} ({self.paquete.nombre})"
 
     def save(self, *args, **kwargs):
+        es_nueva = self._state.adding  # True si la reserva aún no fue guardada
+
         # Auto-completar cantidad_pasajeros si no se especificó
         if self.cantidad_pasajeros is None and self.habitacion:
             self.cantidad_pasajeros = self.habitacion.capacidad
@@ -119,7 +121,49 @@ class Reserva(models.Model):
             year = now().year
             last_id = Reserva.objects.filter(fecha_reserva__year=year).count() + 1
             self.codigo = f"RSV-{year}-{last_id:04d}"
+
+        if es_nueva and self.salida and self.habitacion:
+            # 1. Determinar cantidad de habitaciones (siempre 1 por reserva)
+            cantidad_habitaciones = 1
+
+            # 2. Determinar capacidad de pasajeros (de la habitación)
+            capacidad_pasajeros = self.habitacion.capacidad
+
+            # 3. Actualizar CupoHabitacionSalida (descontar habitaciones disponibles)
+            cupo_hab_salida = CupoHabitacionSalida.objects.filter(
+                salida=self.salida,
+                habitacion=self.habitacion
+            ).first()
+
+            if cupo_hab_salida:
+                # Verificar que hay cupo suficiente de habitaciones
+                if cupo_hab_salida.cupo < cantidad_habitaciones:
+                    raise ValueError(
+                        f"No hay suficiente cupo disponible para la habitación '{self.habitacion.numero}'. "
+                        f"Disponibles: {cupo_hab_salida.cupo}, Solicitadas: {cantidad_habitaciones}"
+                    )
+                # Decrementar el cupo de la habitación
+                cupo_hab_salida.cupo -= cantidad_habitaciones
+                cupo_hab_salida.save(update_fields=['cupo'])
+            else:
+                raise ValueError(
+                    f"No se encontró configuración de cupo para la habitación '{self.habitacion.numero}' "
+                    f"en la salida seleccionada."
+                )
+
+            # 4. Actualizar SalidaPaquete.cupo (descontar capacidad de pasajeros)
+            if self.salida.cupo is not None:
+                if self.salida.cupo < capacidad_pasajeros:
+                    raise ValueError(
+                        f"No hay suficiente cupo de pasajeros en la salida. "
+                        f"Disponibles: {self.salida.cupo}, Solicitados: {capacidad_pasajeros}"
+                    )
+                self.salida.cupo -= capacidad_pasajeros
+                self.salida.save(update_fields=['cupo'])
+
+
         super().save(*args, **kwargs)
+
 
     @property
     def hotel(self):
