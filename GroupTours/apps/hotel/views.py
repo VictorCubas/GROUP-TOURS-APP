@@ -139,13 +139,14 @@ class HotelViewSet(viewsets.ModelViewSet):
         else:
             noches = 1
 
-        # Calcular total de servicios del paquete (una sola vez)
+        # Calcular total de servicios del paquete SOLO si es paquete propio
         total_servicios = Decimal('0')
-        for ps in salida.paquete.paquete_servicios.all():
-            if ps.precio and ps.precio > 0:
-                total_servicios += ps.precio
-            elif hasattr(ps.servicio, 'precio') and ps.servicio.precio:
-                total_servicios += ps.servicio.precio
+        if salida.paquete.propio:
+            for ps in salida.paquete.paquete_servicios.all():
+                if ps.precio and ps.precio > 0:
+                    total_servicios += ps.precio
+                elif hasattr(ps.servicio, 'precio') and ps.servicio.precio:
+                    total_servicios += ps.servicio.precio
 
         # Factores de ganancia/comisión
         ganancia = salida.ganancia or Decimal('0')
@@ -158,55 +159,103 @@ class HotelViewSet(viewsets.ModelViewSet):
         else:
             factor = Decimal('1')
 
-        # Iterar sobre todas las habitaciones de los hoteles
-        for hotel in hoteles:
-            for habitacion in hotel.habitaciones.all():
-                # Obtener cupo
-                try:
-                    cupo_obj = CupoHabitacionSalida.objects.get(
-                        salida_id=salida_id,
-                        habitacion_id=habitacion.id
-                    )
-                    cupo = cupo_obj.cupo
-                except CupoHabitacionSalida.DoesNotExist:
-                    cupo = 0
+        # Verificar si es paquete de distribuidora
+        es_distribuidora = not salida.paquete.propio
 
-                # Calcular precio
-                precio_noche = habitacion.precio_noche or Decimal('0')
-                precio_habitacion_total = precio_noche * noches
-                costo_base = precio_habitacion_total + total_servicios
-                precio_venta_final = costo_base * factor
+        if es_distribuidora:
+            # Para paquetes de distribuidora: usar precios de catálogo individuales por habitación
+            from apps.paquete.models import PrecioCatalogoHabitacion
 
-                resumen_habitaciones.append({
-                    'habitacion_id': habitacion.id,
-                    'hotel_id': hotel.id,
-                    'hotel_nombre': hotel.nombre,
-                    'habitacion_numero': habitacion.numero,
-                    'habitacion_tipo': habitacion.tipo,
-                    'capacidad': habitacion.capacidad,
-                    'precio_noche': str(precio_noche),
-                    'precio_venta_final': str(precio_venta_final),
-                    'cupo': cupo
-                })
+            # Obtener todos los precios de catálogo para esta salida
+            precios_catalogo = {
+                pc.habitacion_id: pc.precio_catalogo
+                for pc in PrecioCatalogoHabitacion.objects.filter(salida_id=salida_id)
+            }
 
-        # Ordenar por precio_venta_final (de menor a mayor)
-        resumen_habitaciones_ordenado = sorted(
-            resumen_habitaciones,
-            key=lambda x: Decimal(x['precio_venta_final'])
-        )
+            # Aunque no hay cupos, mostramos los hoteles asociados a la salida
+            # para que el frontend tenga información sobre dónde se hospedan
+            for hotel in hoteles:
+                for habitacion in hotel.habitaciones.all():
+                    # Obtener precio de catálogo específico para esta habitación
+                    precio_catalogo = precios_catalogo.get(habitacion.id, Decimal('0'))
+                    precio_venta_final = precio_catalogo * factor
 
-        # Identificar la más barata y la más cara
-        habitacion_mas_barata = resumen_habitaciones_ordenado[0] if resumen_habitaciones_ordenado else None
-        habitacion_mas_cara = resumen_habitaciones_ordenado[-1] if resumen_habitaciones_ordenado else None
+                    resumen_habitaciones.append({
+                        'habitacion_id': habitacion.id,
+                        'hotel_id': hotel.id,
+                        'hotel_nombre': hotel.nombre,
+                        'habitacion_numero': habitacion.numero,
+                        'habitacion_tipo': habitacion.tipo,
+                        'capacidad': habitacion.capacidad,
+                        'precio_noche': None,  # No aplica para distribuidora
+                        'precio_catalogo': str(precio_catalogo),
+                        'precio_venta_final': str(precio_venta_final),
+                        'cupo': None,  # No se maneja cupo para distribuidora
+                        'es_distribuidora': True
+                    })
+
+            # Ordenar por precio_venta_final (de menor a mayor)
+            resumen_habitaciones_ordenado = sorted(
+                resumen_habitaciones,
+                key=lambda x: Decimal(x['precio_venta_final'])
+            )
+
+            # Identificar la más barata y la más cara
+            habitacion_mas_barata = resumen_habitaciones_ordenado[0] if resumen_habitaciones_ordenado else None
+            habitacion_mas_cara = resumen_habitaciones_ordenado[-1] if resumen_habitaciones_ordenado else None
+
+        else:
+            # Para paquetes propios: calcular normalmente
+            for hotel in hoteles:
+                for habitacion in hotel.habitaciones.all():
+                    # Obtener cupo
+                    try:
+                        cupo_obj = CupoHabitacionSalida.objects.get(
+                            salida_id=salida_id,
+                            habitacion_id=habitacion.id
+                        )
+                        cupo = cupo_obj.cupo
+                    except CupoHabitacionSalida.DoesNotExist:
+                        cupo = 0
+
+                    # Calcular precio
+                    precio_noche = habitacion.precio_noche or Decimal('0')
+                    precio_habitacion_total = precio_noche * noches
+                    costo_base = precio_habitacion_total + total_servicios
+                    precio_venta_final = costo_base * factor
+
+                    resumen_habitaciones.append({
+                        'habitacion_id': habitacion.id,
+                        'hotel_id': hotel.id,
+                        'hotel_nombre': hotel.nombre,
+                        'habitacion_numero': habitacion.numero,
+                        'habitacion_tipo': habitacion.tipo,
+                        'capacidad': habitacion.capacidad,
+                        'precio_noche': str(precio_noche),
+                        'precio_venta_final': str(precio_venta_final),
+                        'cupo': cupo,
+                        'es_distribuidora': False
+                    })
+
+            # Ordenar por precio_venta_final (de menor a mayor)
+            resumen_habitaciones_ordenado = sorted(
+                resumen_habitaciones,
+                key=lambda x: Decimal(x['precio_venta_final'])
+            )
+
+            # Identificar la más barata y la más cara
+            habitacion_mas_barata = resumen_habitaciones_ordenado[0] if resumen_habitaciones_ordenado else None
+            habitacion_mas_cara = resumen_habitaciones_ordenado[-1] if resumen_habitaciones_ordenado else None
 
         # ========================================
         # RESPUESTA CON ESTRUCTURA EXTENDIDA
         # ========================================
         return Response({
             'hoteles': serializer.data,  # Estructura original
+            'es_distribuidora': es_distribuidora,
             'resumen_precios': {
                 'noches': noches,
-                'servicios_paquete_total': str(total_servicios),
+                'servicios_paquete_total': str(total_servicios) if salida.paquete.propio else None,
                 'ganancia_porcentaje': str(ganancia) if salida.paquete.propio else None,
                 'comision_porcentaje': str(comision) if not salida.paquete.propio else None,
                 'factor_aplicado': str(factor),

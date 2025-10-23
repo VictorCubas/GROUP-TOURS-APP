@@ -233,33 +233,86 @@ class SalidaPaquete(models.Model):
     # CÁLCULO DE PRECIO DE VENTA
     # -----------------------------
     def calcular_precio_venta(self):
-        min_base = _to_decimal(self.precio_actual)
-        max_base = _to_decimal(self.precio_final) or min_base
+        """
+        Calcula los precios de venta mínimo y máximo considerando:
+        - Para paquetes PROPIOS: precio_actual/precio_final + servicios + ganancia%
+        - Para paquetes de DISTRIBUIDORA: precios de catálogo (hotel o habitación) + comisión%
+
+        Prioridad de precios para distribuidoras:
+        1. Si existe PrecioCatalogoHabitacion → usa esos
+        2. Si existe PrecioCatalogoHotel → usa esos (aplica a todas las habitaciones del hotel)
+        3. Si no existe ninguno → fallback a precio_actual/precio_final
+        """
         ganancia = _to_decimal(self.ganancia)
         comision = _to_decimal(self.comision)
 
-        # Sumar servicios incluidos en el paquete
-        total_servicios = Decimal("0")
-        for ps in self.paquete.paquete_servicios.all():
-            if ps.precio and ps.precio > 0:
-                total_servicios += _to_decimal(ps.precio)
-            elif hasattr(ps.servicio, "precio") and ps.servicio.precio:
-                total_servicios += _to_decimal(ps.servicio.precio)
+        # === CASO 1: Paquete de DISTRIBUIDORA ===
+        if not self.paquete.propio:
+            precios_list = []
 
-        # Costo total incluye habitación + servicios
-        costo_total_min = min_base + total_servicios
-        costo_total_max = max_base + total_servicios
+            # Verificar si hay precios por habitación
+            precios_habitacion = self.precios_catalogo.all()
 
-        # Aplicar ganancia o comisión sobre el costo total
-        if self.paquete.propio and ganancia > 0:
-            factor = Decimal("1") + (ganancia / Decimal("100"))
-        elif not self.paquete.propio and comision > 0:
-            factor = Decimal("1") + (comision / Decimal("100"))
+            if precios_habitacion.exists():
+                # CASO A: Usar precios específicos por habitación
+                precios_list = [_to_decimal(pc.precio_catalogo) for pc in precios_habitacion]
+            else:
+                # CASO B: Verificar si hay precios por hotel
+                precios_hotel = self.precios_catalogo_hoteles.all()
+
+                if precios_hotel.exists():
+                    # Usar precios por hotel (todas las habitaciones al mismo precio)
+                    precios_list = [_to_decimal(ph.precio_catalogo) for ph in precios_hotel]
+                else:
+                    # CASO C: Fallback - usar precio_actual/precio_final
+                    precios_list = []
+
+            # Si después de todo no hay precios, usar precio_actual/precio_final
+            if not precios_list:
+                min_base = _to_decimal(self.precio_actual)
+                max_base = _to_decimal(self.precio_final) or min_base
+            else:
+                min_base = min(precios_list)
+                max_base = max(precios_list)
+
+            # No se suman servicios para distribuidoras
+            total_servicios = Decimal("0")
+
+            # Aplicar comisión
+            if comision > 0:
+                factor = Decimal("1") + (comision / Decimal("100"))
+            else:
+                factor = Decimal("1")
+
+            self.precio_venta_sugerido_min = min_base * factor
+            self.precio_venta_sugerido_max = max_base * factor
+
+        # === CASO 2: Paquete PROPIO ===
         else:
-            factor = Decimal("1")
+            min_base = _to_decimal(self.precio_actual)
+            max_base = _to_decimal(self.precio_final) or min_base
 
-        self.precio_venta_sugerido_min = costo_total_min * factor
-        self.precio_venta_sugerido_max = costo_total_max * factor
+            # Sumar servicios incluidos en el paquete
+            total_servicios = Decimal("0")
+            for ps in self.paquete.paquete_servicios.all():
+                if ps.precio and ps.precio > 0:
+                    total_servicios += _to_decimal(ps.precio)
+                elif hasattr(ps.servicio, "precio") and ps.servicio.precio:
+                    total_servicios += _to_decimal(ps.servicio.precio)
+
+            # Costo total = habitación + servicios
+            costo_total_min = min_base + total_servicios
+            costo_total_max = max_base + total_servicios
+
+            # Aplicar ganancia
+            if ganancia > 0:
+                factor = Decimal("1") + (ganancia / Decimal("100"))
+            else:
+                factor = Decimal("1")
+
+            self.precio_venta_sugerido_min = costo_total_min * factor
+            self.precio_venta_sugerido_max = costo_total_max * factor
+
         self.save(update_fields=["precio_venta_sugerido_min", "precio_venta_sugerido_max"])
 
     # -----------------------------
@@ -304,6 +357,84 @@ class CupoHabitacionSalida(models.Model):
 
     def __str__(self):
         return f"{self.salida} - {self.habitacion} ({self.cupo} disponibles)"
+
+
+# ---------------------------------------------------------------------
+# PRECIO DE CATÁLOGO DE HOTEL (DISTRIBUIDORAS)
+# ---------------------------------------------------------------------
+class PrecioCatalogoHotel(models.Model):
+    """
+    Almacena precios de catálogo de distribuidora a nivel de HOTEL.
+    Cuando se define un precio por hotel, se aplica a TODAS las habitaciones de ese hotel.
+    Solo aplica para paquetes de distribuidora (propio=False).
+
+    Este modelo permite simplificar la carga de precios cuando todas las habitaciones
+    de un hotel tienen el mismo precio en el catálogo de la distribuidora.
+    """
+    salida = models.ForeignKey(
+        SalidaPaquete,
+        on_delete=models.CASCADE,
+        related_name="precios_catalogo_hoteles"
+    )
+    hotel = models.ForeignKey(
+        Hotel,
+        on_delete=models.CASCADE,
+        related_name="precios_catalogo_distribuidora"
+    )
+    precio_catalogo = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        help_text="Precio base del catálogo de la distribuidora para TODAS las habitaciones de este hotel"
+    )
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_modificacion = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("salida", "hotel")
+        verbose_name = "Precio de Catálogo de Hotel"
+        verbose_name_plural = "Precios de Catálogo de Hoteles"
+
+    def __str__(self):
+        return f"{self.salida} - {self.hotel.nombre} - ${self.precio_catalogo}"
+
+
+# ---------------------------------------------------------------------
+# PRECIO DE CATÁLOGO DE HABITACIÓN (DISTRIBUIDORAS)
+# ---------------------------------------------------------------------
+class PrecioCatalogoHabitacion(models.Model):
+    """
+    Almacena los precios de catálogo de distribuidora por habitación y salida.
+    Solo aplica para paquetes de distribuidora (propio=False).
+    Estos precios representan el costo base del catálogo al cual se le aplicará la comisión.
+
+    Cuando existen precios específicos por habitación, estos tienen prioridad sobre
+    los precios por hotel (PrecioCatalogoHotel).
+    """
+    salida = models.ForeignKey(
+        SalidaPaquete,
+        on_delete=models.CASCADE,
+        related_name="precios_catalogo"
+    )
+    habitacion = models.ForeignKey(
+        Habitacion,
+        on_delete=models.CASCADE,
+        related_name="precios_catalogo_distribuidora"
+    )
+    precio_catalogo = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        help_text="Precio base del catálogo de la distribuidora para esta habitación"
+    )
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_modificacion = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("salida", "habitacion")
+        verbose_name = "Precio de Catálogo de Habitación"
+        verbose_name_plural = "Precios de Catálogo de Habitaciones"
+
+    def __str__(self):
+        return f"{self.salida} - {self.habitacion} - ${self.precio_catalogo}"
 
 
 # ---------------------------------------------------------------------
