@@ -122,7 +122,9 @@ class Reserva(models.Model):
             last_id = Reserva.objects.filter(fecha_reserva__year=year).count() + 1
             self.codigo = f"RSV-{year}-{last_id:04d}"
 
-        if es_nueva and self.salida and self.habitacion:
+        # DESCUENTO DE CUPOS - SOLO PARA PAQUETES PROPIOS
+        # Para paquetes de distribuidora, los cupos están sujetos a verificación externa
+        if es_nueva and self.salida and self.habitacion and self.paquete.propio:
             # 1. Determinar cantidad de habitaciones (siempre 1 por reserva)
             cantidad_habitaciones = 1
 
@@ -257,53 +259,87 @@ class Reserva(models.Model):
     def calcular_precio_unitario(self):
         """
         Calcula el precio unitario por pasajero basado en:
-        - Habitación específica seleccionada
-        - Salida específica (ganancia/comisión)
-        - Servicios incluidos en el paquete
+        - Para paquetes de distribuidora: precio de catálogo + comisión
+        - Para paquetes propios: habitación + servicios + ganancia
 
         Retorna Decimal con el precio total por pasajero.
         """
         from decimal import Decimal
+        from apps.paquete.models import PrecioCatalogoHabitacion, PrecioCatalogoHotel
 
         if not self.salida or not self.habitacion:
             return Decimal("0")
 
-        # 1. Calcular precio de la habitación por noche
-        precio_habitacion = self.habitacion.precio_noche or Decimal("0")
+        # === PAQUETES DE DISTRIBUIDORA ===
+        # Usar precios de catálogo de la distribuidora
+        if not self.paquete.propio:
+            # 1. Buscar precio específico de la habitación (prioridad)
+            precio_catalogo_hab = PrecioCatalogoHabitacion.objects.filter(
+                salida=self.salida,
+                habitacion=self.habitacion
+            ).first()
 
-        # 2. Calcular cantidad de noches
-        if self.salida.fecha_regreso and self.salida.fecha_salida:
-            noches = (self.salida.fecha_regreso - self.salida.fecha_salida).days
+            if precio_catalogo_hab:
+                precio_base = precio_catalogo_hab.precio_catalogo
+            else:
+                # 2. Buscar precio a nivel de hotel
+                precio_catalogo_hotel = PrecioCatalogoHotel.objects.filter(
+                    salida=self.salida,
+                    hotel=self.habitacion.hotel
+                ).first()
+
+                if precio_catalogo_hotel:
+                    precio_base = precio_catalogo_hotel.precio_catalogo
+                else:
+                    # 3. Fallback: usar precio_noche de la habitación × noches
+                    precio_habitacion = self.habitacion.precio_noche or Decimal("0")
+                    if self.salida.fecha_regreso and self.salida.fecha_salida:
+                        noches = (self.salida.fecha_regreso - self.salida.fecha_salida).days
+                    else:
+                        noches = 1
+                    precio_base = precio_habitacion * noches
+
+            # 4. Aplicar comisión sobre el precio base del catálogo
+            comision = self.salida.comision or Decimal("0")
+            if comision > 0:
+                factor = Decimal("1") + (comision / Decimal("100"))
+                return precio_base * factor
+            else:
+                return precio_base
+
+        # === PAQUETES PROPIOS ===
+        # Calcular desde habitación + servicios + ganancia
         else:
-            noches = 1
+            # 1. Calcular precio de la habitación por noche
+            precio_habitacion = self.habitacion.precio_noche or Decimal("0")
 
-        # 3. Precio base de la habitación por toda la estadía
-        precio_habitacion_total = precio_habitacion * noches
+            # 2. Calcular cantidad de noches
+            if self.salida.fecha_regreso and self.salida.fecha_salida:
+                noches = (self.salida.fecha_regreso - self.salida.fecha_salida).days
+            else:
+                noches = 1
 
-        # 4. Sumar servicios incluidos en el paquete
-        total_servicios = Decimal("0")
-        for ps in self.paquete.paquete_servicios.all():
-            if ps.precio and ps.precio > 0:
-                total_servicios += ps.precio
-            elif hasattr(ps.servicio, "precio") and ps.servicio.precio:
-                total_servicios += ps.servicio.precio
+            # 3. Precio base de la habitación por toda la estadía
+            precio_habitacion_total = precio_habitacion * noches
 
-        # 5. Calcular costo base total (habitación + servicios)
-        costo_base_total = precio_habitacion_total + total_servicios
+            # 4. Sumar servicios incluidos en el paquete
+            total_servicios = Decimal("0")
+            for ps in self.paquete.paquete_servicios.all():
+                if ps.precio and ps.precio > 0:
+                    total_servicios += ps.precio
+                elif hasattr(ps.servicio, "precio") and ps.servicio.precio:
+                    total_servicios += ps.servicio.precio
 
-        # 6. Aplicar ganancia o comisión sobre el costo total
-        ganancia = self.salida.ganancia or Decimal("0")
-        comision = self.salida.comision or Decimal("0")
+            # 5. Calcular costo base total (habitación + servicios)
+            costo_base_total = precio_habitacion_total + total_servicios
 
-        if self.paquete.propio and ganancia > 0:
-            factor = Decimal("1") + (ganancia / Decimal("100"))
-        elif not self.paquete.propio and comision > 0:
-            factor = Decimal("1") + (comision / Decimal("100"))
-        else:
-            factor = Decimal("1")
-
-        # 7. Precio de venta por pasajero (costo base + margen)
-        return costo_base_total * factor
+            # 6. Aplicar ganancia sobre el costo total
+            ganancia = self.salida.ganancia or Decimal("0")
+            if ganancia > 0:
+                factor = Decimal("1") + (ganancia / Decimal("100"))
+                return costo_base_total * factor
+            else:
+                return costo_base_total
 
     def clean(self):
         """
@@ -322,8 +358,9 @@ class Reserva(models.Model):
                     f"no está disponible para esta salida."
                 )
 
-        # Validar capacidad del paquete
-        if self.cantidad_pasajeros:
+        # Validar capacidad del paquete - SOLO PARA PAQUETES PROPIOS
+        # Para distribuidoras, la capacidad se verifica externamente
+        if self.paquete.propio and self.cantidad_pasajeros:
             total_ocupados = sum(
                 r.cantidad_pasajeros for r in self.paquete.reservas.exclude(id=self.id)
             )
