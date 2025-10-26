@@ -260,11 +260,11 @@ class Reserva(models.Model):
         Útil para mostrar en UI.
         """
         estados_base = {
-            "pendiente": "Pendiente de pago",
-            "confirmada": "Confirmada",
-            "finalizada": "Finalizada",
-            "cancelada": "Cancelada",
-            "incompleta": "Confirmada",  # Legacy: mapear incompleta a confirmada
+            "pendiente": "Pendiente de seña",
+            "confirmada": "Confirmado",
+            "finalizada": "Finalizado",
+            "cancelada": "Cancelado",
+            "incompleta": "Confirmado",  # Legacy: mapear incompleta a confirmada
         }
 
         estado_texto = estados_base.get(self.estado, self.estado.capitalize())
