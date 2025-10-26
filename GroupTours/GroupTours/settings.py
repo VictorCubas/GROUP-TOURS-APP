@@ -105,6 +105,7 @@ INSTALLED_APPS = [
     'apps.reserva',
     'apps.ciudad',
     'apps.zona_geografica',
+    'apps.comprobante',
 ]
 
 MIDDLEWARE = [
