@@ -39,7 +39,7 @@ class Reserva(models.Model):
         related_name="reservas_titulares",
         null=True,
         blank=True,
-        help_text="Persona que realiza la reserva (titular/responsable de la compra). Opcional."
+        help_text="Persona que realiza la reserva (titular/responsable de la compra). Requerido al crear nuevas reservas."
     )
     paquete = models.ForeignKey(
         Paquete,
@@ -193,15 +193,37 @@ class Reserva(models.Model):
         """
         Una reserva puede confirmarse si:
         - Tiene al menos un cupo
-        - Se ha pagado la seña correspondiente
+        - Se ha pagado la seña total requerida
+
+        Si no todos los pasajeros están cargados (datos_completos = False),
+        valida a nivel de reserva total comparando monto_pagado vs seña_total.
+
+        Si todos los pasajeros están cargados (datos_completos = True),
+        valida que TODOS los pasajeros tengan su seña completa pagada individualmente.
         """
-        return self.cantidad_pasajeros > 0 and self.monto_pagado >= self.seña_total
+        # Si no todos los pasajeros están cargados, validar a nivel reserva total
+        if not self.datos_completos:
+            return self.cantidad_pasajeros > 0 and self.monto_pagado >= self.seña_total
+
+        # Si todos los pasajeros están cargados, validar individualmente
+        return all(pasajero.tiene_sena_pagada for pasajero in self.pasajeros.all())
 
     def esta_totalmente_pagada(self):
         """
-        Verifica si se ha pagado el costo total estimado de la reserva
+        Verifica si se ha pagado el costo total estimado de la reserva.
+
+        Si no todos los pasajeros están cargados (datos_completos = False),
+        valida a nivel de reserva total comparando monto_pagado vs costo_total_estimado.
+
+        Si todos los pasajeros están cargados (datos_completos = True),
+        valida que TODOS los pasajeros tengan saldo_pendiente = 0.
         """
-        return self.monto_pagado >= self.costo_total_estimado
+        # Si no todos los pasajeros están cargados, validar a nivel reserva total
+        if not self.datos_completos:
+            return self.monto_pagado >= self.costo_total_estimado
+
+        # Si todos los pasajeros están cargados, validar individualmente
+        return all(pasajero.esta_totalmente_pagado for pasajero in self.pasajeros.all())
 
     def actualizar_estado(self):
         """
@@ -445,6 +467,13 @@ class Pasajero(models.Model):
         default=False,
         help_text="Indica si este pasajero es el titular de la reserva"
     )
+    precio_asignado = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Precio acordado para este pasajero (normalmente precio_unitario de la reserva)"
+    )
     ticket_numero = models.CharField(
         max_length=100,
         blank=True,
@@ -466,6 +495,75 @@ class Pasajero(models.Model):
 
     def __str__(self):
         return f"{self.persona} - Reserva {self.reserva.codigo}"
+
+    def save(self, *args, **kwargs):
+        # Auto-asignar precio si no está definido (tomar el precio_unitario de la reserva)
+        if self.precio_asignado is None and self.reserva and self.reserva.precio_unitario:
+            self.precio_asignado = self.reserva.precio_unitario
+
+        super().save(*args, **kwargs)
+
+    @property
+    def monto_pagado(self):
+        """
+        Suma de todas las distribuciones de pago asociadas a este pasajero.
+        Solo cuenta comprobantes activos (no anulados).
+        """
+        from decimal import Decimal
+        total = sum(
+            d.monto
+            for d in self.distribuciones_pago.filter(comprobante__activo=True)
+        )
+        return total if total else Decimal("0")
+
+    @property
+    def saldo_pendiente(self):
+        """
+        Saldo que le falta pagar a este pasajero.
+        """
+        from decimal import Decimal
+        if not self.precio_asignado:
+            return Decimal("0")
+        return self.precio_asignado - self.monto_pagado
+
+    @property
+    def porcentaje_pagado(self):
+        """
+        Porcentaje del precio que ha sido pagado por este pasajero.
+        Retorna valor entre 0 y 100.
+        """
+        from decimal import Decimal
+        if not self.precio_asignado or self.precio_asignado == 0:
+            return Decimal("0")
+        porcentaje = (self.monto_pagado / self.precio_asignado) * Decimal("100")
+        return round(porcentaje, 2)
+
+    @property
+    def seña_requerida(self):
+        """
+        Monto de seña requerido para este pasajero.
+        La seña es un MONTO FIJO por pasajero definido en SalidaPaquete.senia
+        """
+        from decimal import Decimal
+        if not self.reserva or not self.reserva.salida:
+            return Decimal("0")
+
+        # Retornar el monto fijo de seña de la salida
+        return self.reserva.salida.senia or Decimal("0")
+
+    @property
+    def tiene_sena_pagada(self):
+        """
+        Indica si este pasajero tiene su seña completa pagada.
+        """
+        return self.monto_pagado >= self.seña_requerida
+
+    @property
+    def esta_totalmente_pagado(self):
+        """
+        Indica si este pasajero tiene el 100% de su precio pagado.
+        """
+        return self.saldo_pendiente <= 0
 
 
 class ReservaServiciosAdicionales(models.Model):

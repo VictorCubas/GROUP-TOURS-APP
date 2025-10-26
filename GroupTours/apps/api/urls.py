@@ -23,5 +23,6 @@ urlpatterns = [
     path('reservas/', include('apps.reserva.urls')),
     path('ciudad/', include('apps.ciudad.urls')),
     path('zona_geografica/', include('apps.zona_geografica.urls')),
+    path('', include('apps.comprobante.urls')),  # Comprobantes, distribuciones y vouchers
     # Puedes seguir agregando aquí otras rutas
 ]
