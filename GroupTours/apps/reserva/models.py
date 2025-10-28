@@ -14,11 +14,10 @@ class Reserva(models.Model):
     """
 
     ESTADOS = [
-        ("pendiente", "Pendiente"),     # creada, sin pago o sin pasajeros
-        ("confirmada", "Confirmada"),   # seña/pago realizado, cupo asegurado
-        ("incompleta", "Incompleta"),   # confirmada pero faltan datos de pasajeros
-        ("finalizada", "Finalizada"),   # todo completo: pasajeros + pago
-        ("cancelada", "Cancelada"),
+        ("pendiente", "Pendiente"),                    # creada, sin pago o sin pasajeros
+        ("confirmada", "Confirmado"),                  # seña/pago realizado, cupo asegurado
+        ("finalizada", "Finalizado"),                  # pago total completo + datos completos
+        ("cancelada", "Cancelado"),
     ]
 
     codigo = models.CharField(
@@ -174,12 +173,18 @@ class Reserva(models.Model):
 
     @property
     def pasajeros_cargados(self):
-        """Cantidad de pasajeros registrados en esta reserva"""
-        return self.pasajeros.count()
+        """
+        Cantidad de pasajeros REALES registrados en esta reserva.
+        Excluye pasajeros pendientes (aquellos con documento que termina en _PEND).
+        """
+        return self.pasajeros.exclude(persona__documento__contains='_PEND').count()
 
     @property
     def faltan_datos_pasajeros(self):
-        """Indica si faltan datos de pasajeros por cargar"""
+        """
+        Indica si faltan datos de pasajeros por cargar.
+        Solo cuenta pasajeros reales (excluye pendientes con _PEND).
+        """
         return self.pasajeros_cargados < self.cantidad_pasajeros
 
     @property
@@ -195,35 +200,39 @@ class Reserva(models.Model):
         - Tiene al menos un cupo
         - Se ha pagado la seña total requerida
 
-        Si no todos los pasajeros están cargados (datos_completos = False),
+        Si faltan datos de pasajeros reales,
         valida a nivel de reserva total comparando monto_pagado vs seña_total.
 
-        Si todos los pasajeros están cargados (datos_completos = True),
+        Si todos los pasajeros reales están cargados,
         valida que TODOS los pasajeros tengan su seña completa pagada individualmente.
         """
-        # Si no todos los pasajeros están cargados, validar a nivel reserva total
-        if not self.datos_completos:
+        # Si faltan datos de pasajeros reales, validar a nivel reserva total
+        if self.faltan_datos_pasajeros:
             return self.cantidad_pasajeros > 0 and self.monto_pagado >= self.seña_total
 
-        # Si todos los pasajeros están cargados, validar individualmente
-        return all(pasajero.tiene_sena_pagada for pasajero in self.pasajeros.all())
+        # Si todos los pasajeros reales están cargados, validar individualmente
+        # Excluir pasajeros pendientes de la validación individual
+        pasajeros_reales = self.pasajeros.exclude(persona__documento__contains='_PEND')
+        return pasajeros_reales.exists() and all(pasajero.tiene_sena_pagada for pasajero in pasajeros_reales)
 
     def esta_totalmente_pagada(self):
         """
         Verifica si se ha pagado el costo total estimado de la reserva.
 
-        Si no todos los pasajeros están cargados (datos_completos = False),
+        Si faltan datos de pasajeros reales,
         valida a nivel de reserva total comparando monto_pagado vs costo_total_estimado.
 
-        Si todos los pasajeros están cargados (datos_completos = True),
-        valida que TODOS los pasajeros tengan saldo_pendiente = 0.
+        Si todos los pasajeros reales están cargados,
+        valida que TODOS los pasajeros reales tengan saldo_pendiente = 0.
         """
-        # Si no todos los pasajeros están cargados, validar a nivel reserva total
-        if not self.datos_completos:
+        # Si faltan datos de pasajeros reales, validar a nivel reserva total
+        if self.faltan_datos_pasajeros:
             return self.monto_pagado >= self.costo_total_estimado
 
-        # Si todos los pasajeros están cargados, validar individualmente
-        return all(pasajero.esta_totalmente_pagado for pasajero in self.pasajeros.all())
+        # Si todos los pasajeros reales están cargados, validar individualmente
+        # Excluir pasajeros pendientes de la validación individual
+        pasajeros_reales = self.pasajeros.exclude(persona__documento__contains='_PEND')
+        return pasajeros_reales.exists() and all(pasajero.esta_totalmente_pagado for pasajero in pasajeros_reales)
 
     def actualizar_estado(self):
         """
@@ -231,8 +240,10 @@ class Reserva(models.Model):
 
         Lógica de estados:
         - Pendiente: Sin pago o pago insuficiente para la seña
-        - Confirmada: Seña pagada, cupo asegurado
-        - Finalizada: Pago total completo
+        - Confirmada: Seña pagada (o más, pero < 100%), cupo asegurado
+          - datos_completos=True si todos los pasajeros están cargados
+          - datos_completos=False si faltan datos de pasajeros
+        - Finalizada: Pago total completo (100%) Y todos los pasajeros reales cargados
         - Cancelada: Reserva cancelada
 
         El campo 'datos_completos' indica si todos los pasajeros están cargados.
@@ -243,12 +254,15 @@ class Reserva(models.Model):
         # Actualizar flag de datos completos
         self.datos_completos = not self.faltan_datos_pasajeros
 
-        # Actualizar estado según pago
-        if self.esta_totalmente_pagada():
+        # Actualizar estado según pago y datos de pasajeros
+        if self.esta_totalmente_pagada() and self.datos_completos:
+            # Pago total completo (100%) + todos los pasajeros cargados
             self.estado = "finalizada"
         elif self.puede_confirmarse():
+            # Seña pagada (puede ser parcial o total, pero si no cumple condición anterior, no es finalizada)
             self.estado = "confirmada"
         else:
+            # Sin pago suficiente para la seña
             self.estado = "pendiente"
 
         self.save(update_fields=["estado", "datos_completos"])
@@ -256,25 +270,30 @@ class Reserva(models.Model):
     @property
     def estado_display(self):
         """
-        Retorna un texto descriptivo del estado incluyendo datos completos.
+        Retorna un texto descriptivo del estado incluyendo datos completos y estado de pago.
         Útil para mostrar en UI.
+
+        Para estado "confirmada":
+        - "Confirmado Completo": Pago total completo (100%) + Todos los pasajeros cargados
+        - "Confirmado Incompleto": Cualquier otro caso (pago parcial, faltan pasajeros, o ambos)
         """
         estados_base = {
             "pendiente": "Pendiente de seña",
             "confirmada": "Confirmado",
             "finalizada": "Finalizado",
             "cancelada": "Cancelado",
-            "incompleta": "Confirmado",  # Legacy: mapear incompleta a confirmada
         }
 
         estado_texto = estados_base.get(self.estado, self.estado.capitalize())
 
-        # Agregar información de datos si está confirmada o incompleta (legacy)
-        if self.estado in ["confirmada", "incompleta"]:
-            if not self.datos_completos:
-                return f"{estado_texto} Incompleto"
-            else:
+        # Agregar información de completitud si está confirmada
+        if self.estado == "confirmada":
+            # "Completo" solo si: pago total completo (100%) Y todos los pasajeros cargados
+            if self.esta_totalmente_pagada() and self.datos_completos:
                 return f"{estado_texto} Completo"
+            else:
+                # "Incompleto" si: falta pago O faltan pasajeros O ambos
+                return f"{estado_texto} Incompleto"
 
         return estado_texto
 

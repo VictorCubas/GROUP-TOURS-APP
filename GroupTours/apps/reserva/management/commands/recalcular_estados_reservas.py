@@ -26,7 +26,7 @@ class Command(BaseCommand):
         parser.add_argument(
             '--estado',
             type=str,
-            help='Filtrar por estado específico (pendiente, confirmada, incompleta, finalizada, cancelada)',
+            help='Filtrar por estado específico (pendiente, confirmada, finalizada, cancelada)',
         )
 
     def handle(self, *args, **options):
@@ -65,7 +65,6 @@ class Command(BaseCommand):
         estadisticas = {
             'pendiente': 0,
             'confirmada': 0,
-            'incompleta': 0,
             'finalizada': 0,
         }
 
@@ -160,24 +159,14 @@ class Command(BaseCommand):
         if reserva.estado == "cancelada":
             return "cancelada"
 
-        # Si no se pagó la seña mínima → Pendiente
-        if not reserva.puede_confirmarse():
-            return "pendiente"
+        # Si pago total (100%) + datos completos → Finalizada
+        if reserva.esta_totalmente_pagada() and not reserva.faltan_datos_pasajeros:
+            return "finalizada"
 
-        # Si se pagó el total completo
-        elif reserva.esta_totalmente_pagada():
-            # Si faltan pasajeros, marcar como incompleta
-            if reserva.faltan_datos_pasajeros:
-                return "incompleta"
-            else:
-                # Todo completo: pago total + todos los pasajeros
-                return "finalizada"
+        # Si se pagó la seña mínima (o más, pero no el 100%) → Confirmada
+        elif reserva.puede_confirmarse():
+            return "confirmada"
 
-        # Si se pagó la seña pero no el total
+        # Sin pago suficiente para la seña → Pendiente
         else:
-            # Si faltan pasajeros, marcar como incompleta
-            if reserva.faltan_datos_pasajeros:
-                return "incompleta"
-            else:
-                # Seña pagada + todos los pasajeros cargados
-                return "confirmada"
+            return "pendiente"

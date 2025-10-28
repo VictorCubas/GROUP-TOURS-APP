@@ -11,9 +11,19 @@ from .serializers import (
     ReservaServiciosAdicionalesSerializer,
     ReservaServiciosAdicionalesCreateSerializer,
     PasajeroSerializer,
-    PasajeroEstadoCuentaSerializer
+    PasajeroEstadoCuentaSerializer,
+    ReservaDetalleSerializer,
+    ReservaListadoSerializer
 )
 from .filters import ReservaFilter
+from .services import (
+    obtener_detalle_reserva,
+    obtener_resumen_reserva,
+    obtener_pasajeros_reserva,
+    obtener_comprobantes_reserva,
+    obtener_servicios_reserva
+)
+from django.core.exceptions import ObjectDoesNotExist
 
 
 def obtener_o_crear_pasajero_pendiente(reserva, sufijo=""):
@@ -108,13 +118,62 @@ class ReservaViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend]
     filterset_class = ReservaFilter
 
+    def get_serializer_class(self):
+        """
+        Usa ReservaDetalleSerializer para retrieve (GET individual)
+        y el serializer normal para list/create/update
+        """
+        if self.action == 'retrieve':
+            return ReservaDetalleSerializer
+        return ReservaSerializer
+
+    def get_queryset(self):
+        """
+        Optimiza las queries cuando se solicita el detalle de una reserva
+        """
+        queryset = Reserva.objects.select_related("titular", "paquete").prefetch_related("pasajeros").order_by('-fecha_reserva')
+
+        if self.action == 'retrieve':
+            # Precargar todas las relaciones necesarias para el detalle
+            queryset = queryset.select_related(
+                'titular',
+                'paquete',
+                'paquete__tipo_paquete',
+                'paquete__destino',
+                'paquete__destino__ciudad',
+                'paquete__destino__ciudad__pais',
+                'paquete__moneda',
+                'paquete__distribuidora',
+                'salida',
+                'salida__temporada',
+                'habitacion',
+                'habitacion__hotel',
+                'habitacion__hotel__cadena',
+                'habitacion__hotel__ciudad',
+            ).prefetch_related(
+                'pasajeros',
+                'pasajeros__persona',
+                'pasajeros__distribuciones_pago',
+                'pasajeros__distribuciones_pago__comprobante',
+                'servicios_adicionales',
+                'servicios_adicionales__servicio',
+                'comprobantes',
+                'comprobantes__distribuciones',
+                'comprobantes__distribuciones__pasajero',
+                'comprobantes__empleado',
+                'comprobantes__empleado__persona',
+                'paquete__paquete_servicios',
+                'paquete__paquete_servicios__servicio',
+            )
+
+        return queryset
+
     # ----- ENDPOINT EXTRA: resumen -----
     @action(detail=False, methods=['get'], url_path='resumen')
     def resumen(self, request):
         total = Reserva.objects.count()
         pendientes = Reserva.objects.filter(estado="pendiente").count()
         confirmadas = Reserva.objects.filter(estado="confirmada").count()
-        incompletas = Reserva.objects.filter(estado="incompleta").count()
         finalizadas = Reserva.objects.filter(estado="finalizada").count()
         canceladas = Reserva.objects.filter(estado="cancelada").count()
 
@@ -122,7 +181,6 @@ class ReservaViewSet(viewsets.ModelViewSet):
             {"texto": "Total", "valor": total},
             {"texto": "Pendientes", "valor": pendientes},
             {"texto": "Confirmadas", "valor": confirmadas},
-            {"texto": "Incompletas", "valor": incompletas},
             {"texto": "Finalizadas", "valor": finalizadas},
             {"texto": "Canceladas", "valor": canceladas},
         ]
@@ -399,6 +457,9 @@ class ReservaViewSet(viewsets.ModelViewSet):
         Registra el pago de seña para una reserva.
         Crea un ComprobantePago de tipo 'sena' con las distribuciones especificadas.
 
+        Si la reserva no tiene pasajeros registrados, automáticamente crea pasajeros "pendientes"
+        según la cantidad_pasajeros de la reserva (Por Asignar 1, Por Asignar 2, Por Asignar 3, etc.)
+
         Soporta distribuciones para pasajeros ya cargados y pasajeros "pendientes".
 
         Body:
@@ -408,8 +469,10 @@ class ReservaViewSet(viewsets.ModelViewSet):
             "observaciones": "Seña inicial", // opcional
             "empleado": 1,                   // opcional, usa el primer empleado si no se especifica
             "distribuciones": [              // requerido
-                {"pasajero": 1, "monto": 210.00},            // pasajero ya cargado
-                {"pasajero": "pendiente", "monto": 210.00}   // pasajero por asignar
+                {"pasajero": 1, "monto": 210.00},             // pasajero ya cargado (ID)
+                {"pasajero": "pendiente_1", "monto": 210.00}, // primer pasajero pendiente
+                {"pasajero": "pendiente_2", "monto": 210.00}, // segundo pasajero pendiente
+                {"pasajero": "pendiente_3", "monto": 210.00}  // tercer pasajero pendiente
             ]
         }
 
@@ -441,12 +504,26 @@ class ReservaViewSet(viewsets.ModelViewSet):
 
         reserva = self.get_object()
 
-        # Validar que hay pasajeros en la reserva
+        # Si no hay pasajeros, crear pasajeros pendientes según la cantidad de pasajeros de la reserva
         if not reserva.pasajeros.exists():
-            return Response(
-                {'error': 'La reserva no tiene pasajeros registrados'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            # Validar que la reserva tenga titular
+            if not reserva.titular:
+                return Response(
+                    {'error': 'La reserva no tiene titular asignado. No se pueden crear pasajeros pendientes.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Validar que la reserva tenga cantidad de pasajeros definida
+            if not reserva.cantidad_pasajeros or reserva.cantidad_pasajeros <= 0:
+                return Response(
+                    {'error': 'La reserva no tiene cantidad de pasajeros definida'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Crear pasajeros pendientes según la cantidad (numerados desde 1)
+            for i in range(reserva.cantidad_pasajeros):
+                sufijo = str(i + 1)
+                obtener_o_crear_pasajero_pendiente(reserva, sufijo)
 
         # Validar campos requeridos
         if 'metodo_pago' not in request.data:
@@ -612,13 +689,15 @@ class ReservaViewSet(viewsets.ModelViewSet):
                     'id': reserva.id,
                     'codigo': reserva.codigo,
                     'estado': reserva.estado,
+                    'estado_display': reserva.estado_display,
                     'nombre_paquete': nombre_paquete,
                     'nombre_destino': nombre_destino,
                     'moneda': moneda_data,
                     'costo_total_estimado': float(reserva.costo_total_estimado),
                     'monto_pagado': float(reserva.monto_pagado),
                     'saldo_pendiente': float(reserva.costo_total_estimado - reserva.monto_pagado),
-                    'puede_confirmarse': reserva.puede_confirmarse()
+                    'puede_confirmarse': reserva.puede_confirmarse(),
+                    'datos_completos': reserva.datos_completos
                 },
                 'titular': titular_data
             }, status=status.HTTP_201_CREATED)
@@ -638,6 +717,9 @@ class ReservaViewSet(viewsets.ModelViewSet):
         Registra un pago parcial o completo para una reserva.
         Crea un ComprobantePago con las distribuciones especificadas.
 
+        Si la reserva no tiene pasajeros registrados, automáticamente crea pasajeros "pendientes"
+        según la cantidad_pasajeros de la reserva (Por Asignar 1, Por Asignar 2, Por Asignar 3, etc.)
+
         Body:
         {
             "tipo": "pago_parcial",          // requerido: "pago_parcial" o "pago_total"
@@ -648,7 +730,9 @@ class ReservaViewSet(viewsets.ModelViewSet):
             "distribuciones": [              // requerido
                 {"pasajero": 1, "monto": 1000.00},
                 {"pasajero": 2, "monto": 1000.00},
-                {"pasajero": "pendiente", "monto": 500.00}  // pasajero por asignar
+                {"pasajero": "pendiente_1", "monto": 500.00}, // primer pasajero pendiente
+                {"pasajero": "pendiente_2", "monto": 500.00}, // segundo pasajero pendiente
+                {"pasajero": "pendiente_3", "monto": 500.00}  // tercer pasajero pendiente
             ]
         }
 
@@ -672,12 +756,26 @@ class ReservaViewSet(viewsets.ModelViewSet):
 
         reserva = self.get_object()
 
-        # Validar que hay pasajeros en la reserva
+        # Si no hay pasajeros, crear pasajeros pendientes según la cantidad de pasajeros de la reserva
         if not reserva.pasajeros.exists():
-            return Response(
-                {'error': 'La reserva no tiene pasajeros registrados'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            # Validar que la reserva tenga titular
+            if not reserva.titular:
+                return Response(
+                    {'error': 'La reserva no tiene titular asignado. No se pueden crear pasajeros pendientes.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Validar que la reserva tenga cantidad de pasajeros definida
+            if not reserva.cantidad_pasajeros or reserva.cantidad_pasajeros <= 0:
+                return Response(
+                    {'error': 'La reserva no tiene cantidad de pasajeros definida'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Crear pasajeros pendientes según la cantidad (numerados desde 1)
+            for i in range(reserva.cantidad_pasajeros):
+                sufijo = str(i + 1)
+                obtener_o_crear_pasajero_pendiente(reserva, sufijo)
 
         # Validar campos requeridos
         if 'tipo' not in request.data:
@@ -809,6 +907,11 @@ class ReservaViewSet(viewsets.ModelViewSet):
             from apps.comprobante.serializers import ComprobantePagoSerializer
             comprobante_serializer = ComprobantePagoSerializer(comprobante)
 
+            # Serializar datos del titular (siempre presente en nuevas reservas)
+            from .serializers import PersonaFisicaSimpleSerializer
+            titular_serializer = PersonaFisicaSimpleSerializer(reserva.titular)
+            titular_data = titular_serializer.data
+
             # Obtener información de moneda
             moneda_data = None
             if reserva.paquete and reserva.paquete.moneda:
@@ -819,23 +922,290 @@ class ReservaViewSet(viewsets.ModelViewSet):
                     'codigo': reserva.paquete.moneda.codigo
                 }
 
+            # Obtener nombre del paquete y destino
+            nombre_paquete = reserva.paquete.nombre if reserva.paquete else None
+            nombre_destino = None
+
+            if reserva.paquete and reserva.paquete.destino:
+                destino = reserva.paquete.destino
+
+                ciudad_nombre = None
+                pais_nombre = None
+
+                if hasattr(destino, 'ciudad') and destino.ciudad:
+                    ciudad_nombre = str(destino.ciudad) if not isinstance(destino.ciudad, str) else destino.ciudad
+
+                if hasattr(destino, 'pais') and destino.pais:
+                    pais_nombre = str(destino.pais) if not isinstance(destino.pais, str) else destino.pais
+
+                # Construir nombre del destino
+                if ciudad_nombre and pais_nombre:
+                    nombre_destino = f"{ciudad_nombre}, {pais_nombre}"
+                elif ciudad_nombre:
+                    nombre_destino = ciudad_nombre
+                elif pais_nombre:
+                    nombre_destino = pais_nombre
+
+            # Mapear estado interno a texto base para la respuesta
+            estado_base_map = {
+                'pendiente': 'pendiente',
+                'confirmada': 'confirmado',
+                'finalizada': 'finalizado',
+                'cancelada': 'cancelado',
+            }
+            estado_response = estado_base_map.get(reserva.estado, reserva.estado)
+
             return Response({
                 'message': 'Pago registrado exitosamente',
                 'comprobante': comprobante_serializer.data,
                 'reserva': {
                     'id': reserva.id,
                     'codigo': reserva.codigo,
-                    'estado': reserva.estado,
+                    'estado': estado_response,  # Estado base sin sufijos
+                    'estado_interno': reserva.estado,  # Estado interno real (pendiente/confirmada/finalizada/cancelada)
+                    'estado_display': reserva.estado_display,  # Texto completo (ej: "Confirmado Incompleto")
+                    'nombre_paquete': nombre_paquete,
+                    'nombre_destino': nombre_destino,
                     'moneda': moneda_data,
+                    'costo_total_estimado': float(reserva.costo_total_estimado),
                     'monto_pagado': float(reserva.monto_pagado),
                     'saldo_pendiente': float(reserva.costo_total_estimado - reserva.monto_pagado),
-                    'esta_totalmente_pagada': reserva.esta_totalmente_pagada()
-                }
+                    'puede_confirmarse': reserva.puede_confirmarse(),
+                    'datos_completos': reserva.datos_completos
+                },
+                'titular': titular_data
             }, status=status.HTTP_201_CREATED)
 
         except Exception as e:
             return Response(
                 {'error': f'Error al crear el comprobante: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    # ----- ENDPOINT: Obtener resumen simplificado de una reserva -----
+    @action(detail=True, methods=['get'], url_path='detalle-resumen')
+    def detalle_resumen(self, request, pk=None):
+        """
+        GET /api/reservas/{id}/detalle-resumen/
+
+        Obtiene un resumen simplificado de la reserva con datos clave.
+        Es más ligero que el retrieve completo, ideal para dashboards o listados.
+
+        Respuesta ejemplo:
+        {
+            "id": 1,
+            "codigo": "RSV-2025-0001",
+            "estado": "confirmada",
+            "estado_display": "Confirmado Completo",
+            "fecha_reserva": "2025-10-15T10:30:00Z",
+            "titular": {
+                "id": 5,
+                "nombre_completo": "Juan Pérez",
+                "documento": "12345678",
+                "email": "juan@example.com",
+                "telefono": "0981123456"
+            },
+            "paquete": {
+                "id": 3,
+                "nombre": "Tour a Encarnación",
+                "destino": {
+                    "ciudad": "Encarnación",
+                    "pais": "Paraguay"
+                }
+            },
+            "fechas": {
+                "salida": "2025-12-01",
+                "regreso": "2025-12-05"
+            },
+            "cantidad_pasajeros": 2,
+            "costos": {
+                "precio_unitario": 3536.0,
+                "costo_total": 7072.0,
+                "monto_pagado": 420.0,
+                "saldo_pendiente": 6652.0,
+                "seña_total": 420.0,
+                "moneda": {
+                    "simbolo": "Gs.",
+                    "codigo": "PYG"
+                }
+            },
+            "validaciones": {
+                "puede_confirmarse": true,
+                "esta_totalmente_pagada": false,
+                "datos_completos": true
+            }
+        }
+        """
+        try:
+            resumen = obtener_resumen_reserva(pk)
+            return Response(resumen)
+        except ObjectDoesNotExist as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'error': f'Error al obtener resumen: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    # ----- ENDPOINT: Obtener solo pasajeros de una reserva -----
+    @action(detail=True, methods=['get'], url_path='detalle-pasajeros')
+    def detalle_pasajeros(self, request, pk=None):
+        """
+        GET /api/reservas/{id}/detalle-pasajeros/
+
+        Obtiene la lista de pasajeros con su información de pagos.
+
+        Respuesta ejemplo:
+        [
+            {
+                "id": 1,
+                "es_titular": true,
+                "persona": {
+                    "id": 5,
+                    "nombre": "Juan",
+                    "apellido": "Pérez",
+                    "nombre_completo": "Juan Pérez",
+                    "documento": "12345678",
+                    "email": "juan@example.com",
+                    "telefono": "0981123456"
+                },
+                "precio_asignado": 3536.0,
+                "monto_pagado": 210.0,
+                "saldo_pendiente": 3326.0,
+                "porcentaje_pagado": 5.94,
+                "seña_requerida": 210.0,
+                "tiene_sena_pagada": true,
+                "esta_totalmente_pagado": false,
+                "ticket_numero": null,
+                "voucher_codigo": null
+            },
+            ...
+        ]
+        """
+        try:
+            pasajeros = obtener_pasajeros_reserva(pk)
+            return Response(pasajeros)
+        except ObjectDoesNotExist as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'error': f'Error al obtener pasajeros: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    # ----- ENDPOINT: Obtener solo comprobantes de una reserva -----
+    @action(detail=True, methods=['get'], url_path='detalle-comprobantes')
+    def detalle_comprobantes(self, request, pk=None):
+        """
+        GET /api/reservas/{id}/detalle-comprobantes/
+
+        Obtiene todos los comprobantes de pago de una reserva.
+
+        Respuesta ejemplo:
+        [
+            {
+                "id": 1,
+                "numero_comprobante": "CPG-2025-0001",
+                "fecha_pago": "2025-10-15T10:30:00Z",
+                "tipo": "sena",
+                "tipo_display": "Seña",
+                "metodo_pago": "transferencia",
+                "metodo_pago_display": "Transferencia Bancaria",
+                "monto": 420.0,
+                "referencia": "TRF-001",
+                "observaciones": "Seña inicial",
+                "distribuciones": [
+                    {
+                        "pasajero_id": 1,
+                        "pasajero_nombre": "Juan Pérez",
+                        "monto": 210.0,
+                        "observaciones": null
+                    },
+                    ...
+                ],
+                "empleado": {
+                    "id": 2,
+                    "nombre": "María González"
+                },
+                "pdf_url": "/media/comprobantes/CPG-2025-0001.pdf"
+            },
+            ...
+        ]
+        """
+        try:
+            comprobantes = obtener_comprobantes_reserva(pk)
+            return Response(comprobantes)
+        except ObjectDoesNotExist as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'error': f'Error al obtener comprobantes: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    # ----- ENDPOINT: Obtener solo servicios de una reserva -----
+    @action(detail=True, methods=['get'], url_path='detalle-servicios')
+    def detalle_servicios(self, request, pk=None):
+        """
+        GET /api/reservas/{id}/detalle-servicios/
+
+        Obtiene todos los servicios (base y adicionales) de una reserva.
+
+        Respuesta ejemplo:
+        {
+            "servicios_base": [
+                {
+                    "id": 1,
+                    "servicio": {
+                        "id": 5,
+                        "nombre": "Desayuno",
+                        "descripcion": "Desayuno buffet"
+                    },
+                    "precio": 0.0,
+                    "incluido": true,
+                    "observaciones": null
+                },
+                ...
+            ],
+            "servicios_adicionales": [
+                {
+                    "id": 3,
+                    "servicio": {
+                        "id": 8,
+                        "nombre": "Tour adicional",
+                        "descripcion": "Tour a la ciudad"
+                    },
+                    "cantidad": 2,
+                    "precio_unitario": 150.0,
+                    "subtotal": 300.0,
+                    "observacion": null,
+                    "fecha_agregado": "2025-10-16T14:00:00Z"
+                },
+                ...
+            ],
+            "costo_servicios_adicionales": 300.0
+        }
+        """
+        try:
+            servicios = obtener_servicios_reserva(pk)
+            return Response(servicios)
+        except ObjectDoesNotExist as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'error': f'Error al obtener servicios: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -974,4 +1344,108 @@ class PasajeroViewSet(viewsets.ModelViewSet):
         """
         pasajero = self.get_object()
         serializer = PasajeroEstadoCuentaSerializer(pasajero)
+        return Response(serializer.data)
+
+
+class ReservaListadoViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet optimizado para listar reservas con información mínima.
+
+    Este endpoint está diseñado para ser más rápido y eficiente que /api/reservas/
+    al recuperar solo los datos esenciales para mostrar en listados y tablas.
+
+    Endpoints disponibles:
+    - GET /api/reservas_v2/ - Listar reservas (paginado)
+    - GET /api/reservas_v2/{id}/ - Obtener detalle completo de una reserva
+
+    Soporta los mismos filtros que /api/reservas/:
+    - estado: filtrar por estado (pendiente, confirmada, finalizada, cancelada)
+    - datos_completos: filtrar por datos completos (true/false)
+    - titular: filtrar por nombre del titular (búsqueda parcial)
+    - paquete: filtrar por nombre del paquete (búsqueda parcial)
+    - codigo: filtrar por código de reserva (búsqueda parcial)
+    - observacion: filtrar por observación (búsqueda parcial)
+    - activo: filtrar por estado activo (true/false)
+    - documento: filtrar por documento del titular (búsqueda parcial)
+    - fecha_reserva_desde: filtrar desde fecha (YYYY-MM-DD)
+    - fecha_reserva_hasta: filtrar hasta fecha (YYYY-MM-DD)
+    - busqueda: búsqueda general en código, titular, documento, paquete
+
+    Paginación:
+    - page: número de página (default: 1)
+    - page_size: cantidad de items por página (default: 10)
+
+    Ejemplo:
+    GET /api/reservas_v2/?page=1&page_size=10&activo=true&estado=confirmada
+    """
+    serializer_class = ReservaListadoSerializer
+    pagination_class = ReservaPagination
+    permission_classes = []
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = ReservaFilter
+
+    def get_queryset(self):
+        """
+        Queryset optimizado con select_related para minimizar consultas a la BD.
+        Solo precarga las relaciones necesarias para el listado.
+        """
+        return Reserva.objects.select_related(
+            'titular',
+            'paquete',
+            'paquete__moneda',
+            'paquete__destino',
+            'paquete__destino__ciudad',
+            'paquete__destino__ciudad__pais'
+        ).order_by('-fecha_reserva')
+
+    def get_serializer_class(self):
+        """
+        Usa ReservaDetalleSerializer para retrieve (GET individual)
+        y ReservaListadoSerializer para list
+        """
+        if self.action == 'retrieve':
+            return ReservaDetalleSerializer
+        return ReservaListadoSerializer
+
+    def retrieve(self, request, *args, **kwargs):
+        """
+        Al obtener una reserva individual, usa el mismo queryset optimizado
+        que el endpoint /api/reservas/{id}/ para obtener toda la información.
+        """
+        # Obtener la instancia con todas las relaciones precargadas
+        instance = Reserva.objects.select_related(
+            'titular',
+            'paquete',
+            'paquete__tipo_paquete',
+            'paquete__destino',
+            'paquete__destino__ciudad',
+            'paquete__destino__ciudad__pais',
+            'paquete__moneda',
+            'paquete__distribuidora',
+            'salida',
+            'salida__temporada',
+            'salida__moneda',
+            'habitacion',
+            'habitacion__hotel',
+            'habitacion__hotel__cadena',
+            'habitacion__hotel__ciudad',
+            'habitacion__moneda',
+        ).prefetch_related(
+            'pasajeros',
+            'pasajeros__persona',
+            'pasajeros__distribuciones_pago',
+            'pasajeros__distribuciones_pago__comprobante',
+            'servicios_adicionales',
+            'servicios_adicionales__servicio',
+            'comprobantes',
+            'comprobantes__distribuciones',
+            'comprobantes__distribuciones__pasajero',
+            'comprobantes__distribuciones__pasajero__persona',
+            'comprobantes__empleado',
+            'comprobantes__empleado__persona',
+            'paquete__paquete_servicios',
+            'paquete__paquete_servicios__servicio',
+        ).get(pk=kwargs['pk'])
+
+        serializer = self.get_serializer(instance)
         return Response(serializer.data)
