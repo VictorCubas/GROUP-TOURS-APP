@@ -230,6 +230,45 @@ class ComprobantePago(models.Model):
         c.setFont(normal_font, 10)
         c.drawString(50, y, f"Reserva: {self.reserva.codigo}")
         y -= 15
+
+        # Badge de estado con color
+        c.drawString(50, y, "Estado:")
+
+        # Definir colores según el estado
+        estado_colors = {
+            'pendiente': colors.HexColor("#f39c12"),      # Naranja
+            'confirmada': colors.HexColor("#3498db"),     # Azul
+            'incompleta': colors.HexColor("#e67e22"),     # Naranja oscuro
+            'finalizada': colors.HexColor("#27ae60"),     # Verde
+            'cancelada': colors.HexColor("#e74c3c"),      # Rojo
+        }
+
+        # Usar estado_display personalizado que incluye "Incompleto" o "Completo"
+        estado_text = self.reserva.estado_display
+        estado_valor = self.reserva.estado
+        badge_color = estado_colors.get(estado_valor, colors.grey)
+
+        # Dibujar badge redondeado
+        badge_x = 100
+        badge_y = y - 3
+        badge_width = len(estado_text) * 6 + 16  # Ancho dinámico según el texto
+        badge_height = 16
+        badge_radius = 4
+
+        # Fondo del badge con bordes redondeados
+        c.setFillColor(badge_color)
+        c.roundRect(badge_x, badge_y, badge_width, badge_height, badge_radius, fill=1, stroke=0)
+
+        # Texto del badge en blanco
+        c.setFillColor(colors.white)
+        c.setFont(title_font, 9)
+        c.drawString(badge_x + 8, badge_y + 4, estado_text)
+
+        # Restaurar color negro para el resto del texto
+        c.setFillColor(colors.black)
+
+        y -= 15
+        c.setFont(normal_font, 10)
         c.drawString(50, y, f"Paquete: {self.reserva.paquete.nombre}")
         y -= 15
         if self.reserva.titular:
