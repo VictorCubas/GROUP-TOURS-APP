@@ -1,6 +1,11 @@
 from django.urls import path
 from rest_framework.urlpatterns import format_suffix_patterns
-from .views import ReservaViewSet, ReservaServiciosAdicionalesViewSet, PasajeroViewSet
+from .views import (
+    ReservaViewSet,
+    ReservaServiciosAdicionalesViewSet,
+    PasajeroViewSet,
+    ReservaListadoViewSet
+)
 
 # Importar views de comprobante para endpoints anidados
 from apps.comprobante.views import ReservaComprobantesViewSet, ReservaVoucherViewSet
@@ -25,6 +30,12 @@ urlpatterns = [
     path('<int:pk>/generar-comprobante/', ReservaViewSet.as_view({'post': 'generar_comprobante'}), name='reserva-generar-comprobante'),
     path('<int:pk>/descargar-comprobante/', ReservaViewSet.as_view({'get': 'descargar_comprobante'}), name='reserva-descargar-comprobante'),
 
+    # Endpoints de detalle por secciones
+    path('<int:pk>/detalle-resumen/', ReservaViewSet.as_view({'get': 'detalle_resumen'}), name='reserva-detalle-resumen'),
+    path('<int:pk>/detalle-pasajeros/', ReservaViewSet.as_view({'get': 'detalle_pasajeros'}), name='reserva-detalle-pasajeros'),
+    path('<int:pk>/detalle-comprobantes/', ReservaViewSet.as_view({'get': 'detalle_comprobantes'}), name='reserva-detalle-comprobantes'),
+    path('<int:pk>/detalle-servicios/', ReservaViewSet.as_view({'get': 'detalle_servicios'}), name='reserva-detalle-servicios'),
+
     # Endpoints de comprobantes y vouchers por reserva
     path('<int:reserva_pk>/comprobantes/', ReservaComprobantesViewSet.as_view({'get': 'list', 'post': 'create'}), name='reserva-comprobantes'),
     path('<int:reserva_pk>/comprobantes/<int:pk>/', ReservaComprobantesViewSet.as_view({'get': 'retrieve', 'put': 'update', 'patch': 'partial_update'}), name='reserva-comprobante-detail'),
@@ -38,6 +49,13 @@ urlpatterns = [
     path('pasajeros/', PasajeroViewSet.as_view({'get': 'list', 'post': 'create'}), name='pasajero-list'),
     path('pasajeros/<int:pk>/', PasajeroViewSet.as_view({'get': 'retrieve', 'put': 'update', 'patch': 'partial_update', 'delete': 'destroy'}), name='pasajero-detail'),
     path('pasajeros/<int:pk>/estado-cuenta/', PasajeroViewSet.as_view({'get': 'estado_cuenta'}), name='pasajero-estado-cuenta'),
+
+    # ============================================
+    # ENDPOINTS OPTIMIZADOS - RESERVAS V2
+    # ============================================
+    # Versión optimizada para listados (solo campos esenciales)
+    path('v2/', ReservaListadoViewSet.as_view({'get': 'list'}), name='reserva-v2-list'),
+    path('v2/<int:pk>/', ReservaListadoViewSet.as_view({'get': 'retrieve'}), name='reserva-v2-detail'),
 ]
 
 urlpatterns = format_suffix_patterns(urlpatterns)

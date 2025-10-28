@@ -8,9 +8,13 @@ from apps.servicio.models import Servicio
 
 
 class PersonaFisicaSimpleSerializer(serializers.ModelSerializer):
+    nacionalidad_nombre = serializers.CharField(source='nacionalidad.nombre', read_only=True)
+    tipo_documento_nombre = serializers.CharField(source='tipo_documento.nombre', read_only=True)
+    sexo_display = serializers.CharField(source='get_sexo_display', read_only=True)
+
     class Meta:
         model = PersonaFisica
-        fields = ["id", "nombre", "apellido", "documento", "email", "telefono"]
+        fields = ["id", "nombre", "apellido", "documento", "tipo_documento", "tipo_documento_nombre", "email", "telefono", "fecha_nacimiento", "sexo", "sexo_display", "nacionalidad", "nacionalidad_nombre"]
 
 
 class SalidaPaqueteSimpleSerializer(serializers.ModelSerializer):
@@ -468,3 +472,400 @@ class PasajeroEstadoCuentaSerializer(serializers.ModelSerializer):
             })
 
         return historial
+
+
+class ReservaListadoSerializer(serializers.ModelSerializer):
+    """
+    Serializer optimizado para listar reservas con información mínima necesaria.
+    Ideal para listados, tablas y vistas de resumen.
+    """
+    # Titular
+    titular_nombre = serializers.SerializerMethodField()
+    titular_documento = serializers.CharField(source='titular.documento', read_only=True)
+
+    # Paquete
+    paquete_nombre = serializers.CharField(source='paquete.nombre', read_only=True)
+    paquete_imagen = serializers.SerializerMethodField()
+    paquete_ciudad = serializers.SerializerMethodField()
+    paquete_pais = serializers.SerializerMethodField()
+
+    # Moneda
+    moneda = serializers.SerializerMethodField()
+
+    # Campos calculados
+    precio_unitario = serializers.DecimalField(
+        source='precio_base_paquete',
+        max_digits=12,
+        decimal_places=2,
+        read_only=True
+    )
+    costo_total_estimado = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        read_only=True
+    )
+    estado_display = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = Reserva
+        fields = [
+            'id',
+            'codigo',
+            'estado',
+            'estado_display',
+            'activo',
+            'fecha_reserva',
+            'cantidad_pasajeros',
+            'titular_nombre',
+            'titular_documento',
+            'paquete_nombre',
+            'paquete_imagen',
+            'paquete_ciudad',
+            'paquete_pais',
+            'moneda',
+            'precio_unitario',
+            'costo_total_estimado',
+        ]
+
+    def get_titular_nombre(self, obj):
+        """Nombre completo del titular"""
+        if not obj.titular:
+            return None
+        return f"{obj.titular.nombre} {obj.titular.apellido or ''}".strip()
+
+    def get_paquete_imagen(self, obj):
+        """URL de la imagen del paquete"""
+        if obj.paquete and obj.paquete.imagen:
+            return obj.paquete.imagen.url
+        return None
+
+    def get_paquete_ciudad(self, obj):
+        """Ciudad del destino del paquete"""
+        if obj.paquete and obj.paquete.destino:
+            if hasattr(obj.paquete.destino, 'ciudad') and obj.paquete.destino.ciudad:
+                return obj.paquete.destino.ciudad.nombre
+        return None
+
+    def get_paquete_pais(self, obj):
+        """País del destino del paquete"""
+        if obj.paquete and obj.paquete.destino:
+            if hasattr(obj.paquete.destino, 'ciudad') and obj.paquete.destino.ciudad:
+                if hasattr(obj.paquete.destino.ciudad, 'pais') and obj.paquete.destino.ciudad.pais:
+                    return obj.paquete.destino.ciudad.pais.nombre
+        return None
+
+    def get_moneda(self, obj):
+        """Información de la moneda"""
+        if obj.paquete and obj.paquete.moneda:
+            return {
+                'id': obj.paquete.moneda.id,
+                'nombre': obj.paquete.moneda.nombre,
+                'simbolo': obj.paquete.moneda.simbolo,
+                'codigo': obj.paquete.moneda.codigo,
+            }
+        return None
+
+
+class ReservaDetalleSerializer(serializers.ModelSerializer):
+    """
+    Serializer completo para mostrar todos los detalles de una reserva.
+    Incluye información completa del paquete, salida, hotel, pasajeros, pagos y servicios.
+    """
+    # Información del titular
+    titular = PersonaFisicaSimpleSerializer(read_only=True)
+
+    # Información del paquete (completa)
+    paquete = serializers.SerializerMethodField()
+
+    # Información de la salida (completa)
+    salida = serializers.SerializerMethodField()
+
+    # Información del hotel y habitación
+    hotel = serializers.SerializerMethodField()
+    habitacion = serializers.SerializerMethodField()
+
+    # Pasajeros con toda su información de pagos
+    pasajeros = PasajeroSerializer(many=True, read_only=True)
+
+    # Servicios adicionales
+    servicios_adicionales = ReservaServiciosAdicionalesSerializer(many=True, read_only=True)
+
+    # Servicios base del paquete
+    servicios_base = serializers.SerializerMethodField()
+
+    # Comprobantes de pago
+    comprobantes = serializers.SerializerMethodField()
+
+    # Campos calculados de costos
+    precio_base_paquete = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True
+    )
+    costo_servicios_adicionales = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True
+    )
+    costo_total_estimado = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True
+    )
+    seña_total = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True
+    )
+    saldo_pendiente = serializers.SerializerMethodField()
+
+    # Estado
+    estado_display = serializers.CharField(read_only=True)
+    puede_confirmarse = serializers.SerializerMethodField()
+    esta_totalmente_pagada = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Reserva
+        fields = [
+            'id',
+            'codigo',
+            'fecha_reserva',
+            'fecha_modificacion',
+            'observacion',
+            'activo',
+            # Titular
+            'titular',
+            # Paquete
+            'paquete',
+            'salida',
+            # Hotel y habitación
+            'hotel',
+            'habitacion',
+            # Pasajeros
+            'cantidad_pasajeros',
+            'pasajeros',
+            'datos_completos',
+            # Costos
+            'precio_unitario',
+            'precio_base_paquete',
+            'costo_servicios_adicionales',
+            'costo_total_estimado',
+            'seña_total',
+            'monto_pagado',
+            'saldo_pendiente',
+            # Estado
+            'estado',
+            'estado_display',
+            'puede_confirmarse',
+            'esta_totalmente_pagada',
+            # Servicios
+            'servicios_base',
+            'servicios_adicionales',
+            # Comprobantes
+            'comprobantes',
+        ]
+
+    def get_paquete(self, obj):
+        """Información completa del paquete"""
+        if not obj.paquete:
+            return None
+
+        paquete = obj.paquete
+
+        # Construir información del destino de forma segura
+        destino_data = None
+        if paquete.destino:
+            destino_data = {
+                'id': paquete.destino.id,
+                'ciudad': None,
+                'pais': None,
+            }
+
+            if hasattr(paquete.destino, 'ciudad') and paquete.destino.ciudad:
+                destino_data['ciudad'] = paquete.destino.ciudad.nombre
+
+                if hasattr(paquete.destino.ciudad, 'pais') and paquete.destino.ciudad.pais:
+                    destino_data['pais'] = paquete.destino.ciudad.pais.nombre
+
+        return {
+            'id': paquete.id,
+            'nombre': paquete.nombre,
+            'tipo_paquete': {
+                'id': paquete.tipo_paquete.id,
+                'nombre': paquete.tipo_paquete.nombre
+            } if paquete.tipo_paquete else None,
+            'destino': destino_data,
+            'moneda': {
+                'id': paquete.moneda.id,
+                'nombre': paquete.moneda.nombre,
+                'simbolo': paquete.moneda.simbolo,
+                'codigo': paquete.moneda.codigo
+            } if paquete.moneda else None,
+            'modalidad': paquete.modalidad,
+            'propio': paquete.propio,
+            'personalizado': paquete.personalizado,
+            'cantidad_pasajeros': paquete.cantidad_pasajeros,
+            'distribuidora': {
+                'id': paquete.distribuidora.id,
+                'nombre': paquete.distribuidora.nombre
+            } if paquete.distribuidora else None,
+            'imagen': paquete.imagen.url if paquete.imagen else None,
+        }
+
+    def get_salida(self, obj):
+        """Información completa de la salida"""
+        if not obj.salida:
+            return None
+
+        salida = obj.salida
+        return {
+            'id': salida.id,
+            'fecha_salida': salida.fecha_salida,
+            'fecha_regreso': salida.fecha_regreso,
+            'precio_actual': salida.precio_actual,
+            'precio_final': salida.precio_final,
+            'precio_venta_sugerido_min': salida.precio_venta_sugerido_min,
+            'precio_venta_sugerido_max': salida.precio_venta_sugerido_max,
+            'senia': salida.senia,
+            'cupo': salida.cupo,
+            'ganancia': salida.ganancia,
+            'comision': salida.comision,
+            'temporada': {
+                'id': salida.temporada.id,
+                'nombre': salida.temporada.nombre,
+                'fecha_inicio': salida.temporada.fecha_inicio,
+                'fecha_fin': salida.temporada.fecha_fin,
+            } if salida.temporada else None,
+            'moneda': {
+                'id': salida.moneda.id,
+                'nombre': salida.moneda.nombre,
+                'simbolo': salida.moneda.simbolo,
+                'codigo': salida.moneda.codigo
+            } if salida.moneda else None,
+        }
+
+    def get_hotel(self, obj):
+        """Información completa del hotel"""
+        if not obj.habitacion or not obj.habitacion.hotel:
+            return None
+
+        hotel = obj.habitacion.hotel
+        return {
+            'id': hotel.id,
+            'nombre': hotel.nombre,
+            'direccion': hotel.direccion,
+            'descripcion': hotel.descripcion,
+            'estrellas': hotel.estrellas,
+            'cadena': {
+                'id': hotel.cadena.id,
+                'nombre': hotel.cadena.nombre
+            } if hotel.cadena else None,
+            'ciudad': {
+                'id': hotel.ciudad.id,
+                'nombre': hotel.ciudad.nombre
+            } if hotel.ciudad else None,
+        }
+
+    def get_habitacion(self, obj):
+        """Información completa de la habitación"""
+        if not obj.habitacion:
+            return None
+
+        habitacion = obj.habitacion
+        return {
+            'id': habitacion.id,
+            'numero': habitacion.numero,
+            'tipo': habitacion.tipo,
+            'tipo_display': habitacion.get_tipo_display(),
+            'capacidad': habitacion.capacidad,
+            'precio_noche': habitacion.precio_noche,
+            'moneda': {
+                'id': habitacion.moneda.id,
+                'nombre': habitacion.moneda.nombre,
+                'simbolo': habitacion.moneda.simbolo,
+                'codigo': habitacion.moneda.codigo
+            } if habitacion.moneda else None,
+        }
+
+    def get_servicios_base(self, obj):
+        """Servicios incluidos en el paquete base"""
+        if not obj.paquete:
+            return []
+
+        servicios = []
+        for ps in obj.paquete.paquete_servicios.all():
+            servicios.append({
+                'id': ps.id,
+                'servicio': {
+                    'id': ps.servicio.id,
+                    'nombre': ps.servicio.nombre,
+                    'descripcion': ps.servicio.descripcion,
+                    'tipo': ps.servicio.tipo,
+                },
+                'precio': ps.precio,
+            })
+        return servicios
+
+    def get_comprobantes(self, obj):
+        """Historial de los últimos 3 comprobantes de pago"""
+        comprobantes = obj.comprobantes.filter(activo=True).order_by('-fecha_pago')[:3]
+
+        resultado = []
+        for comp in comprobantes:
+            # Obtener distribuciones de este comprobante
+            distribuciones = []
+            for dist in comp.distribuciones.all():
+                distribuciones.append({
+                    'pasajero_id': dist.pasajero.id,
+                    'pasajero_nombre': f"{dist.pasajero.persona.nombre} {dist.pasajero.persona.apellido}",
+                    'monto': dist.monto,
+                    'observaciones': dist.observaciones,
+                })
+
+            # Obtener nombre del empleado de forma segura
+            empleado_data = None
+            if comp.empleado:
+                # El empleado tiene una relación con Persona, pero necesitamos PersonaFisica
+                persona = comp.empleado.persona
+                if hasattr(persona, 'personafisica'):
+                    # Acceder al objeto PersonaFisica a través de la relación polimórfica
+                    pf = persona.personafisica
+                    empleado_data = {
+                        'id': comp.empleado.id,
+                        'nombre': f"{pf.nombre} {pf.apellido or ''}".strip(),
+                    }
+                elif hasattr(persona, 'nombre'):
+                    # Si la persona ya es PersonaFisica
+                    empleado_data = {
+                        'id': comp.empleado.id,
+                        'nombre': f"{persona.nombre} {getattr(persona, 'apellido', '') or ''}".strip(),
+                    }
+                else:
+                    # Fallback: usar el documento
+                    empleado_data = {
+                        'id': comp.empleado.id,
+                        'nombre': persona.documento,
+                    }
+
+            resultado.append({
+                'id': comp.id,
+                'numero_comprobante': comp.numero_comprobante,
+                'fecha_pago': comp.fecha_pago,
+                'fecha_creacion': comp.fecha_creacion,
+                'tipo': comp.tipo,
+                'tipo_display': comp.get_tipo_display(),
+                'metodo_pago': comp.metodo_pago,
+                'metodo_pago_display': comp.get_metodo_pago_display(),
+                'monto': comp.monto,
+                'referencia': comp.referencia,
+                'observaciones': comp.observaciones,
+                'distribuciones': distribuciones,
+                'empleado': empleado_data,
+                'pdf_url': comp.pdf_generado.url if comp.pdf_generado else None,
+            })
+
+        return resultado
+
+    def get_saldo_pendiente(self, obj):
+        """Saldo pendiente de pago"""
+        return obj.costo_total_estimado - obj.monto_pagado
+
+    def get_puede_confirmarse(self, obj):
+        """Si la reserva puede confirmarse"""
+        return obj.puede_confirmarse()
+
+    def get_esta_totalmente_pagada(self, obj):
+        """Si la reserva está totalmente pagada"""
+        return obj.esta_totalmente_pagada()
