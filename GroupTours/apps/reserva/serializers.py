@@ -39,6 +39,13 @@ class HabitacionSimpleSerializer(serializers.ModelSerializer):
 
 class PasajeroSerializer(serializers.ModelSerializer):
     persona = PersonaFisicaSimpleSerializer(read_only=True)
+    persona_id = serializers.PrimaryKeyRelatedField(
+        queryset=PersonaFisica.objects.all(),
+        source='persona',
+        write_only=True,
+        required=False,
+        help_text="ID de la PersonaFisica para asignar/actualizar al pasajero"
+    )
 
     # Campos calculados de pagos
     monto_pagado = serializers.DecimalField(
@@ -79,7 +86,9 @@ class PasajeroSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "persona",
+            "persona_id",
             "es_titular",
+            "por_asignar",
             "precio_asignado",
             "monto_pagado",
             "saldo_pendiente",
