@@ -91,6 +91,7 @@ def obtener_o_crear_pasajero_pendiente(reserva, sufijo=""):
         reserva=reserva,
         persona=persona_pendiente,
         es_titular=False,
+        por_asignar=True,  # Marcar como pendiente de asignación
         precio_asignado=reserva.precio_unitario or 0
     )
 
@@ -167,6 +168,40 @@ class ReservaViewSet(viewsets.ModelViewSet):
             )
 
         return queryset
+
+    def retrieve(self, request, *args, **kwargs):
+        """
+        Sobrescribe el método retrieve para crear pasajeros 'Por Asignar' automáticamente
+        cuando la reserva tiene menos pasajeros de los esperados.
+
+        Si la reserva cumple:
+        - Tiene menos pasajeros registrados que cantidad_pasajeros
+        - Tiene titular asignado
+        - Tiene cantidad_pasajeros > 0
+
+        Entonces crea automáticamente pasajeros "Por Asignar X" para completar la cantidad faltante.
+        """
+        # Obtener la reserva
+        instance = self.get_object()
+
+        # Verificar si necesitamos crear pasajeros pendientes
+        # Solo si la cantidad actual de pasajeros es menor a la cantidad esperada
+        if instance.titular and instance.cantidad_pasajeros and instance.cantidad_pasajeros > 0:
+            cantidad_actual = instance.pasajeros.count()
+
+            # Si hay menos pasajeros de los esperados, crear los faltantes
+            if cantidad_actual < instance.cantidad_pasajeros:
+                # Crear pasajeros pendientes para completar la cantidad
+                for i in range(cantidad_actual + 1, instance.cantidad_pasajeros + 1):
+                    sufijo = str(i)
+                    obtener_o_crear_pasajero_pendiente(instance, sufijo)
+
+                # Refrescar la instancia para incluir los pasajeros recién creados
+                instance.refresh_from_db()
+
+        # Serializar y retornar
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
 
     # ----- ENDPOINT EXTRA: resumen -----
     @action(detail=False, methods=['get'], url_path='resumen')
@@ -457,8 +492,8 @@ class ReservaViewSet(viewsets.ModelViewSet):
         Registra el pago de seña para una reserva.
         Crea un ComprobantePago de tipo 'sena' con las distribuciones especificadas.
 
-        Si la reserva no tiene pasajeros registrados, automáticamente crea pasajeros "pendientes"
-        según la cantidad_pasajeros de la reserva (Por Asignar 1, Por Asignar 2, Por Asignar 3, etc.)
+        Los pasajeros "pendientes" se crean bajo demanda cuando se especifican en las distribuciones.
+        No se crean automáticamente al inicio del proceso.
 
         Soporta distribuciones para pasajeros ya cargados y pasajeros "pendientes".
 
@@ -504,26 +539,19 @@ class ReservaViewSet(viewsets.ModelViewSet):
 
         reserva = self.get_object()
 
-        # Si no hay pasajeros, crear pasajeros pendientes según la cantidad de pasajeros de la reserva
-        if not reserva.pasajeros.exists():
-            # Validar que la reserva tenga titular
-            if not reserva.titular:
-                return Response(
-                    {'error': 'La reserva no tiene titular asignado. No se pueden crear pasajeros pendientes.'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+        # Validar que la reserva tenga titular
+        if not reserva.titular:
+            return Response(
+                {'error': 'La reserva no tiene titular asignado. No se pueden crear pasajeros pendientes.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-            # Validar que la reserva tenga cantidad de pasajeros definida
-            if not reserva.cantidad_pasajeros or reserva.cantidad_pasajeros <= 0:
-                return Response(
-                    {'error': 'La reserva no tiene cantidad de pasajeros definida'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            # Crear pasajeros pendientes según la cantidad (numerados desde 1)
-            for i in range(reserva.cantidad_pasajeros):
-                sufijo = str(i + 1)
-                obtener_o_crear_pasajero_pendiente(reserva, sufijo)
+        # Validar que la reserva tenga cantidad de pasajeros definida
+        if not reserva.cantidad_pasajeros or reserva.cantidad_pasajeros <= 0:
+            return Response(
+                {'error': 'La reserva no tiene cantidad de pasajeros definida'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         # Validar campos requeridos
         if 'metodo_pago' not in request.data:
@@ -682,9 +710,39 @@ class ReservaViewSet(viewsets.ModelViewSet):
                 elif pais_nombre:
                     nombre_destino = pais_nombre
 
+            # Construir información detallada de las distribuciones para mostrar en la vista
+            from django.db.models import Sum
+            distribuciones_detalle = []
+            for dist in comprobante.distribuciones.all():
+                # Calcular monto total pagado por este pasajero hasta el momento
+                monto_pagado_total = ComprobantePagoDistribucion.objects.filter(
+                    pasajero=dist.pasajero,
+                    comprobante__activo=True
+                ).aggregate(total=Sum('monto'))['total'] or Decimal('0')
+
+                precio_asignado = dist.pasajero.precio_asignado or Decimal('0')
+                saldo_pendiente = precio_asignado - monto_pagado_total
+                porcentaje_pagado = (monto_pagado_total / precio_asignado * 100) if precio_asignado > 0 else 0
+
+                distribuciones_detalle.append({
+                    'id': dist.id,
+                    'pasajero_id': dist.pasajero.id,
+                    'pasajero_nombre': f"{dist.pasajero.persona.nombre} {dist.pasajero.persona.apellido}",
+                    'pasajero_documento': dist.pasajero.persona.documento,
+                    'es_titular': dist.pasajero.es_titular,
+                    'monto': float(dist.monto),
+                    'observaciones': dist.observaciones,
+                    # Información financiera del pasajero
+                    'precio_asignado': float(precio_asignado),
+                    'monto_pagado_total': float(monto_pagado_total),
+                    'saldo_pendiente': float(saldo_pendiente),
+                    'porcentaje_pagado': round(float(porcentaje_pagado), 2)
+                })
+
             return Response({
                 'message': 'Seña registrada exitosamente',
                 'comprobante': comprobante_serializer.data,
+                'distribuciones_detalle': distribuciones_detalle,  # Información detallada para mostrar en la vista
                 'reserva': {
                     'id': reserva.id,
                     'codigo': reserva.codigo,
@@ -717,8 +775,8 @@ class ReservaViewSet(viewsets.ModelViewSet):
         Registra un pago parcial o completo para una reserva.
         Crea un ComprobantePago con las distribuciones especificadas.
 
-        Si la reserva no tiene pasajeros registrados, automáticamente crea pasajeros "pendientes"
-        según la cantidad_pasajeros de la reserva (Por Asignar 1, Por Asignar 2, Por Asignar 3, etc.)
+        Los pasajeros "pendientes" se crean bajo demanda cuando se especifican en las distribuciones.
+        No se crean automáticamente al inicio del proceso.
 
         Body:
         {
@@ -756,26 +814,19 @@ class ReservaViewSet(viewsets.ModelViewSet):
 
         reserva = self.get_object()
 
-        # Si no hay pasajeros, crear pasajeros pendientes según la cantidad de pasajeros de la reserva
-        if not reserva.pasajeros.exists():
-            # Validar que la reserva tenga titular
-            if not reserva.titular:
-                return Response(
-                    {'error': 'La reserva no tiene titular asignado. No se pueden crear pasajeros pendientes.'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+        # Validar que la reserva tenga titular
+        if not reserva.titular:
+            return Response(
+                {'error': 'La reserva no tiene titular asignado. No se pueden crear pasajeros pendientes.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-            # Validar que la reserva tenga cantidad de pasajeros definida
-            if not reserva.cantidad_pasajeros or reserva.cantidad_pasajeros <= 0:
-                return Response(
-                    {'error': 'La reserva no tiene cantidad de pasajeros definida'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            # Crear pasajeros pendientes según la cantidad (numerados desde 1)
-            for i in range(reserva.cantidad_pasajeros):
-                sufijo = str(i + 1)
-                obtener_o_crear_pasajero_pendiente(reserva, sufijo)
+        # Validar que la reserva tenga cantidad de pasajeros definida
+        if not reserva.cantidad_pasajeros or reserva.cantidad_pasajeros <= 0:
+            return Response(
+                {'error': 'La reserva no tiene cantidad de pasajeros definida'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         # Validar campos requeridos
         if 'tipo' not in request.data:
@@ -955,9 +1006,39 @@ class ReservaViewSet(viewsets.ModelViewSet):
             }
             estado_response = estado_base_map.get(reserva.estado, reserva.estado)
 
+            # Construir información detallada de las distribuciones para mostrar en la vista
+            from django.db.models import Sum
+            distribuciones_detalle = []
+            for dist in comprobante.distribuciones.all():
+                # Calcular monto total pagado por este pasajero hasta el momento
+                monto_pagado_total = ComprobantePagoDistribucion.objects.filter(
+                    pasajero=dist.pasajero,
+                    comprobante__activo=True
+                ).aggregate(total=Sum('monto'))['total'] or Decimal('0')
+
+                precio_asignado = dist.pasajero.precio_asignado or Decimal('0')
+                saldo_pendiente = precio_asignado - monto_pagado_total
+                porcentaje_pagado = (monto_pagado_total / precio_asignado * 100) if precio_asignado > 0 else 0
+
+                distribuciones_detalle.append({
+                    'id': dist.id,
+                    'pasajero_id': dist.pasajero.id,
+                    'pasajero_nombre': f"{dist.pasajero.persona.nombre} {dist.pasajero.persona.apellido}",
+                    'pasajero_documento': dist.pasajero.persona.documento,
+                    'es_titular': dist.pasajero.es_titular,
+                    'monto': float(dist.monto),
+                    'observaciones': dist.observaciones,
+                    # Información financiera del pasajero
+                    'precio_asignado': float(precio_asignado),
+                    'monto_pagado_total': float(monto_pagado_total),
+                    'saldo_pendiente': float(saldo_pendiente),
+                    'porcentaje_pagado': round(float(porcentaje_pagado), 2)
+                })
+
             return Response({
                 'message': 'Pago registrado exitosamente',
                 'comprobante': comprobante_serializer.data,
+                'distribuciones_detalle': distribuciones_detalle,  # Información detallada para mostrar en la vista
                 'reserva': {
                     'id': reserva.id,
                     'codigo': reserva.codigo,
@@ -1276,6 +1357,41 @@ class PasajeroViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(es_titular=es_titular_bool)
 
         return queryset
+
+    def perform_update(self, serializer):
+        """
+        Después de actualizar un pasajero, recalcular el estado de la reserva.
+
+        Esto es crucial cuando se actualiza un pasajero "Por Asignar" a una persona real,
+        ya que verifica si todos los pasajeros ya están asignados (datos_completos=True)
+        y actualiza el estado de la reserva según corresponda:
+
+        - Si tiene pago total (100%) + datos completos → estado "finalizada"
+        - Si tiene seña pagada → estado "confirmada"
+        - Si no tiene seña → estado "pendiente"
+
+        El método actualizar_estado() también actualiza el flag datos_completos.
+
+        Además, si se está actualizando el campo persona_id (asignando una persona real),
+        automáticamente cambia por_asignar de True a False.
+        """
+        # Verificar si se está actualizando la persona (asignando datos reales)
+        persona_id = serializer.validated_data.get('persona')
+        pasajero_actual = self.get_object()
+
+        # Si se está cambiando la persona Y el pasajero estaba por_asignar
+        if persona_id and pasajero_actual.por_asignar:
+            # Verificar que no sea una persona "pendiente" (con _PEND en el documento)
+            if not persona_id.documento or '_PEND' not in persona_id.documento:
+                # Cambiar por_asignar a False porque ahora tiene datos reales
+                serializer.validated_data['por_asignar'] = False
+
+        # Guardar el pasajero actualizado
+        pasajero = serializer.save()
+
+        # Actualizar el estado de la reserva asociada
+        if pasajero.reserva:
+            pasajero.reserva.actualizar_estado()
 
     @action(detail=True, methods=['get'], url_path='estado-cuenta')
     def estado_cuenta(self, request, pk=None):

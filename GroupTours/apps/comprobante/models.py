@@ -283,43 +283,57 @@ class ComprobantePago(models.Model):
 
         y -= 25
 
-        # Crear tabla de distribuciones
+        # Crear tabla de distribuciones con información financiera completa
         distribuciones = self.distribuciones.all()
 
-        # Datos de la tabla
-        data = [['Pasajero', 'Documento', 'Monto']]
+        # Datos de la tabla con columnas reorganizadas: Monto Pago al final
+        data = [['Pasajero', 'Documento', 'Total Pagado', 'Saldo Pdte.', 'Monto Pago']]
+
         for dist in distribuciones:
+            # Calcular monto total pagado por este pasajero hasta el momento
+            from django.db.models import Sum
+            monto_pagado_total = ComprobantePagoDistribucion.objects.filter(
+                pasajero=dist.pasajero,
+                comprobante__activo=True
+            ).aggregate(total=Sum('monto'))['total'] or Decimal('0')
+
+            precio_asignado = dist.pasajero.precio_asignado or Decimal('0')
+            saldo_pendiente = precio_asignado - monto_pagado_total
+
             data.append([
                 f"{dist.pasajero.persona.nombre} {dist.pasajero.persona.apellido}",
                 dist.pasajero.persona.documento or '-',
+                f"${monto_pagado_total:,.2f}",
+                f"${saldo_pendiente:,.2f}",
                 f"${dist.monto:,.2f}"
             ])
 
-        # Agregar total
-        data.append(['', 'TOTAL:', f"${self.monto:,.2f}"])
+        # Agregar fila de total (solo para el monto del pago actual en la última columna)
+        data.append(['', '', '', '', f"${self.monto:,.2f}"])
 
-        # Crear tabla
-        table = Table(data, colWidths=[200, 100, 100])
+        # Crear tabla con anchos ajustados para las 5 columnas
+        table = Table(data, colWidths=[130, 75, 85, 85, 85])
         table.setStyle(TableStyle([
             # Encabezado
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#34495e")),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
             ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
+            ('ALIGN', (2, 0), (4, -1), 'RIGHT'),  # Alinear a la derecha las columnas de montos
             ('FONTNAME', (0, 0), (-1, 0), title_font),
-            ('FONTSIZE', (0, 0), (-1, 0), 11),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
             ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
 
             # Contenido
             ('FONTNAME', (0, 1), (-1, -1), normal_font),
-            ('FONTSIZE', (0, 1), (-1, -1), 10),
+            ('FONTSIZE', (0, 1), (-1, -1), 9),
             ('GRID', (0, 0), (-1, -2), 0.5, colors.grey),
 
             # Fila de total
             ('FONTNAME', (0, -1), (-1, -1), title_font),
-            ('FONTSIZE', (0, -1), (-1, -1), 12),
+            ('FONTSIZE', (0, -1), (-1, -1), 11),
             ('LINEABOVE', (0, -1), (-1, -1), 2, colors.black),
             ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor("#ecf0f1")),
+            ('SPAN', (0, -1), (3, -1)),  # Fusionar las primeras 4 columnas en la fila de total
         ]))
 
         # Dibujar tabla
