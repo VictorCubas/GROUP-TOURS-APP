@@ -8,10 +8,18 @@ from decimal import Decimal
 class ComprobantePagoDistribucionSerializer(serializers.ModelSerializer):
     """
     Serializer para la distribución de pagos entre pasajeros.
+    Incluye información financiera completa del pasajero para mostrar en vistas de resumen.
     """
     pasajero_nombre = serializers.CharField(source='pasajero.persona.nombre', read_only=True)
     pasajero_apellido = serializers.CharField(source='pasajero.persona.apellido', read_only=True)
     pasajero_documento = serializers.CharField(source='pasajero.persona.numero_documento', read_only=True)
+
+    # Información financiera del pasajero
+    precio_asignado = serializers.DecimalField(source='pasajero.precio_asignado', max_digits=12, decimal_places=2, read_only=True)
+    monto_pagado_total = serializers.SerializerMethodField()
+    saldo_pendiente = serializers.SerializerMethodField()
+    porcentaje_pagado = serializers.SerializerMethodField()
+    es_titular = serializers.BooleanField(source='pasajero.es_titular', read_only=True)
 
     class Meta:
         model = ComprobantePagoDistribucion
@@ -21,11 +29,49 @@ class ComprobantePagoDistribucionSerializer(serializers.ModelSerializer):
             'pasajero_nombre',
             'pasajero_apellido',
             'pasajero_documento',
+            'es_titular',
             'monto',
             'observaciones',
             'fecha_creacion',
+            # Información financiera
+            'precio_asignado',
+            'monto_pagado_total',
+            'saldo_pendiente',
+            'porcentaje_pagado',
         ]
         read_only_fields = ['fecha_creacion']
+
+    def get_monto_pagado_total(self, obj):
+        """
+        Calcula el monto total pagado por este pasajero hasta el momento
+        sumando todas sus distribuciones activas.
+        """
+        from django.db.models import Sum
+        total = ComprobantePagoDistribucion.objects.filter(
+            pasajero=obj.pasajero,
+            comprobante__activo=True
+        ).aggregate(total=Sum('monto'))['total'] or Decimal('0')
+        return float(total)
+
+    def get_saldo_pendiente(self, obj):
+        """
+        Calcula el saldo pendiente de pago de este pasajero.
+        """
+        precio_asignado = obj.pasajero.precio_asignado or Decimal('0')
+        monto_pagado = self.get_monto_pagado_total(obj)
+        return float(precio_asignado - Decimal(str(monto_pagado)))
+
+    def get_porcentaje_pagado(self, obj):
+        """
+        Calcula el porcentaje pagado del total asignado.
+        """
+        precio_asignado = obj.pasajero.precio_asignado or Decimal('0')
+        if precio_asignado == 0:
+            return 0.0
+
+        monto_pagado = Decimal(str(self.get_monto_pagado_total(obj)))
+        porcentaje = (monto_pagado / precio_asignado) * 100
+        return round(float(porcentaje), 2)
 
     def validate(self, data):
         """

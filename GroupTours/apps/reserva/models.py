@@ -486,6 +486,10 @@ class Pasajero(models.Model):
         default=False,
         help_text="Indica si este pasajero es el titular de la reserva"
     )
+    por_asignar = models.BooleanField(
+        default=False,
+        help_text="Indica si este pasajero está pendiente de asignación (True) o tiene datos reales (False)"
+    )
     precio_asignado = models.DecimalField(
         max_digits=12,
         decimal_places=2,
