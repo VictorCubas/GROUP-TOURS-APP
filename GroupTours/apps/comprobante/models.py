@@ -526,22 +526,36 @@ class ComprobantePagoDistribucion(models.Model):
 
 class Voucher(models.Model):
     """
-    Documento que confirma la reserva del cliente.
-    Se genera automáticamente cuando la reserva pasa a estado 'confirmada'.
+    Documento que confirma la reserva individual de un pasajero.
+    Se genera automáticamente cuando el pasajero cumple dos condiciones:
+    1. Tiene datos reales cargados (por_asignar=False)
+    2. Ha pagado el 100% de su precio asignado (esta_totalmente_pagado=True)
     """
 
+    # CAMPO TEMPORAL: Mantener reserva durante la migración
     reserva = models.OneToOneField(
         'reserva.Reserva',
         on_delete=models.PROTECT,
+        related_name='voucher_legacy',
+        null=True,
+        blank=True,
+        help_text="[LEGACY] Reserva asociada - se eliminará en migración futura"
+    )
+
+    pasajero = models.OneToOneField(
+        'reserva.Pasajero',
+        on_delete=models.PROTECT,
         related_name='voucher',
-        help_text="Reserva asociada a este voucher"
+        null=True,
+        blank=True,
+        help_text="Pasajero asociado a este voucher"
     )
 
     codigo_voucher = models.CharField(
-        max_length=30,
+        max_length=50,
         unique=True,
         editable=False,
-        help_text="Código único del voucher (ej: RSV-2025-0001-VOUCHER)"
+        help_text="Código único del voucher (ej: RSV-2025-0001-PAX-001-VOUCHER)"
     )
 
     fecha_emision = models.DateTimeField(
@@ -596,12 +610,23 @@ class Voucher(models.Model):
         db_table = "Voucher"
 
     def __str__(self):
-        return f"{self.codigo_voucher} - {self.reserva.codigo}"
+        if self.pasajero:
+            return f"{self.codigo_voucher} - {self.pasajero.persona}"
+        elif self.reserva:
+            return f"{self.codigo_voucher} - {self.reserva.codigo} [LEGACY]"
+        return f"{self.codigo_voucher}"
 
     def save(self, *args, **kwargs):
         # Generar código único de voucher
         if not self.codigo_voucher:
-            self.codigo_voucher = f"{self.reserva.codigo}-VOUCHER"
+            # NUEVO: Voucher por pasajero
+            if self.pasajero:
+                reserva_codigo = self.pasajero.reserva.codigo
+                pasajero_id = self.pasajero.id
+                self.codigo_voucher = f"{reserva_codigo}-PAX-{pasajero_id:03d}-VOUCHER"
+            # LEGACY: Voucher por reserva (para compatibilidad durante migración)
+            elif self.reserva:
+                self.codigo_voucher = f"{self.reserva.codigo}-VOUCHER"
 
         super().save(*args, **kwargs)
 
@@ -616,7 +641,16 @@ class Voucher(models.Model):
             from django.core.files import File
 
             # Datos a incluir en el QR
-            datos_qr = f"VOUCHER:{self.codigo_voucher}|RESERVA:{self.reserva.codigo}"
+            if self.pasajero:
+                # NUEVO: Voucher por pasajero
+                reserva_codigo = self.pasajero.reserva.codigo
+                pasajero_nombre = f"{self.pasajero.persona.nombre} {self.pasajero.persona.apellido}"
+                datos_qr = f"VOUCHER:{self.codigo_voucher}|RESERVA:{reserva_codigo}|PASAJERO:{pasajero_nombre}"
+            elif self.reserva:
+                # LEGACY: Voucher por reserva
+                datos_qr = f"VOUCHER:{self.codigo_voucher}|RESERVA:{self.reserva.codigo}"
+            else:
+                datos_qr = f"VOUCHER:{self.codigo_voucher}"
 
             # Generar QR
             qr = qrcode.QRCode(version=1, box_size=10, border=4)
@@ -630,7 +664,7 @@ class Voucher(models.Model):
             img.save(buffer, format='PNG')
             buffer.seek(0)
 
-            filename = f'voucher_{self.reserva.codigo}.png'
+            filename = f'voucher_{self.codigo_voucher}.png'
             self.qr_code.save(filename, File(buffer), save=False)
             buffer.close()
 
@@ -639,3 +673,491 @@ class Voucher(models.Model):
                 "La librería 'qrcode' no está instalada. "
                 "Instale con: pip install qrcode[pil]"
             )
+
+    def generar_pdf(self):
+        """
+        Genera un PDF del voucher con toda la información del pasajero, reserva, paquete y salida.
+        Utiliza reportlab para crear el documento.
+        """
+        from reportlab.lib.pagesizes import A4
+        from reportlab.pdfgen import canvas
+        from reportlab.lib import colors
+        from reportlab.platypus import Table, TableStyle, Image as RLImage
+        from reportlab.lib.units import inch
+        from io import BytesIO
+        from django.core.files import File
+        import os
+
+        # Solo generar PDF para vouchers con pasajero (no legacy)
+        if not self.pasajero:
+            raise ValidationError("No se puede generar PDF para vouchers legacy sin pasajero")
+
+        # Crear buffer para el PDF
+        buffer = BytesIO()
+
+        # Crear el canvas
+        c = canvas.Canvas(buffer, pagesize=A4)
+        width, height = A4
+
+        # Fuentes
+        title_font = "Helvetica-Bold"
+        normal_font = "Helvetica"
+        subtitle_font = "Helvetica-Bold"
+
+        # Posición inicial
+        y = height - 60
+
+        # ============================================================
+        # ENCABEZADO PRINCIPAL
+        # ============================================================
+        c.setFont(title_font, 24)
+        c.setFillColor(colors.HexColor("#2c3e50"))
+        c.drawCentredString(width / 2, y, "VOUCHER DE VIAJE")
+
+        y -= 10
+        c.setLineWidth(3)
+        c.setStrokeColor(colors.HexColor("#3498db"))
+        c.line(50, y, width - 50, y)
+
+        y -= 40
+
+        # ============================================================
+        # INFORMACIÓN DEL VOUCHER Y CÓDIGO QR
+        # ============================================================
+        c.setFont(subtitle_font, 14)
+        c.setFillColor(colors.black)
+        c.drawString(50, y, "Información del Voucher")
+
+        # Línea decorativa
+        c.setLineWidth(1)
+        c.setStrokeColor(colors.HexColor("#95a5a6"))
+        c.line(50, y - 5, 250, y - 5)
+
+        y -= 25
+        c.setFont(normal_font, 11)
+        c.drawString(50, y, f"Código: {self.codigo_voucher}")
+        y -= 18
+        c.drawString(50, y, f"Fecha de Emisión: {self.fecha_emision.strftime('%d/%m/%Y %H:%M')}")
+
+        # Insertar código QR si existe
+        if self.qr_code:
+            try:
+                qr_path = self.qr_code.path
+                if os.path.exists(qr_path):
+                    # Posicionar QR en la esquina superior derecha
+                    qr_size = 1.2 * inch
+                    qr_x = width - 50 - qr_size
+                    qr_y = height - 60 - qr_size - 20
+                    c.drawImage(qr_path, qr_x, qr_y, width=qr_size, height=qr_size)
+
+                    # Texto debajo del QR
+                    c.setFont(normal_font, 8)
+                    c.drawCentredString(qr_x + qr_size/2, qr_y - 15, "Escanea para validar")
+            except Exception as e:
+                print(f"Error insertando QR: {e}")
+
+        y -= 30
+
+        # ============================================================
+        # INFORMACIÓN DEL PASAJERO
+        # ============================================================
+        c.setFont(subtitle_font, 14)
+        c.setFillColor(colors.HexColor("#2c3e50"))
+        c.drawString(50, y, "Información del Pasajero")
+        c.setLineWidth(1)
+        c.setStrokeColor(colors.HexColor("#95a5a6"))
+        c.line(50, y - 5, 250, y - 5)
+
+        y -= 25
+        c.setFont(normal_font, 11)
+        c.setFillColor(colors.black)
+
+        pasajero_nombre = f"{self.pasajero.persona.nombre} {self.pasajero.persona.apellido}"
+        c.drawString(50, y, f"Nombre: {pasajero_nombre}")
+
+        # Badge de "TITULAR" si aplica
+        if self.pasajero.es_titular:
+            badge_x = 50 + c.stringWidth(f"Nombre: {pasajero_nombre}", normal_font, 11) + 10
+            c.setFillColor(colors.HexColor("#27ae60"))
+            c.roundRect(badge_x, y - 3, 60, 16, 4, fill=1, stroke=0)
+            c.setFillColor(colors.white)
+            c.setFont(title_font, 9)
+            c.drawString(badge_x + 8, y + 1, "TITULAR")
+            c.setFillColor(colors.black)
+            c.setFont(normal_font, 11)
+
+        y -= 18
+        if hasattr(self.pasajero.persona, 'documento') and self.pasajero.persona.documento:
+            c.drawString(50, y, f"Documento: {self.pasajero.persona.documento}")
+            y -= 18
+
+        if hasattr(self.pasajero.persona, 'email') and self.pasajero.persona.email:
+            c.drawString(50, y, f"Email: {self.pasajero.persona.email}")
+            y -= 18
+
+        if hasattr(self.pasajero.persona, 'telefono') and self.pasajero.persona.telefono:
+            c.drawString(50, y, f"Teléfono: {self.pasajero.persona.telefono}")
+            y -= 18
+
+        y -= 15
+
+        # ============================================================
+        # INFORMACIÓN DEL PAQUETE
+        # ============================================================
+        paquete = self.pasajero.reserva.paquete
+        c.setFont(subtitle_font, 14)
+        c.setFillColor(colors.HexColor("#2c3e50"))
+        c.drawString(50, y, "Información del Paquete")
+        c.setLineWidth(1)
+        c.setStrokeColor(colors.HexColor("#95a5a6"))
+        c.line(50, y - 5, 250, y - 5)
+
+        y -= 25
+        c.setFont(title_font, 13)
+        c.setFillColor(colors.HexColor("#3498db"))
+        c.drawString(50, y, paquete.nombre)
+
+        y -= 20
+        c.setFont(normal_font, 11)
+        c.setFillColor(colors.black)
+
+        if hasattr(paquete, 'descripcion') and paquete.descripcion:
+            # Dividir descripción en líneas
+            desc_lines = []
+            words = paquete.descripcion.split()
+            current_line = ""
+            for word in words:
+                test_line = current_line + " " + word if current_line else word
+                if c.stringWidth(test_line, normal_font, 11) < (width - 120):
+                    current_line = test_line
+                else:
+                    if current_line:
+                        desc_lines.append(current_line)
+                    current_line = word
+            if current_line:
+                desc_lines.append(current_line)
+
+            # Dibujar máximo 3 líneas de descripción
+            for line in desc_lines[:3]:
+                c.drawString(50, y, line)
+                y -= 15
+
+        y -= 5
+        if hasattr(paquete, 'destino') and paquete.destino:
+            destino_str = str(paquete.destino)  # Usa el __str__ del modelo
+            c.drawString(50, y, f"Destino: {destino_str}")
+            y -= 18
+
+        # Mostrar tipo de paquete (Terrestre/Aéreo)
+        tipo_paquete = "N/A"
+        if hasattr(paquete, 'tipo_paquete'):
+            # Determinar si es terrestre o aéreo basado en el tipo
+            if paquete.tipo_paquete and hasattr(paquete.tipo_paquete, 'nombre'):
+                tipo_nombre = paquete.tipo_paquete.nombre.upper()
+                if 'AEREO' in tipo_nombre or 'AÉREO' in tipo_nombre:
+                    tipo_paquete = "Aéreo"
+                elif 'TERRESTRE' in tipo_nombre:
+                    tipo_paquete = "Terrestre"
+                else:
+                    tipo_paquete = paquete.tipo_paquete.nombre
+            elif hasattr(paquete, 'get_tipo_paquete_display'):
+                tipo_paquete = paquete.get_tipo_paquete_display()
+
+        c.drawString(50, y, f"Tipo de Paquete: {tipo_paquete}")
+        y -= 18
+        c.drawString(50, y, f"Modalidad: {paquete.get_modalidad_display()}")
+
+        y -= 25
+
+        # ============================================================
+        # INFORMACIÓN DE LA SALIDA
+        # ============================================================
+        salida = self.pasajero.reserva.salida
+        if salida:
+            c.setFont(subtitle_font, 14)
+            c.setFillColor(colors.HexColor("#2c3e50"))
+            c.drawString(50, y, "Información de la Salida")
+            c.setLineWidth(1)
+            c.setStrokeColor(colors.HexColor("#95a5a6"))
+            c.line(50, y - 5, 250, y - 5)
+
+            y -= 25
+            c.setFont(normal_font, 11)
+            c.setFillColor(colors.black)
+
+            # Tabla de fechas
+            fecha_data = [
+                ['Fecha de Salida:', salida.fecha_salida.strftime('%d/%m/%Y') if salida.fecha_salida else 'N/A'],
+                ['Fecha de Regreso:', salida.fecha_regreso.strftime('%d/%m/%Y') if salida.fecha_regreso else 'N/A'],
+            ]
+
+            # Calcular duración
+            if salida.fecha_salida and salida.fecha_regreso:
+                duracion = (salida.fecha_regreso - salida.fecha_salida).days
+                fecha_data.append(['Duración:', f"{duracion} {'día' if duracion == 1 else 'días'}"])
+
+            fecha_table = Table(fecha_data, colWidths=[120, 150])
+            fecha_table.setStyle(TableStyle([
+                ('FONTNAME', (0, 0), (0, -1), title_font),
+                ('FONTNAME', (1, 0), (1, -1), normal_font),
+                ('FONTSIZE', (0, 0), (-1, -1), 11),
+                ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor("#34495e")),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('TOPPADDING', (0, 0), (-1, -1), 4),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ]))
+
+            fecha_table.wrapOn(c, width, height)
+            table_height = len(fecha_data) * 20
+            fecha_table.drawOn(c, 50, y - table_height)
+
+            y -= table_height + 25
+
+        # ============================================================
+        # INFORMACIÓN DEL HOTEL Y HABITACIÓN
+        # ============================================================
+        habitacion = self.pasajero.reserva.habitacion
+        if habitacion:
+            c.setFont(subtitle_font, 14)
+            c.setFillColor(colors.HexColor("#2c3e50"))
+            c.drawString(50, y, "Alojamiento")
+            c.setLineWidth(1)
+            c.setStrokeColor(colors.HexColor("#95a5a6"))
+            c.line(50, y - 5, 150, y - 5)
+
+            y -= 25
+            c.setFont(normal_font, 11)
+            c.setFillColor(colors.black)
+
+            hotel = habitacion.hotel
+            c.drawString(50, y, f"Hotel: {hotel.nombre}")
+            y -= 18
+
+            if hasattr(hotel, 'direccion') and hotel.direccion:
+                c.drawString(50, y, f"Dirección: {hotel.direccion}")
+                y -= 18
+
+            if hasattr(hotel, 'ciudad') and hotel.ciudad:
+                c.drawString(50, y, f"Ciudad: {hotel.ciudad.nombre}")
+                y -= 18
+
+            if hasattr(hotel, 'estrellas') and hotel.estrellas:
+                estrellas = "★" * hotel.estrellas
+                c.setFillColor(colors.HexColor("#f39c12"))
+                c.drawString(50, y, estrellas)
+                c.setFillColor(colors.black)
+                y -= 18
+
+            y -= 5
+            c.drawString(50, y, f"Tipo de Habitación: {habitacion.get_tipo_display()}")
+            y -= 18
+            c.drawString(50, y, f"Capacidad: {habitacion.capacidad} persona(s)")
+
+            y -= 25
+
+        # ============================================================
+        # SERVICIOS INCLUIDOS
+        # ============================================================
+        servicios = paquete.paquete_servicios.all()
+        if servicios.exists():
+            c.setFont(subtitle_font, 14)
+            c.setFillColor(colors.HexColor("#2c3e50"))
+            c.drawString(50, y, "Servicios Incluidos")
+            c.setLineWidth(1)
+            c.setStrokeColor(colors.HexColor("#95a5a6"))
+            c.line(50, y - 5, 200, y - 5)
+
+            y -= 20
+            c.setFont(normal_font, 10)
+            c.setFillColor(colors.black)
+
+            for ps in servicios[:10]:  # Máximo 10 servicios
+                if y < 150:  # Si no hay espacio, nueva página
+                    c.showPage()
+                    y = height - 50
+                    c.setFont(normal_font, 10)
+
+                c.drawString(60, y, f"• {ps.servicio.nombre}")
+                y -= 15
+
+            y -= 10
+
+        # ============================================================
+        # INFORMACIÓN FINANCIERA
+        # ============================================================
+        if y < 200:  # Nueva página si no hay espacio
+            c.showPage()
+            y = height - 50
+
+        c.setFont(subtitle_font, 14)
+        c.setFillColor(colors.HexColor("#2c3e50"))
+        c.drawString(50, y, "Información Financiera")
+        c.setLineWidth(1)
+        c.setStrokeColor(colors.HexColor("#95a5a6"))
+        c.line(50, y - 5, 250, y - 5)
+
+        y -= 30
+
+        precio_asignado = self.pasajero.precio_asignado or 0
+        monto_pagado = self.pasajero.monto_pagado or 0
+        saldo_pendiente = self.pasajero.saldo_pendiente or 0
+
+        financiero_data = [
+            ['Concepto', 'Monto'],
+            ['Precio Asignado:', f"${precio_asignado:,.2f}"],
+            ['Monto Pagado:', f"${monto_pagado:,.2f}"],
+            ['Saldo Pendiente:', f"${saldo_pendiente:,.2f}"],
+        ]
+
+        financiero_table = Table(financiero_data, colWidths=[200, 150])
+        financiero_table.setStyle(TableStyle([
+            # Encabezado
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#34495e")),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+            ('FONTNAME', (0, 0), (-1, 0), title_font),
+            ('FONTSIZE', (0, 0), (-1, 0), 11),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+
+            # Contenido
+            ('FONTNAME', (0, 1), (-1, -1), normal_font),
+            ('FONTSIZE', (0, 1), (-1, -1), 11),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+
+            # Fila de saldo pendiente (destacada)
+            ('FONTNAME', (0, -1), (-1, -1), title_font),
+            ('FONTSIZE', (0, -1), (-1, -1), 12),
+            ('BACKGROUND', (0, -1), (-1, -1),
+             colors.HexColor("#27ae60") if saldo_pendiente <= 0 else colors.HexColor("#e74c3c")),
+            ('TEXTCOLOR', (0, -1), (-1, -1), colors.whitesmoke),
+        ]))
+
+        financiero_table.wrapOn(c, width, height)
+        financiero_table.drawOn(c, 50, y - 100)
+
+        y -= 130
+
+        # ============================================================
+        # INSTRUCCIONES ESPECIALES
+        # ============================================================
+        if self.instrucciones_especiales:
+            if y < 150:
+                c.showPage()
+                y = height - 50
+
+            c.setFont(subtitle_font, 12)
+            c.setFillColor(colors.HexColor("#2c3e50"))
+            c.drawString(50, y, "Instrucciones Especiales")
+            c.setLineWidth(1)
+            c.setStrokeColor(colors.HexColor("#95a5a6"))
+            c.line(50, y - 5, 220, y - 5)
+
+            y -= 20
+            c.setFont(normal_font, 10)
+            c.setFillColor(colors.black)
+
+            # Dividir instrucciones en líneas
+            inst_lines = self.instrucciones_especiales.split('\n')
+            for line in inst_lines[:5]:  # Máximo 5 líneas
+                if y < 100:
+                    break
+                c.drawString(60, y, line[:80])
+                y -= 14
+
+            y -= 15
+
+        # ============================================================
+        # CONTACTO DE EMERGENCIA
+        # ============================================================
+        if y < 120:
+            c.showPage()
+            y = height - 50
+
+        c.setFont(subtitle_font, 12)
+        c.setFillColor(colors.HexColor("#e74c3c"))
+        c.drawString(50, y, "Contacto de Emergencia 24/7")
+        c.setLineWidth(1)
+        c.setStrokeColor(colors.HexColor("#e74c3c"))
+        c.line(50, y - 5, 240, y - 5)
+
+        y -= 20
+        c.setFont(title_font, 14)
+        c.setFillColor(colors.black)
+        c.drawString(50, y, f"📞 {self.contacto_emergencia}")
+
+        y -= 40
+
+        # ============================================================
+        # AVISO IMPORTANTE
+        # ============================================================
+        if y < 150:
+            c.showPage()
+            y = height - 50
+
+        c.setFont(subtitle_font, 12)
+        c.setFillColor(colors.HexColor("#e74c3c"))
+        c.drawString(50, y, "AVISO IMPORTANTE")
+        c.setLineWidth(2)
+        c.setStrokeColor(colors.HexColor("#e74c3c"))
+        c.line(50, y - 5, 200, y - 5)
+
+        y -= 25
+        c.setFont(normal_font, 10)
+        c.setFillColor(colors.black)
+
+        # Texto del aviso
+        aviso_text = [
+            "Estimado Pasajero:",
+            "",
+            "Le recordamos que todas las extras solicitadas en el hotel serán abonadas al realizar su",
+            "CHECK OUT. LA EMPRESA NO SE HACE CARGO DE NINGUN TIPO DE GASTOS FUERA DE LO",
+            "INCLUIDO EN EL VOUCHER."
+        ]
+
+        for line in aviso_text:
+            if y < 100:
+                c.showPage()
+                y = height - 50
+                c.setFont(normal_font, 10)
+            c.drawString(60, y, line)
+            y -= 14
+
+        y -= 20
+
+        # ============================================================
+        # PIE DE PÁGINA
+        # ============================================================
+        c.setFont(normal_font, 8)
+        c.setFillColor(colors.grey)
+        c.drawCentredString(width / 2, 70, "GroupTours - Sistema de Gestión de Reservas")
+        c.drawCentredString(width / 2, 55, f"Voucher generado: {self.fecha_creacion.strftime('%d/%m/%Y %H:%M')}")
+        c.drawCentredString(width / 2, 40, "Conserve este documento durante todo su viaje")
+
+        # Línea decorativa inferior
+        c.setLineWidth(2)
+        c.setStrokeColor(colors.HexColor("#3498db"))
+        c.line(50, 30, width - 50, 30)
+
+        # Estado del voucher (si está inactivo)
+        if not self.activo:
+            c.setFont(title_font, 50)
+            c.setFillColor(colors.red)
+            c.setFillAlpha(0.3)
+            c.saveState()
+            c.translate(width / 2, height / 2)
+            c.rotate(45)
+            c.drawCentredString(0, 0, "ANULADO")
+            c.restoreState()
+
+        # Finalizar PDF
+        c.save()
+
+        # Guardar en el campo del modelo
+        buffer.seek(0)
+        filename = f'voucher_{self.codigo_voucher}.pdf'
+        self.pdf_generado.save(filename, File(buffer), save=False)
+        buffer.close()
+
+        return self.pdf_generado
