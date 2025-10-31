@@ -267,39 +267,56 @@ class ComprobantePagoResumenSerializer(serializers.ModelSerializer):
 
 class VoucherSerializer(serializers.ModelSerializer):
     """
-    Serializer para vouchers de reserva.
+    Serializer para vouchers de pasajero.
+    Cada voucher está asociado a un pasajero individual que cumplió las condiciones.
     """
-    reserva_codigo = serializers.CharField(source='reserva.codigo', read_only=True)
-    reserva_estado = serializers.CharField(source='reserva.estado', read_only=True)
-    titular_nombre = serializers.CharField(source='reserva.titular.nombre', read_only=True)
-    titular_apellido = serializers.CharField(source='reserva.titular.apellido', read_only=True)
-    paquete_nombre = serializers.CharField(source='reserva.paquete.nombre', read_only=True)
+    # Información del pasajero
+    pasajero_id = serializers.IntegerField(source='pasajero.id', read_only=True)
+    pasajero_nombre = serializers.CharField(source='pasajero.persona.nombre', read_only=True)
+    pasajero_apellido = serializers.CharField(source='pasajero.persona.apellido', read_only=True)
+    pasajero_documento = serializers.CharField(source='pasajero.persona.documento', read_only=True)
+    es_titular = serializers.BooleanField(source='pasajero.es_titular', read_only=True)
+
+    # Información de la reserva
+    reserva_id = serializers.IntegerField(source='pasajero.reserva.id', read_only=True)
+    reserva_codigo = serializers.CharField(source='pasajero.reserva.codigo', read_only=True)
+    reserva_estado = serializers.CharField(source='pasajero.reserva.estado', read_only=True)
+    paquete_nombre = serializers.CharField(source='pasajero.reserva.paquete.nombre', read_only=True)
 
     # Información de salida
-    fecha_salida = serializers.DateField(source='reserva.salida.fecha_salida', read_only=True)
-    fecha_regreso = serializers.DateField(source='reserva.salida.fecha_regreso', read_only=True)
+    fecha_salida = serializers.DateField(source='pasajero.reserva.salida.fecha_salida', read_only=True)
+    fecha_regreso = serializers.DateField(source='pasajero.reserva.salida.fecha_regreso', read_only=True)
 
     # Información de hotel y habitación
     hotel_nombre = serializers.SerializerMethodField()
-    habitacion_numero = serializers.CharField(source='reserva.habitacion.numero', read_only=True)
-    habitacion_tipo = serializers.CharField(source='reserva.habitacion.get_tipo_display', read_only=True)
+    habitacion_numero = serializers.CharField(source='pasajero.reserva.habitacion.numero', read_only=True)
+    habitacion_tipo = serializers.CharField(source='pasajero.reserva.habitacion.get_tipo_display', read_only=True)
+
+    # Información financiera del pasajero
+    precio_asignado = serializers.DecimalField(source='pasajero.precio_asignado', max_digits=12, decimal_places=2, read_only=True)
+    monto_pagado = serializers.DecimalField(source='pasajero.monto_pagado', max_digits=12, decimal_places=2, read_only=True)
 
     class Meta:
         model = Voucher
         fields = [
             'id',
             'codigo_voucher',
-            'reserva',
+            'pasajero_id',
+            'pasajero_nombre',
+            'pasajero_apellido',
+            'pasajero_documento',
+            'es_titular',
+            'reserva_id',
             'reserva_codigo',
             'reserva_estado',
-            'titular_nombre',
-            'titular_apellido',
             'paquete_nombre',
             'fecha_salida',
             'fecha_regreso',
             'hotel_nombre',
             'habitacion_numero',
             'habitacion_tipo',
+            'precio_asignado',
+            'monto_pagado',
             'fecha_emision',
             'qr_code',
             'pdf_generado',
@@ -318,8 +335,8 @@ class VoucherSerializer(serializers.ModelSerializer):
         ]
 
     def get_hotel_nombre(self, obj):
-        if obj.reserva.habitacion and obj.reserva.habitacion.hotel:
-            return obj.reserva.habitacion.hotel.nombre
+        if obj.pasajero.reserva.habitacion and obj.pasajero.reserva.habitacion.hotel:
+            return obj.pasajero.reserva.habitacion.hotel.nombre
         return None
 
 
@@ -327,8 +344,9 @@ class VoucherResumenSerializer(serializers.ModelSerializer):
     """
     Serializer simplificado para listar vouchers.
     """
-    reserva_codigo = serializers.CharField(source='reserva.codigo', read_only=True)
-    titular = serializers.SerializerMethodField()
+    reserva_codigo = serializers.CharField(source='pasajero.reserva.codigo', read_only=True)
+    pasajero = serializers.SerializerMethodField()
+    es_titular = serializers.BooleanField(source='pasajero.es_titular', read_only=True)
 
     class Meta:
         model = Voucher
@@ -336,12 +354,13 @@ class VoucherResumenSerializer(serializers.ModelSerializer):
             'id',
             'codigo_voucher',
             'reserva_codigo',
-            'titular',
+            'pasajero',
+            'es_titular',
             'fecha_emision',
             'activo',
         ]
 
-    def get_titular(self, obj):
-        if obj.reserva.titular:
-            return f"{obj.reserva.titular.nombre} {obj.reserva.titular.apellido}"
+    def get_pasajero(self, obj):
+        if obj.pasajero and obj.pasajero.persona:
+            return f"{obj.pasajero.persona.nombre} {obj.pasajero.persona.apellido}"
         return None

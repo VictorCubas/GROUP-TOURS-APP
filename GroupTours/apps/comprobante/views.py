@@ -200,7 +200,10 @@ class VoucherViewSet(viewsets.ReadOnlyModelViewSet):
     """
     ViewSet para consulta de vouchers.
 
-    Los vouchers se generan automáticamente cuando una reserva se confirma.
+    Los vouchers se generan automáticamente para cada pasajero cuando cumple las condiciones:
+    1. Tiene datos reales cargados (por_asignar=False)
+    2. Ha pagado el 100% de su precio asignado (esta_totalmente_pagado=True)
+
     Este endpoint es principalmente de solo lectura.
 
     Endpoints:
@@ -222,21 +225,28 @@ class VoucherViewSet(viewsets.ReadOnlyModelViewSet):
         Filtrar vouchers por query params.
 
         Query params disponibles:
-        - reserva_id: filtrar por reserva
+        - reserva_id: filtrar por reserva (muestra todos los vouchers de pasajeros de esa reserva)
+        - pasajero_id: filtrar por pasajero específico
         - activo: filtrar por estado activo (true/false)
         """
         queryset = Voucher.objects.select_related(
-            'reserva',
-            'reserva__titular',
-            'reserva__paquete',
-            'reserva__salida',
-            'reserva__habitacion',
-            'reserva__habitacion__hotel'
+            'pasajero',
+            'pasajero__persona',
+            'pasajero__reserva',
+            'pasajero__reserva__titular',
+            'pasajero__reserva__paquete',
+            'pasajero__reserva__salida',
+            'pasajero__reserva__habitacion',
+            'pasajero__reserva__habitacion__hotel'
         )
 
         reserva_id = self.request.query_params.get('reserva_id', None)
         if reserva_id:
-            queryset = queryset.filter(reserva_id=reserva_id)
+            queryset = queryset.filter(pasajero__reserva_id=reserva_id)
+
+        pasajero_id = self.request.query_params.get('pasajero_id', None)
+        if pasajero_id:
+            queryset = queryset.filter(pasajero_id=pasajero_id)
 
         activo = self.request.query_params.get('activo', None)
         if activo is not None:
@@ -268,6 +278,77 @@ class VoucherViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+    @action(detail=True, methods=['get'], url_path='descargar-pdf')
+    def descargar_pdf(self, request, pk=None):
+        """
+        GET /api/vouchers/{id}/descargar-pdf/
+
+        Genera y descarga el PDF del voucher con toda la información del pasajero,
+        reserva, paquete, salida, hotel y servicios incluidos.
+
+        Si el PDF ya fue generado previamente, retorna el archivo existente.
+        Si no existe, lo genera automáticamente.
+
+        Query params opcionales:
+        - regenerar=true : Fuerza la regeneración del PDF incluso si ya existe
+
+        Respuesta:
+        - Content-Type: application/pdf
+        - Content-Disposition: attachment; filename="voucher_RSV-2025-0001-PAX-003-VOUCHER.pdf"
+        """
+        from django.http import FileResponse
+        import os
+
+        voucher = self.get_object()
+        regenerar = request.query_params.get('regenerar', 'false').lower() == 'true'
+
+        # Si no existe PDF o se solicita regenerar
+        if not voucher.pdf_generado or regenerar:
+            try:
+                voucher.generar_pdf()
+                voucher.save()
+            except Exception as e:
+                return Response(
+                    {'error': f'Error al generar PDF: {str(e)}'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
+        # Verificar que el archivo existe
+        if not voucher.pdf_generado:
+            return Response(
+                {'error': 'No se pudo generar el PDF'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        # Verificar que el archivo físico existe
+        pdf_path = voucher.pdf_generado.path
+        if not os.path.exists(pdf_path):
+            # Intentar regenerar si el archivo fue eliminado
+            try:
+                voucher.generar_pdf()
+                voucher.save()
+                pdf_path = voucher.pdf_generado.path
+            except Exception as e:
+                return Response(
+                    {'error': f'El archivo PDF no existe y no se pudo regenerar: {str(e)}'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
+        # Retornar el archivo PDF
+        try:
+            response = FileResponse(
+                open(pdf_path, 'rb'),
+                content_type='application/pdf'
+            )
+            filename = f'voucher_{voucher.codigo_voucher}.pdf'
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return response
+        except Exception as e:
+            return Response(
+                {'error': f'Error al leer el archivo PDF: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
 
 # ViewSet anidado: Comprobantes de una reserva específica
 class ReservaComprobantesViewSet(viewsets.ModelViewSet):
@@ -293,35 +374,52 @@ class ReservaComprobantesViewSet(viewsets.ModelViewSet):
         serializer.save(reserva=reserva)
 
 
-# ViewSet anidado: Voucher de una reserva específica
+# ViewSet anidado: Vouchers de una reserva específica
 class ReservaVoucherViewSet(viewsets.ReadOnlyModelViewSet):
     """
-    ViewSet anidado para obtener el voucher de una reserva específica.
+    ViewSet anidado para obtener los vouchers de una reserva específica.
 
-    URL: /api/reservas/{reserva_id}/voucher/
+    URL: /api/reservas/{reserva_id}/vouchers/
 
-    Como es OneToOne, siempre habrá máximo un voucher por reserva.
+    Como ahora hay un voucher por pasajero, puede haber múltiples vouchers por reserva.
+    Solo se generan vouchers para pasajeros que:
+    1. Tienen datos reales (por_asignar=False)
+    2. Han pagado el 100% (esta_totalmente_pagado=True)
     """
     serializer_class = VoucherSerializer
     permission_classes = []
 
     def get_queryset(self):
-        """Obtener voucher de la reserva especificada en la URL"""
+        """Obtener vouchers de todos los pasajeros de la reserva especificada en la URL"""
         reserva_id = self.kwargs.get('reserva_pk')
-        return Voucher.objects.filter(reserva_id=reserva_id)
+        return Voucher.objects.filter(pasajero__reserva_id=reserva_id).select_related(
+            'pasajero',
+            'pasajero__persona',
+            'pasajero__reserva',
+            'pasajero__reserva__paquete',
+            'pasajero__reserva__salida',
+            'pasajero__reserva__habitacion',
+            'pasajero__reserva__habitacion__hotel'
+        ).order_by('pasajero__es_titular', 'pasajero__id')  # Titular primero
 
     def list(self, request, *args, **kwargs):
         """
-        Retornar el voucher directamente (no como lista) si existe.
+        Retornar todos los vouchers de la reserva.
         """
         queryset = self.get_queryset()
-        voucher = queryset.first()
 
-        if not voucher:
+        if not queryset.exists():
             return Response(
-                {'message': 'Esta reserva no tiene voucher generado aún'},
-                status=status.HTTP_404_NOT_FOUND
+                {
+                    'message': 'Esta reserva no tiene vouchers generados aún',
+                    'info': 'Los vouchers se generan automáticamente cuando cada pasajero tiene datos reales y paga el 100%'
+                },
+                status=status.HTTP_200_OK,
+                # Cambiar a 200 en lugar de 404 porque es una situación normal
             )
 
-        serializer = self.get_serializer(voucher)
-        return Response(serializer.data)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({
+            'count': queryset.count(),
+            'vouchers': serializer.data
+        })
