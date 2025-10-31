@@ -43,14 +43,14 @@ class ComprobantePagoDistribucionAdmin(admin.ModelAdmin):
 
 @admin.register(Voucher)
 class VoucherAdmin(admin.ModelAdmin):
-    list_display = ('codigo_voucher', 'reserva', 'fecha_emision', 'activo')
-    list_filter = ('activo', 'fecha_emision')
-    search_fields = ('codigo_voucher', 'reserva__codigo')
+    list_display = ('codigo_voucher', 'get_pasajero_nombre', 'get_reserva_codigo', 'get_es_titular', 'fecha_emision', 'activo')
+    list_filter = ('activo', 'fecha_emision', 'pasajero__es_titular')
+    search_fields = ('codigo_voucher', 'pasajero__reserva__codigo', 'pasajero__persona__nombre', 'pasajero__persona__apellido')
     readonly_fields = ('codigo_voucher', 'fecha_emision', 'fecha_creacion', 'fecha_modificacion')
 
     fieldsets = (
         ('Información del Voucher', {
-            'fields': ('reserva', 'codigo_voucher', 'fecha_emision')
+            'fields': ('pasajero', 'codigo_voucher', 'fecha_emision')
         }),
         ('Documentación', {
             'fields': ('qr_code', 'pdf_generado', 'url_publica')
@@ -64,6 +64,22 @@ class VoucherAdmin(admin.ModelAdmin):
     )
 
     actions = ['generar_qr_codes']
+
+    def get_pasajero_nombre(self, obj):
+        """Mostrar nombre completo del pasajero"""
+        return f"{obj.pasajero.persona.nombre} {obj.pasajero.persona.apellido}"
+    get_pasajero_nombre.short_description = 'Pasajero'
+
+    def get_reserva_codigo(self, obj):
+        """Mostrar código de la reserva"""
+        return obj.pasajero.reserva.codigo
+    get_reserva_codigo.short_description = 'Reserva'
+
+    def get_es_titular(self, obj):
+        """Mostrar si es titular"""
+        return obj.pasajero.es_titular
+    get_es_titular.short_description = 'Es Titular'
+    get_es_titular.boolean = True
 
     def generar_qr_codes(self, request, queryset):
         """Acción para regenerar códigos QR de vouchers seleccionados"""

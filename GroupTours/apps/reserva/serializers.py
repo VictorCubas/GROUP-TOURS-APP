@@ -81,6 +81,11 @@ class PasajeroSerializer(serializers.ModelSerializer):
         help_text="Indica si tiene el 100% pagado"
     )
 
+    # Información del voucher
+    voucher_id = serializers.SerializerMethodField(
+        help_text="ID del voucher asociado al pasajero (si existe)"
+    )
+
     class Meta:
         model = Pasajero
         fields = [
@@ -98,6 +103,7 @@ class PasajeroSerializer(serializers.ModelSerializer):
             "esta_totalmente_pagado",
             "ticket_numero",
             "voucher_codigo",
+            "voucher_id",
             "fecha_registro",
         ]
         read_only_fields = [
@@ -108,6 +114,15 @@ class PasajeroSerializer(serializers.ModelSerializer):
             "tiene_sena_pagada",
             "esta_totalmente_pagado",
         ]
+
+    def get_voucher_id(self, obj):
+        """
+        Obtiene el ID del voucher asociado al pasajero.
+        Retorna None si el pasajero no tiene voucher generado.
+        """
+        if hasattr(obj, 'voucher') and obj.voucher:
+            return obj.voucher.id
+        return None
 
 
 class PasajeroCreateSerializer(serializers.Serializer):
@@ -434,6 +449,11 @@ class PasajeroEstadoCuentaSerializer(serializers.ModelSerializer):
     tiene_sena_pagada = serializers.BooleanField(read_only=True)
     esta_totalmente_pagado = serializers.BooleanField(read_only=True)
 
+    # Información del voucher
+    voucher_id = serializers.SerializerMethodField(
+        help_text="ID del voucher asociado al pasajero (si existe)"
+    )
+
     # Historial de pagos
     historial_pagos = serializers.SerializerMethodField()
 
@@ -454,9 +474,19 @@ class PasajeroEstadoCuentaSerializer(serializers.ModelSerializer):
             'esta_totalmente_pagado',
             'ticket_numero',
             'voucher_codigo',
+            'voucher_id',
             'fecha_registro',
             'historial_pagos',
         ]
+
+    def get_voucher_id(self, obj):
+        """
+        Obtiene el ID del voucher asociado al pasajero.
+        Retorna None si el pasajero no tiene voucher generado.
+        """
+        if hasattr(obj, 'voucher') and obj.voucher:
+            return obj.voucher.id
+        return None
 
     def get_historial_pagos(self, obj):
         """
