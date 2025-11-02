@@ -1002,7 +1002,7 @@ class ReservaViewSet(viewsets.ModelViewSet):
                         pass  # Se validará más adelante
 
         monto_total_proyectado = monto_actual + monto_nuevo_pago
-        podria_confirmar = monto_total_proyectado >= reserva.senia_total
+        podria_confirmar = monto_total_proyectado >= reserva.seña_total
 
         # Determinar si necesitamos modalidad de facturación
         modalidad_facturacion = None
@@ -1018,7 +1018,7 @@ class ReservaViewSet(viewsets.ModelViewSet):
                         'monto_pago': float(monto_nuevo_pago),
                         'monto_actual': float(monto_actual),
                         'monto_total_proyectado': float(monto_total_proyectado),
-                        'senia_requerida': float(reserva.senia_total),
+                        'senia_requerida': float(reserva.seña_total),
                     },
                     'opciones_modalidad': [
                         {'valor': 'global', 'descripcion': 'Facturación Global (Una factura total)'},
