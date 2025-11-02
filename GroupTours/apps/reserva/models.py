@@ -20,6 +20,11 @@ class Reserva(models.Model):
         ("cancelada", "Cancelado"),
     ]
 
+    MODALIDADES_FACTURACION = [
+        ("global", "Facturación Global (Una factura total)"),
+        ("individual", "Facturación Individual (Por pasajero)"),
+    ]
+
     codigo = models.CharField(
         max_length=20,
         unique=True,
@@ -98,6 +103,13 @@ class Reserva(models.Model):
     datos_completos = models.BooleanField(
         default=False,
         help_text="Indica si todos los datos de pasajeros están cargados"
+    )
+    modalidad_facturacion = models.CharField(
+        max_length=20,
+        choices=MODALIDADES_FACTURACION,
+        null=True,
+        blank=True,
+        help_text="Modalidad de facturación elegida al confirmar la reserva. NULL mientras esté pendiente."
     )
 
     class Meta:
@@ -234,15 +246,19 @@ class Reserva(models.Model):
         pasajeros_reales = self.pasajeros.exclude(persona__documento__contains='_PEND')
         return pasajeros_reales.exists() and all(pasajero.esta_totalmente_pagado for pasajero in pasajeros_reales)
 
-    def actualizar_estado(self):
+    def actualizar_estado(self, modalidad_facturacion=None):
         """
         Actualiza el estado de la reserva según pago y carga de pasajeros.
+
+        Args:
+            modalidad_facturacion: 'global' o 'individual' (requerido al confirmar desde pendiente)
 
         Lógica de estados:
         - Pendiente: Sin pago o pago insuficiente para la seña
         - Confirmada: Seña pagada (o más, pero < 100%), cupo asegurado
           - datos_completos=True si todos los pasajeros están cargados
           - datos_completos=False si faltan datos de pasajeros
+          - NUEVO: Al pasar a confirmada desde pendiente, se debe definir modalidad_facturacion
         - Finalizada: Pago total completo (100%) Y todos los pasajeros reales cargados
         - Cancelada: Reserva cancelada
 
@@ -254,18 +270,45 @@ class Reserva(models.Model):
         # Actualizar flag de datos completos
         self.datos_completos = not self.faltan_datos_pasajeros
 
-        # Actualizar estado según pago y datos de pasajeros
-        if self.esta_totalmente_pagada() and self.datos_completos:
-            # Pago total completo (100%) + todos los pasajeros cargados
-            self.estado = "finalizada"
-        elif self.puede_confirmarse():
-            # Seña pagada (puede ser parcial o total, pero si no cumple condición anterior, no es finalizada)
-            self.estado = "confirmada"
-        else:
-            # Sin pago suficiente para la seña
-            self.estado = "pendiente"
+        # Estado actual: pendiente
+        if self.estado == "pendiente":
+            if self.puede_confirmarse():  # seña total pagada
+                # Al confirmar, DEBE definir modalidad si viene de pendiente
+                if modalidad_facturacion is None:
+                    raise ValidationError(
+                        "Debe seleccionar la modalidad de facturación al confirmar la reserva. "
+                        "Opciones: 'global' (una factura total) o 'individual' (factura por pasajero)"
+                    )
 
-        self.save(update_fields=["estado", "datos_completos"])
+                if modalidad_facturacion not in ['global', 'individual']:
+                    raise ValidationError(
+                        "Modalidad inválida. Use 'global' o 'individual'"
+                    )
+
+                # Establecer modalidad (FIJO después de esto)
+                self.modalidad_facturacion = modalidad_facturacion
+                self.estado = "confirmada"
+                self.save(update_fields=["estado", "datos_completos", "modalidad_facturacion"])
+                return
+
+        # Estado actual: confirmada
+        elif self.estado == "confirmada":
+            # NO permitir cambiar modalidad
+            if modalidad_facturacion is not None and modalidad_facturacion != self.modalidad_facturacion:
+                raise ValidationError(
+                    f"No se puede cambiar la modalidad de facturación. "
+                    f"Ya está definida como '{self.modalidad_facturacion}'"
+                )
+
+            # Continuar con lógica normal de transición a 'finalizada'
+            if self.esta_totalmente_pagada() and self.datos_completos:
+                # Pago total completo (100%) + todos los pasajeros cargados
+                self.estado = "finalizada"
+                self.save(update_fields=["estado", "datos_completos"])
+                return
+
+        # Guardar cambios sin cambio de estado
+        self.save(update_fields=["datos_completos"])
 
     @property
     def estado_display(self):

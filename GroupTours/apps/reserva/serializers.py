@@ -86,6 +86,14 @@ class PasajeroSerializer(serializers.ModelSerializer):
         help_text="ID del voucher asociado al pasajero (si existe)"
     )
 
+    # Información de facturación individual
+    puede_descargar_factura = serializers.SerializerMethodField(
+        help_text="Indica si el pasajero puede descargar su factura individual"
+    )
+    factura_id = serializers.SerializerMethodField(
+        help_text="ID de la factura individual del pasajero (si existe)"
+    )
+
     class Meta:
         model = Pasajero
         fields = [
@@ -105,6 +113,8 @@ class PasajeroSerializer(serializers.ModelSerializer):
             "voucher_codigo",
             "voucher_id",
             "fecha_registro",
+            "puede_descargar_factura",
+            "factura_id",
         ]
         read_only_fields = [
             "monto_pagado",
@@ -123,6 +133,58 @@ class PasajeroSerializer(serializers.ModelSerializer):
         if hasattr(obj, 'voucher') and obj.voucher:
             return obj.voucher.id
         return None
+
+    def get_puede_descargar_factura(self, obj):
+        """
+        Determina si el pasajero puede descargar su factura individual.
+        Solo aplica si la reserva está en modalidad 'individual'.
+
+        Condiciones:
+        - Reserva en modalidad 'individual'
+        - Pasajero totalmente pagado
+        - Pasajero no es temporal (por_asignar=False)
+        - Factura individual generada y activa
+        """
+        reserva = obj.reserva
+
+        # Si la modalidad no es individual, no aplica
+        if reserva.modalidad_facturacion != 'individual':
+            return False
+
+        # Si el pasajero no está totalmente pagado, no puede descargar
+        if not obj.esta_totalmente_pagado:
+            return False
+
+        # Si el pasajero es temporal, no puede descargar
+        if obj.por_asignar:
+            return False
+
+        # Verificar si tiene factura individual activa
+        factura_activa = obj.facturas.filter(
+            tipo_facturacion='por_pasajero',
+            activo=True
+        ).exists()
+
+        return factura_activa
+
+    def get_factura_id(self, obj):
+        """
+        Obtiene el ID de la factura individual del pasajero.
+        Retorna None si no tiene factura o no es modalidad individual.
+        """
+        reserva = obj.reserva
+
+        # Solo retornar si es modalidad individual
+        if reserva.modalidad_facturacion != 'individual':
+            return None
+
+        # Buscar factura individual activa
+        factura = obj.facturas.filter(
+            tipo_facturacion='por_pasajero',
+            activo=True
+        ).first()
+
+        return factura.id if factura else None
 
 
 class PasajeroCreateSerializer(serializers.Serializer):
@@ -208,6 +270,12 @@ class ReservaSerializer(serializers.ModelSerializer):
         read_only=True,
         help_text="Texto descriptivo del estado para mostrar en UI"
     )
+    # NUEVO: Campo para mostrar la modalidad de facturación en formato legible
+    modalidad_facturacion_display = serializers.CharField(
+        source='get_modalidad_facturacion_display',
+        read_only=True,
+        help_text="Modalidad de facturación en formato legible"
+    )
 
     class Meta:
         model = Reserva
@@ -234,6 +302,8 @@ class ReservaSerializer(serializers.ModelSerializer):
             "estado",
             "datos_completos",
             "estado_display",
+            "modalidad_facturacion",  # NUEVO
+            "modalidad_facturacion_display",  # NUEVO
             "pasajeros",
             "pasajeros_data",
             "titular_como_pasajero",
@@ -655,6 +725,21 @@ class ReservaDetalleSerializer(serializers.ModelSerializer):
     puede_confirmarse = serializers.SerializerMethodField()
     esta_totalmente_pagada = serializers.SerializerMethodField()
 
+    # Modalidad de facturación
+    modalidad_facturacion_display = serializers.CharField(
+        source='get_modalidad_facturacion_display',
+        read_only=True,
+        help_text="Modalidad de facturación en formato legible"
+    )
+
+    # Información de facturación
+    puede_descargar_factura_global = serializers.SerializerMethodField(
+        help_text="Indica si se puede generar/descargar la factura global de la reserva"
+    )
+    factura_global_id = serializers.SerializerMethodField(
+        help_text="ID de la factura global (si existe)"
+    )
+
     class Meta:
         model = Reserva
         fields = [
@@ -689,6 +774,11 @@ class ReservaDetalleSerializer(serializers.ModelSerializer):
             'estado_display',
             'puede_confirmarse',
             'esta_totalmente_pagada',
+            # Modalidad de facturación
+            'modalidad_facturacion',
+            'modalidad_facturacion_display',
+            'puede_descargar_factura_global',
+            'factura_global_id',
             # Servicios
             'servicios_base',
             'servicios_adicionales',
@@ -908,3 +998,49 @@ class ReservaDetalleSerializer(serializers.ModelSerializer):
     def get_esta_totalmente_pagada(self, obj):
         """Si la reserva está totalmente pagada"""
         return obj.esta_totalmente_pagada()
+
+    def get_puede_descargar_factura_global(self, obj):
+        """
+        Determina si se puede generar/descargar la factura global de la reserva.
+        Solo aplica si la reserva está en modalidad 'global'.
+
+        Condiciones para habilitar el botón "Generar Factura":
+        - Reserva en modalidad 'global'
+        - Reserva en estado 'finalizada'
+        - Reserva totalmente pagada
+
+        NOTA: No se requiere que la factura ya esté generada. Este campo
+        indica si se PUEDE generar la factura (si aún no existe) o descargarla
+        (si ya existe).
+        """
+        # Si la modalidad no es global, no aplica
+        if obj.modalidad_facturacion != 'global':
+            return False
+
+        # Si la reserva no está finalizada, no puede generar factura
+        if obj.estado != 'finalizada':
+            return False
+
+        # Si la reserva no está totalmente pagada, no puede generar factura
+        if not obj.esta_totalmente_pagada():
+            return False
+
+        # Si cumple todas las condiciones, puede generar/descargar la factura
+        return True
+
+    def get_factura_global_id(self, obj):
+        """
+        Obtiene el ID de la factura global de la reserva.
+        Retorna None si no tiene factura global o no es modalidad global.
+        """
+        # Solo retornar si es modalidad global
+        if obj.modalidad_facturacion != 'global':
+            return None
+
+        # Buscar factura global activa
+        factura = obj.facturas.filter(
+            tipo_facturacion='total',
+            activo=True
+        ).first()
+
+        return factura.id if factura else None
