@@ -931,10 +931,14 @@ class ReservaViewSet(viewsets.ModelViewSet):
         Los pasajeros "pendientes" se crean bajo demanda cuando se especifican en las distribuciones.
         No se crean automáticamente al inicio del proceso.
 
+        IMPORTANTE: Si la reserva está en estado 'pendiente' y este pago la confirmará,
+        es OBLIGATORIO especificar la modalidad de facturación.
+
         Body:
         {
             "tipo": "pago_parcial",          // requerido: "pago_parcial" o "pago_total"
             "metodo_pago": "transferencia",  // requerido
+            "modalidad_facturacion": "global", // CONDICIONAL: requerido SOLO si la reserva está 'pendiente' y este pago la confirmará
             "referencia": "TRF-002",         // opcional
             "observaciones": "Segundo pago", // opcional
             "empleado": 1,                   // opcional, usa el primer empleado si no se especifica
@@ -954,7 +958,8 @@ class ReservaViewSet(viewsets.ModelViewSet):
             "reserva": {
                 "id": 1,
                 "codigo": "RSV-2025-0001",
-                "estado": "finalizada",
+                "estado": "confirmada",  // o "finalizada" si ya tiene todos los datos
+                "modalidad_facturacion": "global",
                 "monto_pagado": 7072.00,
                 "saldo_pendiente": 0.00,
                 "esta_totalmente_pagada": true
@@ -980,6 +985,56 @@ class ReservaViewSet(viewsets.ModelViewSet):
                 {'error': 'La reserva no tiene cantidad de pasajeros definida'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        # ========================================================================
+        # VALIDACIÓN CONDICIONAL DE MODALIDAD DE FACTURACIÓN
+        # ========================================================================
+        # Calcular el monto del pago actual para determinar si confirmará la reserva
+        monto_actual = reserva.monto_pagado
+        monto_nuevo_pago = Decimal('0')
+
+        if 'distribuciones' in request.data and request.data['distribuciones']:
+            for dist in request.data['distribuciones']:
+                if 'monto' in dist:
+                    try:
+                        monto_nuevo_pago += Decimal(str(dist['monto']))
+                    except (ValueError, TypeError):
+                        pass  # Se validará más adelante
+
+        monto_total_proyectado = monto_actual + monto_nuevo_pago
+        podria_confirmar = monto_total_proyectado >= reserva.senia_total
+
+        # Determinar si necesitamos modalidad de facturación
+        modalidad_facturacion = None
+
+        if reserva.estado == 'pendiente' and not reserva.modalidad_facturacion and podria_confirmar:
+            # La reserva está pendiente, no tiene modalidad y este pago la confirmará
+            # Por lo tanto, es OBLIGATORIO especificar la modalidad
+            if 'modalidad_facturacion' not in request.data:
+                return Response({
+                    'error': 'Modalidad de facturación requerida',
+                    'detalle': 'Este pago confirmará la reserva. Debe especificar la modalidad de facturación.',
+                    'info': {
+                        'monto_pago': float(monto_nuevo_pago),
+                        'monto_actual': float(monto_actual),
+                        'monto_total_proyectado': float(monto_total_proyectado),
+                        'senia_requerida': float(reserva.senia_total),
+                    },
+                    'opciones_modalidad': [
+                        {'valor': 'global', 'descripcion': 'Facturación Global (Una factura total)'},
+                        {'valor': 'individual', 'descripcion': 'Facturación Individual (Por pasajero)'}
+                    ]
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Validar que la modalidad sea válida
+            modalidad_facturacion = request.data['modalidad_facturacion']
+            if modalidad_facturacion not in ['global', 'individual']:
+                return Response({
+                    'error': 'Modalidad inválida. Use "global" o "individual"'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Si ya tiene modalidad o no la necesita, continuar sin ella
+        # ========================================================================
 
         # Validar campos requeridos
         if 'tipo' not in request.data:
@@ -1104,8 +1159,67 @@ class ReservaViewSet(viewsets.ModelViewSet):
                     monto=dist_data['monto']
                 )
 
-            # Actualizar monto pagado en la reserva
-            comprobante.actualizar_monto_reserva()
+            # Actualizar monto pagado en la reserva y establecer modalidad si corresponde
+            from django.core.exceptions import ValidationError as DjangoValidationError
+            try:
+                comprobante.actualizar_monto_reserva(modalidad_facturacion=modalidad_facturacion)
+            except DjangoValidationError as e:
+                # Si hay un error de validación, eliminamos el comprobante (rollback manual)
+                comprobante.delete()
+                return Response(
+                    {'error': f'Error al confirmar la reserva: {str(e)}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            except Exception as e:
+                # Si falla por otro motivo, eliminamos el comprobante
+                print(f"Error al actualizar monto de reserva: {str(e)}")
+                comprobante.delete()
+                return Response(
+                    {'error': f'Error al procesar el pago: {str(e)}'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
+            # Refrescar la reserva para obtener el estado actualizado
+            reserva.refresh_from_db()
+
+            # ========================================================================
+            # AUTO-GENERACIÓN DE FACTURAS INDIVIDUALES
+            # ========================================================================
+            # Si la reserva tiene modalidad 'individual', verificar cada pasajero
+            # que recibió pago y generar su factura si cumple las condiciones
+            facturas_generadas = []
+            if reserva.modalidad_facturacion == 'individual':
+                from apps.facturacion.models import generar_factura_individual, validar_factura_individual
+
+                # Obtener los pasajeros que recibieron pago en este comprobante
+                for dist in comprobante.distribuciones.all():
+                    pasajero = dist.pasajero
+
+                    # Verificar si el pasajero ahora cumple las condiciones para facturar
+                    try:
+                        # Refrescar datos del pasajero
+                        pasajero.refresh_from_db()
+
+                        # Validar condiciones (esto lanza ValidationError si no cumple)
+                        validar_factura_individual(pasajero)
+
+                        # Si no lanzó error, el pasajero puede facturarse
+                        # Generar factura automáticamente
+                        factura = generar_factura_individual(pasajero)
+                        facturas_generadas.append({
+                            'pasajero_id': pasajero.id,
+                            'pasajero_nombre': f"{pasajero.persona.nombre} {pasajero.persona.apellido}",
+                            'factura_id': factura.id,
+                            'numero_factura': factura.numero_factura,
+                        })
+
+                    except ValidationError:
+                        # El pasajero no cumple las condiciones, continuar sin generar factura
+                        pass
+                    except Exception as e:
+                        # Log del error pero no interrumpir el flujo
+                        print(f"Error al generar factura para pasajero {pasajero.id}: {str(e)}")
+            # ========================================================================
 
             # Serializar el comprobante para la respuesta
             from apps.comprobante.serializers import ComprobantePagoSerializer
@@ -1198,6 +1312,8 @@ class ReservaViewSet(viewsets.ModelViewSet):
                     'estado': estado_response,  # Estado base sin sufijos
                     'estado_interno': reserva.estado,  # Estado interno real (pendiente/confirmada/finalizada/cancelada)
                     'estado_display': reserva.estado_display,  # Texto completo (ej: "Confirmado Incompleto")
+                    'modalidad_facturacion': reserva.modalidad_facturacion,  # Modalidad de facturación
+                    'modalidad_facturacion_display': reserva.get_modalidad_facturacion_display() if reserva.modalidad_facturacion else None,
                     'nombre_paquete': nombre_paquete,
                     'nombre_destino': nombre_destino,
                     'moneda': moneda_data,
@@ -1207,7 +1323,8 @@ class ReservaViewSet(viewsets.ModelViewSet):
                     'puede_confirmarse': reserva.puede_confirmarse(),
                     'datos_completos': reserva.datos_completos
                 },
-                'titular': titular_data
+                'titular': titular_data,
+                'facturas_generadas': facturas_generadas if facturas_generadas else None
             }, status=status.HTTP_201_CREATED)
 
         except Exception as e:
