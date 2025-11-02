@@ -32,6 +32,8 @@ urlpatterns = [
 
     # Endpoints de facturación
     path('<int:pk>/descargar-factura-global/', ReservaViewSet.as_view({'get': 'descargar_factura_global'}), name='reserva-descargar-factura-global'),
+    
+    path('<int:pk>/descargar-factura-individual/', ReservaViewSet.as_view({'get': 'descargar_factura_individual'}), name='reserva-descargar-factura-individual'),
 
     # Endpoints de detalle por secciones
     path('<int:pk>/detalle-resumen/', ReservaViewSet.as_view({'get': 'detalle_resumen'}), name='reserva-detalle-resumen'),

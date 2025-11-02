@@ -358,7 +358,7 @@ class ComprobantePago(models.Model):
         # RESUMEN ECONÓMICO
         y -= 10
         c.setFont(title_font, 12)
-        c.drawString(50, y, "RESUMEN ECONOMICO")
+        c.drawString(50, y, "RESUMEN ECONOMICO DEL PAQUETE")
         c.line(50, y - 5, 250, y - 5)
 
         y -= 25
