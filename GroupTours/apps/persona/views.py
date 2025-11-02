@@ -112,14 +112,26 @@ class PersonaViewSet(viewsets.ModelViewSet):
     serializer_class = PersonaCreateSerializer
 
     def get_queryset(self):
-        # Return a combined queryset or handle separately based on your needs
-        return Persona.objects.select_related('tipo_documento').order_by('-fecha_creacion')
-        # tipo = self.request.query_params.get('tipo')
-        # if tipo == 'fisica':
-        #     return PersonaFisica.objects.all()
-        # elif tipo == 'juridica':
-        #     return PersonaJuridica.objects.all()
-        # return Persona.objects.all() # Usamos _serialize_persona para list y retrieve
+        """
+        Retorna el queryset de personas excluyendo las personas temporales
+        creadas automáticamente por el sistema (pasajeros "Por Asignar").
+
+        Estas personas tienen:
+        - documento con patrón: {documento_titular}_PEND o {documento_titular}_PEND_X
+        - nombre: "Por Asignar" o "Por Asignar X"
+        """
+        queryset = Persona.objects.select_related('tipo_documento').order_by('-fecha_creacion')
+
+        # Excluir personas temporales "Por Asignar"
+        # 1. Excluir por documento que contenga "_PEND"
+        queryset = queryset.exclude(documento__icontains='_PEND')
+
+        # 2. Excluir por nombre que comience con "Por Asignar" (solo PersonaFisica)
+        queryset = queryset.exclude(
+            personafisica__nombre__istartswith='Por Asignar'
+        )
+
+        return queryset
 
     def _serialize_persona(self, obj):
         """Serializa según tipo concreto de persona y agrega el campo 'tipo'"""
@@ -175,12 +187,23 @@ class PersonaViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='resumen', pagination_class=None)
     def resumen(self, request):
-        total = Persona.objects.count()
-        activos = Persona.objects.filter(activo=True).count()
-        inactivos = Persona.objects.filter(activo=False).count()
+        """
+        Retorna resumen estadístico de personas, excluyendo personas temporales "Por Asignar".
+        """
+        # Obtener queryset base que ya excluye "Por Asignar"
+        queryset_base = self.get_queryset()
 
-        # --- Calcular edad promedio de personas físicas ---
-        personas_fisicas = PersonaFisica.objects.all()
+        total = queryset_base.count()
+        activos = queryset_base.filter(activo=True).count()
+        inactivos = queryset_base.filter(activo=False).count()
+
+        # --- Calcular edad promedio de personas físicas (excluyendo "Por Asignar") ---
+        personas_fisicas = PersonaFisica.objects.exclude(
+            nombre__istartswith='Por Asignar'
+        ).exclude(
+            documento__icontains='_PEND'
+        )
+
         edades = [
             (now().date() - p.fecha_nacimiento).days // 365
             for p in personas_fisicas if p.fecha_nacimiento
@@ -200,9 +223,15 @@ class PersonaViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'], url_path='todos', pagination_class=None)
     def todos(self, request):
+        """
+        Retorna todas las personas disponibles para selección en formularios.
+        Excluye:
+        - Personas asignadas a empleados
+        - Personas temporales "Por Asignar"
+        """
         busqueda = request.query_params.get('q', '').strip()
 
-        queryset = self.get_queryset()
+        queryset = self.get_queryset()  # Ya excluye "Por Asignar"
 
         # Excluir personas que ya están asignadas a un empleado
         queryset = queryset.exclude(empleado__isnull=False)
