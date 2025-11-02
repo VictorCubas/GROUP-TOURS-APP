@@ -6,7 +6,6 @@ from django.db import transaction
 from django.core.exceptions import ValidationError
 from decimal import Decimal
 from django.utils import timezone
-from django.forms.models import model_to_dict
 
 # ---------- Tipos de impuesto ----------
 class TipoImpuesto(models.Model):
@@ -837,21 +836,24 @@ def validar_factura_individual(reserva, pasajero):
     """
     Validaciones para emitir factura individual de un pasajero.
     """
-    
-    print(model_to_dict(reserva))
-    
+    # --- Validaciones generales ---
     if reserva.modalidad_facturacion is None:
         raise ValidationError("Debe definir la modalidad de facturación primero.")
 
     if reserva.modalidad_facturacion != 'individual':
         raise ValidationError("Esta reserva está configurada para facturación global.")
 
-    if reserva.estado != 'finalizada':
-        raise ValidationError("La reserva debe estar finalizada para facturar.")
+    if reserva.estado not in ['confirmada', 'finalizada']:
+        raise ValidationError("La reserva debe estar confirmada o finalizada para facturar.")
 
-    if reserva.monto_pagado < reserva.costo_total_estimado:
-        raise ValidationError("La reserva no está completamente pagada.")
+    # --- Validación por pasajero ---
+    if not pasajero.esta_totalmente_pagado:
+        raise ValidationError("El pasajero no ha completado su pago, no puede generar factura.")
 
+    if pasajero.por_asignar:
+        raise ValidationError("El pasajero aún no está asignado, no puede generar factura.")
+
+    # --- Validaciones de facturas existentes ---
     if reserva.facturas.filter(tipo_facturacion='total', activo=True).exists():
         raise ValidationError("Ya existe una factura global, no se pueden emitir individuales.")
 
