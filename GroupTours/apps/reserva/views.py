@@ -587,6 +587,92 @@ class ReservaViewSet(viewsets.ModelViewSet):
             return Response({
                 'error': f'Error al procesar factura: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    
+    @action(detail=True, methods=['get'], url_path='descargar-factura-individual')
+    def descargar_factura_individual(self, request, pk=None):
+        """
+        GET /api/reservas/{id}/descargar-factura-individual/?pasajero_id=XX
+
+        Genera (si no existe) y descarga el PDF de la factura individual de un pasajero.
+        Similar a la factura global, pero sólo para un pasajero específico.
+
+        Query params:
+        - pasajero_id (requerido)
+        - regenerar_pdf=true : Fuerza la regeneración del PDF
+        - subtipo_impuesto_id : ID del subtipo de impuesto (opcional)
+
+        Errores comunes:
+        - 400: Falta pasajero_id o la reserva no cumple condiciones
+        - 404: No existe configuración de facturación
+        - 500: Error al generar/descargar PDF
+        """
+        from apps.facturacion.models import (
+            FacturaElectronica,
+            generar_factura_individual,
+            validar_factura_individual
+        )
+        from django.http import FileResponse
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        import os
+
+        try:
+            reserva = self.get_object()
+            pasajero_id = request.query_params.get('pasajero_id')
+
+            if not pasajero_id:
+                return Response({'error': 'Debe especificar un pasajero_id'},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+            pasajero = reserva.pasajeros.filter(id=pasajero_id).first()
+            if not pasajero:
+                return Response({'error': 'Pasajero no encontrado en esta reserva'},
+                                status=status.HTTP_404_NOT_FOUND)
+
+            # 1. Verificar si ya existe factura individual activa
+            factura = reserva.facturas.filter(
+                tipo_facturacion='por_pasajero',
+                pasajero=pasajero,
+                activo=True
+            ).first()
+
+            # 2. Si no existe, generarla
+            if not factura:
+                try:
+                    validar_factura_individual(reserva, pasajero)
+                    subtipo_impuesto_id = request.query_params.get('subtipo_impuesto_id', None)
+                    factura = generar_factura_individual(reserva, pasajero, subtipo_impuesto_id)
+                except DjangoValidationError as e:
+                    return Response({
+                        'error': 'No se puede generar factura individual',
+                        'detalle': str(e.message) if hasattr(e, 'message') else str(e)
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 3. Verificar/generar PDF
+            regenerar_pdf = request.query_params.get('regenerar_pdf', 'false').lower() == 'true'
+            if not factura.pdf_generado or regenerar_pdf:
+                try:
+                    factura.generar_pdf()
+                except Exception as e:
+                    return Response({
+                        'error': f'Error al generar PDF: {str(e)}'
+                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            if not factura.pdf_generado or not os.path.exists(factura.pdf_generado.path):
+                return Response({'error': 'No se pudo generar o encontrar el PDF'},
+                                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            # 4. Retornar archivo
+            response = FileResponse(open(factura.pdf_generado.path, 'rb'), content_type='application/pdf')
+            filename = f'factura_{factura.numero_factura.replace("-", "_")}.pdf'
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return response
+
+        except Exception as e:
+            return Response({
+                'error': f'Error al procesar factura individual: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
     # ----- ENDPOINT: Registrar seña de una reserva -----
     @action(detail=True, methods=['post'], url_path='registrar-senia')

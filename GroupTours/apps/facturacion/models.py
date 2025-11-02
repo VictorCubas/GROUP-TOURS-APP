@@ -6,6 +6,7 @@ from django.db import transaction
 from django.core.exceptions import ValidationError
 from decimal import Decimal
 from django.utils import timezone
+from django.forms.models import model_to_dict
 
 # ---------- Tipos de impuesto ----------
 class TipoImpuesto(models.Model):
@@ -832,68 +833,27 @@ def validar_factura_global(reserva):
             "No se puede emitir factura global."
         )
 
-
-def validar_factura_individual(pasajero):
+def validar_factura_individual(reserva, pasajero):
     """
-    Validaciones exhaustivas para emitir factura individual por pasajero.
-
-    Args:
-        pasajero: Instancia de Pasajero
-
-    Raises:
-        ValidationError: Si no cumple las condiciones para facturar
+    Validaciones para emitir factura individual de un pasajero.
     """
-    reserva = pasajero.reserva
-
-    # 1. Modalidad de facturación debe estar definida
     if reserva.modalidad_facturacion is None:
-        raise ValidationError(
-            "La modalidad de facturación no ha sido definida. "
-            "Debe confirmar la reserva y elegir la modalidad primero."
-        )
+        raise ValidationError("Debe definir la modalidad de facturación primero.")
 
-    # 2. Modalidad debe ser 'individual'
     if reserva.modalidad_facturacion != 'individual':
-        raise ValidationError(
-            "Esta reserva está configurada para facturación global. "
-            "No se pueden emitir facturas individuales."
-        )
+        raise ValidationError("Esta reserva está configurada para facturación global.")
 
-    # 3. Estado de reserva
-    if reserva.estado not in ['confirmada', 'finalizada']:
-        raise ValidationError(
-            f"La reserva debe estar confirmada o finalizada. "
-            f"Estado actual: {reserva.estado}"
-        )
+    if reserva.estado != 'finalizada':
+        raise ValidationError("La reserva debe estar finalizada para facturar.")
 
-    # 4. Pasajero con datos reales (NO temporal)
-    if pasajero.por_asignar:
-        raise ValidationError(
-            "No se puede facturar. El pasajero está marcado como 'por asignar'. "
-            "Debe asignar un pasajero real con datos completos antes de emitir la factura."
-        )
+    if reserva.monto_pagado < reserva.costo_total_estimado:
+        raise ValidationError("La reserva no está completamente pagada.")
 
-    # 5. Saldo del pasajero
-    if not pasajero.esta_totalmente_pagado:
-        raise ValidationError(
-            f"El pasajero {pasajero.persona.nombre} {pasajero.persona.apellido} "
-            f"tiene saldo pendiente de {pasajero.saldo_pendiente}. "
-            f"Debe pagar el total antes de facturar."
-        )
-
-    # 6. No tener factura individual previa
-    if pasajero.facturas.filter(tipo_facturacion='por_pasajero', activo=True).exists():
-        raise ValidationError(
-            f"El pasajero ya tiene una factura individual generada."
-        )
-
-    # 7. No existir factura global
     if reserva.facturas.filter(tipo_facturacion='total', activo=True).exists():
-        raise ValidationError(
-            "Ya existe una factura global para esta reserva. "
-            "No se pueden emitir facturas individuales."
-        )
+        raise ValidationError("Ya existe una factura global, no se pueden emitir individuales.")
 
+    if reserva.facturas.filter(tipo_facturacion='por_pasajero', pasajero=pasajero, activo=True).exists():
+        raise ValidationError("El pasajero ya tiene una factura individual activa.")
 
 # ---------- Función para generar factura desde reserva (LEGACY - mantenida por compatibilidad) ----------
 @transaction.atomic
@@ -1225,28 +1185,18 @@ def generar_factura_global(reserva, subtipo_impuesto_id=None):
 
     return factura
 
-
 @transaction.atomic
-def generar_factura_individual(pasajero, subtipo_impuesto_id=None):
+def generar_factura_individual(reserva, pasajero, subtipo_impuesto_id=None):
     """
-    Genera una factura individual para un pasajero específico.
-
-    Args:
-        pasajero: Instancia de Pasajero
-        subtipo_impuesto_id: ID del subtipo de impuesto a aplicar (ej: IVA 10%)
-
-    Returns:
-        FacturaElectronica: La factura generada
-
-    Raises:
-        ValidationError: Si el pasajero no cumple las condiciones
+    Genera una factura electrónica para un pasajero específico dentro de una reserva.
+    La factura se emite a nombre del pasajero.persona (PersonaFisica o PersonaJuridica).
     """
-    # Validar que se puede facturar
-    validar_factura_individual(pasajero)
+    from decimal import Decimal
+    from django.utils import timezone
+    from django.core.exceptions import ValidationError
 
-    reserva = pasajero.reserva
+    validar_factura_individual(reserva, pasajero)
 
-    # Obtener configuración de facturación
     configuracion = FacturaElectronica.objects.filter(
         es_configuracion=True,
         activo=True
@@ -1264,7 +1214,6 @@ def generar_factura_individual(pasajero, subtipo_impuesto_id=None):
     if not subtipo_impuesto:
         raise ValidationError("Debe especificar un subtipo de impuesto")
 
-    # Obtener punto de expedición activo
     punto_expedicion = PuntoExpedicion.objects.filter(
         establecimiento=configuracion.establecimiento,
         activo=True
@@ -1273,20 +1222,25 @@ def generar_factura_individual(pasajero, subtipo_impuesto_id=None):
     if not punto_expedicion:
         raise ValidationError("No hay punto de expedición activo configurado")
 
-    # Obtener datos del pasajero
+    # --- 🔹 Datos del cliente: persona física o jurídica ---
     persona = pasajero.persona
-    if not persona:
-        raise ValidationError("El pasajero no tiene persona asignada")
 
-    # Determinar tipo de documento
-    if hasattr(persona, 'ci_numero') and persona.ci_numero:
-        cliente_tipo_documento = 'CI'
-        cliente_numero_documento = persona.ci_numero
+    if hasattr(persona, 'personajuridica'):
+        # Persona jurídica
+        cliente_nombre = persona.razon_social
+        cliente_tipo_documento = persona.tipo_documento.codigo if hasattr(persona.tipo_documento, 'codigo') else 'RUC'
+        cliente_numero_documento = persona.documento
     else:
-        cliente_tipo_documento = 'Otro'
-        cliente_numero_documento = 'S/N'
+        # Persona física
+        cliente_nombre = f"{getattr(persona, 'nombre', '')} {getattr(persona, 'apellido', '')}".strip()
+        cliente_tipo_documento = persona.tipo_documento.codigo if hasattr(persona.tipo_documento, 'codigo') else 'CI'
+        cliente_numero_documento = persona.documento
 
-    # Crear la factura
+    cliente_direccion = getattr(persona, 'direccion', '')
+    cliente_telefono = getattr(persona, 'telefono', '')
+    cliente_email = getattr(persona, 'email', '')
+
+    # --- Crear factura ---
     factura = FacturaElectronica.objects.create(
         empresa=configuracion.empresa,
         establecimiento=configuracion.establecimiento,
@@ -1295,63 +1249,54 @@ def generar_factura_individual(pasajero, subtipo_impuesto_id=None):
         tipo_impuesto=configuracion.tipo_impuesto,
         subtipo_impuesto=subtipo_impuesto,
         reserva=reserva,
-        tipo_facturacion='por_pasajero',  # NUEVO
-        pasajero=pasajero,  # NUEVO
+        pasajero=pasajero,
+        tipo_facturacion='por_pasajero',
         fecha_emision=timezone.now(),
         es_configuracion=False,
 
-        # Datos del cliente (el pasajero)
         cliente_tipo_documento=cliente_tipo_documento,
         cliente_numero_documento=cliente_numero_documento,
-        cliente_nombre=f"{persona.nombre} {persona.apellido}",
-        cliente_direccion=getattr(persona, 'direccion', ''),
-        cliente_telefono=getattr(persona, 'telefono', ''),
-        cliente_email=getattr(persona, 'correo', ''),
+        cliente_nombre=cliente_nombre,
+        cliente_direccion=cliente_direccion,
+        cliente_telefono=cliente_telefono,
+        cliente_email=cliente_email,
 
-        # Condiciones
         condicion_venta='contado',
         moneda=reserva.paquete.moneda,
     )
 
-    # Crear detalles de la factura
-    item_numero = 1
-
-    # Detalle principal: Paquete turístico para 1 pasajero
+    # --- 🔹 Detalle principal ---
     paquete = reserva.paquete
-    precio_unitario = pasajero.precio_asignado or Decimal('0')
-    subtotal_paquete = precio_unitario
-
-    # Calcular según el tipo de IVA
+    precio_unitario = reserva.precio_unitario or Decimal('0')
+    subtotal = precio_unitario
     porcentaje_iva = subtipo_impuesto.porcentaje or Decimal('10')
 
     if porcentaje_iva == Decimal('0'):
-        monto_exenta = subtotal_paquete
+        monto_exenta = subtotal
         monto_gravada_5 = Decimal('0')
         monto_gravada_10 = Decimal('0')
     elif porcentaje_iva == Decimal('5'):
         monto_exenta = Decimal('0')
-        monto_gravada_5 = subtotal_paquete
+        monto_gravada_5 = subtotal
         monto_gravada_10 = Decimal('0')
-    else:  # 10%
+    else:
         monto_exenta = Decimal('0')
         monto_gravada_5 = Decimal('0')
-        monto_gravada_10 = subtotal_paquete
+        monto_gravada_10 = subtotal
 
     DetalleFactura.objects.create(
         factura=factura,
-        numero_item=item_numero,
-        descripcion=f"Paquete Turístico: {paquete.nombre} - {persona.nombre} {persona.apellido}",
-        cantidad=1,
+        numero_item=1,
+        descripcion=f"Paquete Turístico: {paquete.nombre}",
+        cantidad=1,  # ✅ Solo un pasajero
         precio_unitario=precio_unitario,
         monto_exenta=monto_exenta,
         monto_gravada_5=monto_gravada_5,
         monto_gravada_10=monto_gravada_10,
-        subtotal=subtotal_paquete
+        subtotal=subtotal
     )
 
-    # Calcular totales de la factura
     factura.calcular_totales()
-
     return factura
 
 
