@@ -1183,42 +1183,16 @@ class ReservaViewSet(viewsets.ModelViewSet):
             reserva.refresh_from_db()
 
             # ========================================================================
-            # AUTO-GENERACIÓN DE FACTURAS INDIVIDUALES
+            # NOTA: Las facturas individuales NO se auto-generan aquí
             # ========================================================================
-            # Si la reserva tiene modalidad 'individual', verificar cada pasajero
-            # que recibió pago y generar su factura si cumple las condiciones
-            facturas_generadas = []
-            if reserva.modalidad_facturacion == 'individual':
-                from apps.facturacion.models import generar_factura_individual, validar_factura_individual
-
-                # Obtener los pasajeros que recibieron pago en este comprobante
-                for dist in comprobante.distribuciones.all():
-                    pasajero = dist.pasajero
-
-                    # Verificar si el pasajero ahora cumple las condiciones para facturar
-                    try:
-                        # Refrescar datos del pasajero
-                        pasajero.refresh_from_db()
-
-                        # Validar condiciones (esto lanza ValidationError si no cumple)
-                        validar_factura_individual(pasajero)
-
-                        # Si no lanzó error, el pasajero puede facturarse
-                        # Generar factura automáticamente
-                        factura = generar_factura_individual(pasajero)
-                        facturas_generadas.append({
-                            'pasajero_id': pasajero.id,
-                            'pasajero_nombre': f"{pasajero.persona.nombre} {pasajero.persona.apellido}",
-                            'factura_id': factura.id,
-                            'numero_factura': factura.numero_factura,
-                        })
-
-                    except ValidationError:
-                        # El pasajero no cumple las condiciones, continuar sin generar factura
-                        pass
-                    except Exception as e:
-                        # Log del error pero no interrumpir el flujo
-                        print(f"Error al generar factura para pasajero {pasajero.id}: {str(e)}")
+            # En lugar de generar las facturas automáticamente, el campo
+            # 'puede_descargar_factura' en el serializer de cada pasajero indicará
+            # si cumple las condiciones para generar su factura individual.
+            # El frontend mostrará un botón "Generar y Descargar Factura" cuando
+            # puede_descargar_factura=true.
+            #
+            # Esto permite que el usuario genere las facturas individualmente cuando
+            # lo necesite, en lugar de auto-generarlas todas en este momento.
             # ========================================================================
 
             # Serializar el comprobante para la respuesta
@@ -1323,8 +1297,7 @@ class ReservaViewSet(viewsets.ModelViewSet):
                     'puede_confirmarse': reserva.puede_confirmarse(),
                     'datos_completos': reserva.datos_completos
                 },
-                'titular': titular_data,
-                'facturas_generadas': facturas_generadas if facturas_generadas else None
+                'titular': titular_data
             }, status=status.HTTP_201_CREATED)
 
         except Exception as e:
@@ -1642,8 +1615,20 @@ class PasajeroViewSet(viewsets.ModelViewSet):
 
         El método actualizar_estado() también actualiza el flag datos_completos.
 
-        Además, si se está actualizando el campo persona_id (asignando una persona real),
-        automáticamente cambia por_asignar de True a False.
+        IMPORTANTE: Actualización automática de por_asignar y puede_descargar_factura
+        ---------------------------------------------------------------------------
+        Si se está actualizando el campo persona_id (asignando una persona real):
+        1. Automáticamente cambia por_asignar de True a False
+        2. El campo puede_descargar_factura se recalculará en la respuesta
+        3. Si el pasajero ya está totalmente pagado, puede_descargar_factura será True
+
+        Ejemplo de escenario:
+        - Pasajero temporal "Por Asignar 1" recibe pago del 100%
+        - puede_descargar_factura = False (porque por_asignar=True)
+        - Se asigna una persona real → PATCH /api/pasajeros/{id}/ con persona_id=5
+        - por_asignar cambia a False automáticamente
+        - La respuesta incluirá puede_descargar_factura = True
+        - El frontend puede mostrar el botón "Generar y Descargar Factura"
         """
         # Verificar si se está actualizando la persona (asignando datos reales)
         persona_id = serializer.validated_data.get('persona')
