@@ -30,6 +30,9 @@ urlpatterns = [
     path('<int:pk>/generar-comprobante/', ReservaViewSet.as_view({'post': 'generar_comprobante'}), name='reserva-generar-comprobante'),
     path('<int:pk>/descargar-comprobante/', ReservaViewSet.as_view({'get': 'descargar_comprobante'}), name='reserva-descargar-comprobante'),
 
+    # Endpoints de facturación
+    path('<int:pk>/descargar-factura-global/', ReservaViewSet.as_view({'get': 'descargar_factura_global'}), name='reserva-descargar-factura-global'),
+
     # Endpoints de detalle por secciones
     path('<int:pk>/detalle-resumen/', ReservaViewSet.as_view({'get': 'detalle_resumen'}), name='reserva-detalle-resumen'),
     path('<int:pk>/detalle-pasajeros/', ReservaViewSet.as_view({'get': 'detalle_pasajeros'}), name='reserva-detalle-pasajeros'),
