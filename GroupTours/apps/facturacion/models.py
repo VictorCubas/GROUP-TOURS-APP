@@ -837,6 +837,9 @@ def validar_factura_individual(reserva, pasajero):
     """
     Validaciones para emitir factura individual de un pasajero.
     """
+    
+    print(model_to_dict(reserva))
+    
     if reserva.modalidad_facturacion is None:
         raise ValidationError("Debe definir la modalidad de facturación primero.")
 
@@ -1073,19 +1076,29 @@ def generar_factura_global(reserva, subtipo_impuesto_id=None):
         raise ValidationError("No hay punto de expedición activo configurado")
 
     # Obtener datos del titular
+    # --- 🔹 Datos del titular (persona física o jurídica) ---
     titular = reserva.titular
     if not titular:
         raise ValidationError("La reserva no tiene titular asignado")
 
-    # Determinar tipo de documento
-    if hasattr(titular, 'ci_numero') and titular.ci_numero:
-        cliente_tipo_documento = 'CI'
-        cliente_numero_documento = titular.ci_numero
+    persona = titular  # alias semántico
+    # Determinar tipo de persona y documento
+    if hasattr(persona, 'personajuridica'):
+        # Persona jurídica
+        cliente_nombre = persona.razon_social
+        cliente_tipo_documento = getattr(persona.tipo_documento, 'codigo', 'RUC')
+        cliente_numero_documento = getattr(persona, 'ruc', getattr(persona, 'documento', 'S/N'))
     else:
-        cliente_tipo_documento = 'Otro'
-        cliente_numero_documento = 'S/N'
+        # Persona física
+        cliente_nombre = f"{getattr(persona, 'nombre', '')} {getattr(persona, 'apellido', '')}".strip()
+        cliente_tipo_documento = getattr(persona.tipo_documento, 'codigo', 'CI')
+        cliente_numero_documento = getattr(persona, 'documento', getattr(persona, 'ci_numero', 'S/N'))
 
-    # Crear la factura
+    cliente_direccion = getattr(persona, 'direccion', '')
+    cliente_telefono = getattr(persona, 'telefono', '')
+    cliente_email = getattr(persona, 'correo', getattr(persona, 'email', ''))
+
+    # --- Crear factura ---
     factura = FacturaElectronica.objects.create(
         empresa=configuracion.empresa,
         establecimiento=configuracion.establecimiento,
@@ -1094,23 +1107,22 @@ def generar_factura_global(reserva, subtipo_impuesto_id=None):
         tipo_impuesto=configuracion.tipo_impuesto,
         subtipo_impuesto=subtipo_impuesto,
         reserva=reserva,
-        tipo_facturacion='total',  # NUEVO
-        pasajero=None,  # NUEVO
+        tipo_facturacion='total',
+        pasajero=None,
         fecha_emision=timezone.now(),
         es_configuracion=False,
 
-        # Datos del cliente
         cliente_tipo_documento=cliente_tipo_documento,
         cliente_numero_documento=cliente_numero_documento,
-        cliente_nombre=f"{titular.nombre} {titular.apellido}",
-        cliente_direccion=getattr(titular, 'direccion', ''),
-        cliente_telefono=getattr(titular, 'telefono', ''),
-        cliente_email=getattr(titular, 'correo', ''),
+        cliente_nombre=cliente_nombre,
+        cliente_direccion=cliente_direccion,
+        cliente_telefono=cliente_telefono,
+        cliente_email=cliente_email,
 
-        # Condiciones
         condicion_venta='contado',
         moneda=reserva.paquete.moneda,
     )
+
 
     # Crear detalles de la factura
     item_numero = 1
