@@ -136,14 +136,17 @@ class PasajeroSerializer(serializers.ModelSerializer):
 
     def get_puede_descargar_factura(self, obj):
         """
-        Determina si el pasajero puede descargar su factura individual.
+        Determina si el pasajero cumple las condiciones para generar/descargar su factura individual.
         Solo aplica si la reserva está en modalidad 'individual'.
 
-        Condiciones:
+        Condiciones para habilitar el botón "Generar y Descargar Factura":
         - Reserva en modalidad 'individual'
-        - Pasajero totalmente pagado
-        - Pasajero no es temporal (por_asignar=False)
-        - Factura individual generada y activa
+        - Reserva en estado 'confirmada' o 'finalizada'
+        - Pasajero totalmente pagado (100% del precio asignado)
+        - Pasajero no es temporal (por_asignar=False, tiene datos reales)
+
+        NOTA: Este campo indica si se PUEDE generar la factura, no si ya existe.
+        El frontend debe mostrar el botón habilitado si este campo es True.
         """
         reserva = obj.reserva
 
@@ -151,21 +154,20 @@ class PasajeroSerializer(serializers.ModelSerializer):
         if reserva.modalidad_facturacion != 'individual':
             return False
 
-        # Si el pasajero no está totalmente pagado, no puede descargar
+        # La reserva debe estar confirmada o finalizada
+        if reserva.estado not in ['confirmada', 'finalizada']:
+            return False
+
+        # Si el pasajero no está totalmente pagado, no puede generar factura
         if not obj.esta_totalmente_pagado:
             return False
 
-        # Si el pasajero es temporal, no puede descargar
+        # Si el pasajero es temporal (por asignar), no puede generar factura
         if obj.por_asignar:
             return False
 
-        # Verificar si tiene factura individual activa
-        factura_activa = obj.facturas.filter(
-            tipo_facturacion='por_pasajero',
-            activo=True
-        ).exists()
-
-        return factura_activa
+        # Si cumple todas las condiciones, puede generar/descargar la factura
+        return True
 
     def get_factura_id(self, obj):
         """
