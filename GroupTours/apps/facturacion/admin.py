@@ -6,7 +6,8 @@ from .models import (
     Timbrado,
     TipoImpuesto,
     SubtipoImpuesto,
-    FacturaElectronica
+    FacturaElectronica,
+    DetalleFactura
 )
 
 # ---------- SubtipoImpuesto inline para TipoImpuesto ----------
@@ -73,22 +74,85 @@ class TimbradoAdmin(admin.ModelAdmin):
     list_editable = ("activo",)
 
 
+# ---------- DetalleFactura inline para FacturaElectronica ----------
+class DetalleFacturaInline(admin.TabularInline):
+    model = DetalleFactura
+    extra = 0
+    readonly_fields = ('subtotal',)
+    verbose_name = "Detalle de Factura"
+    verbose_name_plural = "Detalles de Factura"
+
+
 # ---------- FacturaElectronica admin ----------
 @admin.register(FacturaElectronica)
 class FacturaElectronicaAdmin(admin.ModelAdmin):
     list_display = (
         "numero_factura",
         "empresa",
-        "establecimiento",
-        "punto_expedicion",
-        "timbrado",
-        "tipo_impuesto",
-        "subtipo_impuesto",
+        "reserva",
+        "tipo_facturacion",  # NUEVO
+        "pasajero",  # NUEVO
+        "cliente_nombre",
+        "total_general",
         "fecha_emision",
         "es_configuracion",
         "activo",
     )
-    list_filter = ("empresa", "establecimiento", "timbrado", "tipo_impuesto", "activo")
-    search_fields = ("numero_factura",)
-    readonly_fields = ("numero_factura", "fecha_emision")
+    list_filter = (
+        "empresa",
+        "establecimiento",
+        "timbrado",
+        "tipo_impuesto",
+        "tipo_facturacion",  # NUEVO
+        "es_configuracion",
+        "activo"
+    )
+    search_fields = ("numero_factura", "cliente_nombre", "cliente_numero_documento")
+    readonly_fields = (
+        "numero_factura",
+        "fecha_emision",
+        "total_exenta",
+        "total_gravada_5",
+        "total_gravada_10",
+        "total_iva_5",
+        "total_iva_10",
+        "total_iva",
+        "total_general"
+    )
     list_editable = ("activo",)
+    inlines = [DetalleFacturaInline]
+
+    fieldsets = (
+        ('Información Básica', {
+            'fields': ('empresa', 'establecimiento', 'punto_expedicion', 'timbrado', 'es_configuracion', 'activo')
+        }),
+        ('Impuestos', {
+            'fields': ('tipo_impuesto', 'subtipo_impuesto')
+        }),
+        ('Reserva y Facturación', {
+            'fields': ('reserva', 'tipo_facturacion', 'pasajero'),
+            'classes': ('collapse',)
+        }),
+        ('Factura', {
+            'fields': ('numero_factura', 'fecha_emision', 'condicion_venta', 'moneda')
+        }),
+        ('Datos del Cliente', {
+            'fields': ('cliente_tipo_documento', 'cliente_numero_documento', 'cliente_nombre',
+                      'cliente_direccion', 'cliente_telefono', 'cliente_email'),
+            'classes': ('collapse',)
+        }),
+        ('Totales', {
+            'fields': ('total_exenta', 'total_gravada_5', 'total_gravada_10',
+                      'total_iva_5', 'total_iva_10', 'total_iva', 'total_general'),
+            'classes': ('collapse',)
+        }),
+    )
+
+
+# ---------- DetalleFactura admin ----------
+@admin.register(DetalleFactura)
+class DetalleFacturaAdmin(admin.ModelAdmin):
+    list_display = ("factura", "numero_item", "descripcion", "cantidad", "precio_unitario", "subtotal")
+    list_filter = ("factura",)
+    search_fields = ("descripcion",)
+    readonly_fields = ("subtotal",)
