@@ -89,6 +89,83 @@ class Timbrado(models.Model):
         return f"{self.numero} ({self.empresa.nombre})"
 
 
+# ---------- Cliente de Facturación ----------
+class ClienteFacturacion(models.Model):
+    """
+    Modelo para almacenar datos de clientes de facturación.
+    Permite registrar terceros para emitir facturas a su nombre.
+    Puede estar vinculado a una Persona del sistema o ser independiente.
+    """
+    # Datos obligatorios
+    nombre = models.CharField(
+        max_length=200,
+        help_text="Nombre completo o razón social del cliente"
+    )
+    tipo_documento = models.ForeignKey(
+        'tipo_documento.TipoDocumento',
+        on_delete=models.PROTECT,
+        related_name='clientes_facturacion',
+        help_text="Tipo de documento de identidad"
+    )
+    numero_documento = models.CharField(
+        max_length=20,
+        help_text="Número de documento (CI, RUC, Pasaporte, etc.)"
+    )
+
+    # Datos opcionales
+    direccion = models.CharField(
+        max_length=250,
+        blank=True,
+        null=True,
+        help_text="Dirección del cliente"
+    )
+    telefono = models.CharField(
+        max_length=50,
+        blank=True,
+        null=True,
+        help_text="Teléfono de contacto"
+    )
+    email = models.EmailField(
+        blank=True,
+        null=True,
+        help_text="Correo electrónico"
+    )
+
+    # Relación opcional con Persona del sistema
+    persona = models.ForeignKey(
+        'persona.Persona',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='clientes_facturacion',
+        help_text="Persona del sistema asociada (opcional)"
+    )
+
+    # Control
+    activo = models.BooleanField(default=True)
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_modificacion = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'cliente_facturacion'
+        verbose_name = 'Cliente de Facturación'
+        verbose_name_plural = 'Clientes de Facturación'
+        indexes = [
+            models.Index(fields=['numero_documento', 'tipo_documento']),
+            models.Index(fields=['activo']),
+        ]
+
+    def __str__(self):
+        return f"{self.nombre} ({self.tipo_documento.nombre}: {self.numero_documento})"
+
+    def clean(self):
+        """Validaciones del modelo"""
+        if not self.nombre or not self.nombre.strip():
+            raise ValidationError("El nombre del cliente es obligatorio")
+        if not self.numero_documento or not self.numero_documento.strip():
+            raise ValidationError("El número de documento es obligatorio")
+
+
 # ---------- Factura Electrónica ----------
 class FacturaElectronica(models.Model):
     CONDICION_VENTA_CHOICES = [
@@ -140,6 +217,16 @@ class FacturaElectronica(models.Model):
         null=True,
         blank=True,
         help_text="Pasajero específico (solo si tipo_facturacion='por_pasajero')"
+    )
+
+    # NUEVO: Cliente de facturación (tercero opcional)
+    cliente_facturacion = models.ForeignKey(
+        'ClienteFacturacion',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='facturas',
+        help_text="Cliente a nombre del cual se emite la factura (tercero opcional). Si se especifica, sobrescribe los datos del titular/pasajero"
     )
 
     # Datos de la factura (solo para facturas reales)
@@ -780,6 +867,157 @@ class DetalleFactura(models.Model):
         super().save(*args, **kwargs)
 
 
+# ---------- Funciones auxiliares para facturación ----------
+def obtener_o_crear_cliente_facturacion(
+    cliente_facturacion_id=None,
+    tercero_nombre=None,
+    tercero_tipo_documento=None,
+    tercero_numero_documento=None,
+    tercero_direccion=None,
+    tercero_telefono=None,
+    tercero_email=None,
+    persona=None
+):
+    """
+    Función híbrida para obtener o crear un ClienteFacturacion.
+
+    Prioridades:
+    1. Si se proporciona cliente_facturacion_id, lo busca y retorna
+    2. Si se proporcionan datos de tercero, busca por documento o crea uno nuevo
+    3. Si se proporciona persona, crea un cliente vinculado a esa persona
+    4. Si no hay nada, retorna None
+
+    Args:
+        cliente_facturacion_id: ID de cliente existente
+        tercero_nombre: Nombre del tercero
+        tercero_tipo_documento: ID o nombre del TipoDocumento
+        tercero_numero_documento: Número de documento
+        tercero_direccion: Dirección (opcional)
+        tercero_telefono: Teléfono (opcional)
+        tercero_email: Email (opcional)
+        persona: Instancia de Persona para vincular (opcional)
+
+    Returns:
+        ClienteFacturacion o None
+
+    Raises:
+        ValidationError: Si los datos son inválidos
+    """
+    from apps.tipo_documento.models import TipoDocumento
+
+    # Opción 1: Buscar cliente existente por ID
+    if cliente_facturacion_id:
+        try:
+            cliente = ClienteFacturacion.objects.get(id=cliente_facturacion_id, activo=True)
+            return cliente
+        except ClienteFacturacion.DoesNotExist:
+            raise ValidationError(f"No existe cliente de facturación con ID {cliente_facturacion_id}")
+
+    # Opción 2: Crear/obtener cliente desde datos de tercero
+    if tercero_nombre and tercero_tipo_documento and tercero_numero_documento:
+        # Obtener instancia de TipoDocumento
+        if isinstance(tercero_tipo_documento, int):
+            # Si es ID, buscar por ID
+            try:
+                tipo_doc_obj = TipoDocumento.objects.get(id=tercero_tipo_documento, activo=True)
+            except TipoDocumento.DoesNotExist:
+                raise ValidationError(f"No existe tipo de documento con ID {tercero_tipo_documento}")
+        elif isinstance(tercero_tipo_documento, str):
+            # Intentar convertir a int si es un string numérico
+            if tercero_tipo_documento.isdigit():
+                try:
+                    tipo_doc_obj = TipoDocumento.objects.get(id=int(tercero_tipo_documento), activo=True)
+                except TipoDocumento.DoesNotExist:
+                    raise ValidationError(f"No existe tipo de documento con ID {tercero_tipo_documento}")
+            else:
+                # Si no es numérico, buscar por nombre
+                tipo_doc_obj = TipoDocumento.objects.filter(nombre__iexact=tercero_tipo_documento, activo=True).first()
+                if not tipo_doc_obj:
+                    raise ValidationError(f"No existe tipo de documento '{tercero_tipo_documento}'")
+        else:
+            # Ya es una instancia de TipoDocumento
+            tipo_doc_obj = tercero_tipo_documento
+
+        # Buscar si ya existe un cliente con ese documento
+        cliente_existente = ClienteFacturacion.objects.filter(
+            tipo_documento=tipo_doc_obj,
+            numero_documento=tercero_numero_documento,
+            activo=True
+        ).first()
+
+        if cliente_existente:
+            # Actualizar datos si han cambiado
+            actualizado = False
+            if tercero_nombre and cliente_existente.nombre != tercero_nombre:
+                cliente_existente.nombre = tercero_nombre
+                actualizado = True
+            if tercero_direccion and cliente_existente.direccion != tercero_direccion:
+                cliente_existente.direccion = tercero_direccion
+                actualizado = True
+            if tercero_telefono and cliente_existente.telefono != tercero_telefono:
+                cliente_existente.telefono = tercero_telefono
+                actualizado = True
+            if tercero_email and cliente_existente.email != tercero_email:
+                cliente_existente.email = tercero_email
+                actualizado = True
+
+            if actualizado:
+                cliente_existente.save()
+
+            return cliente_existente
+        else:
+            # Crear nuevo cliente
+            cliente = ClienteFacturacion.objects.create(
+                nombre=tercero_nombre,
+                tipo_documento=tipo_doc_obj,
+                numero_documento=tercero_numero_documento,
+                direccion=tercero_direccion or '',
+                telefono=tercero_telefono or '',
+                email=tercero_email or '',
+                persona=persona,
+                activo=True
+            )
+            return cliente
+
+    # Opción 3: Crear cliente desde Persona
+    if persona:
+        # Determinar datos desde la persona
+        if hasattr(persona, 'personajuridica'):
+            nombre = persona.razon_social
+            tipo_doc_obj = persona.tipo_documento
+            numero_doc = getattr(persona, 'documento', 'S/N')
+        else:
+            nombre = f"{getattr(persona, 'nombre', '')} {getattr(persona, 'apellido', '')}".strip()
+            tipo_doc_obj = persona.tipo_documento
+            numero_doc = getattr(persona, 'documento', 'S/N')
+
+        # Buscar si ya existe
+        cliente_existente = ClienteFacturacion.objects.filter(
+            tipo_documento=tipo_doc_obj,
+            numero_documento=numero_doc,
+            activo=True
+        ).first()
+
+        if cliente_existente:
+            return cliente_existente
+
+        # Crear nuevo
+        cliente = ClienteFacturacion.objects.create(
+            nombre=nombre,
+            tipo_documento=tipo_doc_obj,
+            numero_documento=numero_doc,
+            direccion=getattr(persona, 'direccion', ''),
+            telefono=getattr(persona, 'telefono', ''),
+            email=getattr(persona, 'correo', getattr(persona, 'email', '')),
+            persona=persona,
+            activo=True
+        )
+        return cliente
+
+    # No hay datos suficientes
+    return None
+
+
 # ---------- Funciones de validación para facturación dual ----------
 def validar_factura_global(reserva):
     """
@@ -1033,13 +1271,30 @@ def generar_factura_desde_reserva(reserva, subtipo_impuesto_id=None):
 
 # ---------- Nuevas funciones para facturación dual ----------
 @transaction.atomic
-def generar_factura_global(reserva, subtipo_impuesto_id=None):
+def generar_factura_global(
+    reserva,
+    subtipo_impuesto_id=None,
+    cliente_facturacion_id=None,
+    tercero_nombre=None,
+    tercero_tipo_documento=None,
+    tercero_numero_documento=None,
+    tercero_direccion=None,
+    tercero_telefono=None,
+    tercero_email=None
+):
     """
     Genera una factura global para toda la reserva.
 
     Args:
         reserva: Instancia de Reserva
         subtipo_impuesto_id: ID del subtipo de impuesto a aplicar (ej: IVA 10%)
+        cliente_facturacion_id: ID de ClienteFacturacion existente (tercero)
+        tercero_nombre: Nombre del tercero (si se crea on-the-fly)
+        tercero_tipo_documento: Tipo de documento del tercero
+        tercero_numero_documento: Número de documento del tercero
+        tercero_direccion: Dirección del tercero (opcional)
+        tercero_telefono: Teléfono del tercero (opcional)
+        tercero_email: Email del tercero (opcional)
 
     Returns:
         FacturaElectronica: La factura generada
@@ -1077,28 +1332,52 @@ def generar_factura_global(reserva, subtipo_impuesto_id=None):
     if not punto_expedicion:
         raise ValidationError("No hay punto de expedición activo configurado")
 
-    # Obtener datos del titular
-    # --- 🔹 Datos del titular (persona física o jurídica) ---
-    titular = reserva.titular
-    if not titular:
-        raise ValidationError("La reserva no tiene titular asignado")
+    # --- 🔹 Determinar cliente de facturación (tercero o titular) ---
+    cliente_facturacion = None
 
-    persona = titular  # alias semántico
-    # Determinar tipo de persona y documento
-    if hasattr(persona, 'personajuridica'):
-        # Persona jurídica
-        cliente_nombre = persona.razon_social
-        cliente_tipo_documento = getattr(persona.tipo_documento, 'codigo', 'RUC')
-        cliente_numero_documento = getattr(persona, 'ruc', getattr(persona, 'documento', 'S/N'))
+    # Prioridad 1: Intentar obtener/crear cliente de facturación (tercero)
+    if cliente_facturacion_id or (tercero_nombre and tercero_tipo_documento and tercero_numero_documento):
+        cliente_facturacion = obtener_o_crear_cliente_facturacion(
+            cliente_facturacion_id=cliente_facturacion_id,
+            tercero_nombre=tercero_nombre,
+            tercero_tipo_documento=tercero_tipo_documento,
+            tercero_numero_documento=tercero_numero_documento,
+            tercero_direccion=tercero_direccion,
+            tercero_telefono=tercero_telefono,
+            tercero_email=tercero_email,
+            persona=None  # No vinculamos a persona si es tercero explícito
+        )
+
+    # Si hay cliente de facturación (tercero), usar sus datos
+    if cliente_facturacion:
+        cliente_nombre = cliente_facturacion.nombre
+        cliente_tipo_documento = cliente_facturacion.tipo_documento.nombre
+        cliente_numero_documento = cliente_facturacion.numero_documento
+        cliente_direccion = cliente_facturacion.direccion or ''
+        cliente_telefono = cliente_facturacion.telefono or ''
+        cliente_email = cliente_facturacion.email or ''
     else:
-        # Persona física
-        cliente_nombre = f"{getattr(persona, 'nombre', '')} {getattr(persona, 'apellido', '')}".strip()
-        cliente_tipo_documento = getattr(persona.tipo_documento, 'codigo', 'CI')
-        cliente_numero_documento = getattr(persona, 'documento', getattr(persona, 'ci_numero', 'S/N'))
+        # Prioridad 2: Usar datos del titular de la reserva
+        titular = reserva.titular
+        if not titular:
+            raise ValidationError("La reserva no tiene titular asignado")
 
-    cliente_direccion = getattr(persona, 'direccion', '')
-    cliente_telefono = getattr(persona, 'telefono', '')
-    cliente_email = getattr(persona, 'correo', getattr(persona, 'email', ''))
+        persona = titular
+        # Determinar tipo de persona y documento
+        if hasattr(persona, 'personajuridica'):
+            # Persona jurídica
+            cliente_nombre = persona.razon_social
+            cliente_tipo_documento = persona.tipo_documento.nombre
+            cliente_numero_documento = getattr(persona, 'ruc', getattr(persona, 'documento', 'S/N'))
+        else:
+            # Persona física
+            cliente_nombre = f"{getattr(persona, 'nombre', '')} {getattr(persona, 'apellido', '')}".strip()
+            cliente_tipo_documento = persona.tipo_documento.nombre
+            cliente_numero_documento = getattr(persona, 'documento', getattr(persona, 'ci_numero', 'S/N'))
+
+        cliente_direccion = getattr(persona, 'direccion', '')
+        cliente_telefono = getattr(persona, 'telefono', '')
+        cliente_email = getattr(persona, 'correo', getattr(persona, 'email', ''))
 
     # --- Crear factura ---
     factura = FacturaElectronica.objects.create(
@@ -1111,6 +1390,7 @@ def generar_factura_global(reserva, subtipo_impuesto_id=None):
         reserva=reserva,
         tipo_facturacion='total',
         pasajero=None,
+        cliente_facturacion=cliente_facturacion,  # NUEVO: Vincular cliente de facturación
         fecha_emision=timezone.now(),
         es_configuracion=False,
 
@@ -1200,10 +1480,36 @@ def generar_factura_global(reserva, subtipo_impuesto_id=None):
     return factura
 
 @transaction.atomic
-def generar_factura_individual(reserva, pasajero, subtipo_impuesto_id=None):
+def generar_factura_individual(
+    reserva,
+    pasajero,
+    subtipo_impuesto_id=None,
+    cliente_facturacion_id=None,
+    tercero_nombre=None,
+    tercero_tipo_documento=None,
+    tercero_numero_documento=None,
+    tercero_direccion=None,
+    tercero_telefono=None,
+    tercero_email=None
+):
     """
     Genera una factura electrónica para un pasajero específico dentro de una reserva.
-    La factura se emite a nombre del pasajero.persona (PersonaFisica o PersonaJuridica).
+    La factura se emite a nombre del pasajero.persona o de un tercero si se especifica.
+
+    Args:
+        reserva: Instancia de Reserva
+        pasajero: Instancia de Pasajero
+        subtipo_impuesto_id: ID del subtipo de impuesto a aplicar
+        cliente_facturacion_id: ID de ClienteFacturacion existente (tercero)
+        tercero_nombre: Nombre del tercero (si se crea on-the-fly)
+        tercero_tipo_documento: Tipo de documento del tercero
+        tercero_numero_documento: Número de documento del tercero
+        tercero_direccion: Dirección del tercero (opcional)
+        tercero_telefono: Teléfono del tercero (opcional)
+        tercero_email: Email del tercero (opcional)
+
+    Returns:
+        FacturaElectronica: La factura generada
     """
     from decimal import Decimal
     from django.utils import timezone
@@ -1236,23 +1542,48 @@ def generar_factura_individual(reserva, pasajero, subtipo_impuesto_id=None):
     if not punto_expedicion:
         raise ValidationError("No hay punto de expedición activo configurado")
 
-    # --- 🔹 Datos del cliente: persona física o jurídica ---
-    persona = pasajero.persona
+    # --- 🔹 Determinar cliente de facturación (tercero o pasajero) ---
+    cliente_facturacion = None
 
-    if hasattr(persona, 'personajuridica'):
-        # Persona jurídica
-        cliente_nombre = persona.razon_social
-        cliente_tipo_documento = persona.tipo_documento.codigo if hasattr(persona.tipo_documento, 'codigo') else 'RUC'
-        cliente_numero_documento = persona.documento
+    # Prioridad 1: Intentar obtener/crear cliente de facturación (tercero)
+    if cliente_facturacion_id or (tercero_nombre and tercero_tipo_documento and tercero_numero_documento):
+        cliente_facturacion = obtener_o_crear_cliente_facturacion(
+            cliente_facturacion_id=cliente_facturacion_id,
+            tercero_nombre=tercero_nombre,
+            tercero_tipo_documento=tercero_tipo_documento,
+            tercero_numero_documento=tercero_numero_documento,
+            tercero_direccion=tercero_direccion,
+            tercero_telefono=tercero_telefono,
+            tercero_email=tercero_email,
+            persona=None  # No vinculamos a persona si es tercero explícito
+        )
+
+    # Si hay cliente de facturación (tercero), usar sus datos
+    if cliente_facturacion:
+        cliente_nombre = cliente_facturacion.nombre
+        cliente_tipo_documento = cliente_facturacion.tipo_documento.nombre
+        cliente_numero_documento = cliente_facturacion.numero_documento
+        cliente_direccion = cliente_facturacion.direccion or ''
+        cliente_telefono = cliente_facturacion.telefono or ''
+        cliente_email = cliente_facturacion.email or ''
     else:
-        # Persona física
-        cliente_nombre = f"{getattr(persona, 'nombre', '')} {getattr(persona, 'apellido', '')}".strip()
-        cliente_tipo_documento = persona.tipo_documento.codigo if hasattr(persona.tipo_documento, 'codigo') else 'CI'
-        cliente_numero_documento = persona.documento
+        # Prioridad 2: Usar datos del pasajero
+        persona = pasajero.persona
 
-    cliente_direccion = getattr(persona, 'direccion', '')
-    cliente_telefono = getattr(persona, 'telefono', '')
-    cliente_email = getattr(persona, 'email', '')
+        if hasattr(persona, 'personajuridica'):
+            # Persona jurídica
+            cliente_nombre = persona.razon_social
+            cliente_tipo_documento = persona.tipo_documento.nombre
+            cliente_numero_documento = persona.documento
+        else:
+            # Persona física
+            cliente_nombre = f"{getattr(persona, 'nombre', '')} {getattr(persona, 'apellido', '')}".strip()
+            cliente_tipo_documento = persona.tipo_documento.nombre
+            cliente_numero_documento = persona.documento
+
+        cliente_direccion = getattr(persona, 'direccion', '')
+        cliente_telefono = getattr(persona, 'telefono', '')
+        cliente_email = getattr(persona, 'email', '')
 
     # --- Crear factura ---
     factura = FacturaElectronica.objects.create(
@@ -1264,6 +1595,7 @@ def generar_factura_individual(reserva, pasajero, subtipo_impuesto_id=None):
         subtipo_impuesto=subtipo_impuesto,
         reserva=reserva,
         pasajero=pasajero,
+        cliente_facturacion=cliente_facturacion,  # NUEVO: Vincular cliente de facturación
         tipo_facturacion='por_pasajero',
         fecha_emision=timezone.now(),
         es_configuracion=False,

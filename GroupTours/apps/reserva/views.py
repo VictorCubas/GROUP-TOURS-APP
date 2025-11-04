@@ -496,6 +496,17 @@ class ReservaViewSet(viewsets.ModelViewSet):
         - regenerar_pdf=true : Fuerza la regeneración del PDF
         - subtipo_impuesto_id : ID del subtipo de impuesto (si no se especifica, usa configuración)
 
+        Facturación a nombre de tercero (opcional):
+        - cliente_facturacion_id : ID de ClienteFacturacion existente
+        - tercero_nombre : Nombre completo o razón social del tercero
+        - tercero_tipo_documento : Tipo de documento (CI, RUC, PASAPORTE, OTRO)
+        - tercero_numero_documento : Número de documento del tercero
+        - tercero_direccion : Dirección del tercero (opcional)
+        - tercero_telefono : Teléfono del tercero (opcional)
+        - tercero_email : Email del tercero (opcional)
+
+        Nota: Si no se especifican datos de tercero, la factura se emite a nombre del titular de la reserva.
+
         Respuesta:
         - Content-Type: application/pdf
         - Content-Disposition: attachment; filename="factura_001-001-0000001.pdf"
@@ -529,11 +540,30 @@ class ReservaViewSet(viewsets.ModelViewSet):
                     # Validar que se puede facturar
                     validar_factura_global(reserva)
 
-                    # Obtener subtipo de impuesto si se especificó
+                    # Obtener parámetros de facturación
                     subtipo_impuesto_id = request.query_params.get('subtipo_impuesto_id', None)
 
-                    # Generar factura
-                    factura = generar_factura_global(reserva, subtipo_impuesto_id)
+                    # Parámetros para facturación a nombre de tercero
+                    cliente_facturacion_id = request.query_params.get('cliente_facturacion_id', None)
+                    tercero_nombre = request.query_params.get('tercero_nombre', None)
+                    tercero_tipo_documento = request.query_params.get('tercero_tipo_documento', None)
+                    tercero_numero_documento = request.query_params.get('tercero_numero_documento', None)
+                    tercero_direccion = request.query_params.get('tercero_direccion', None)
+                    tercero_telefono = request.query_params.get('tercero_telefono', None)
+                    tercero_email = request.query_params.get('tercero_email', None)
+
+                    # Generar factura (con o sin tercero)
+                    factura = generar_factura_global(
+                        reserva,
+                        subtipo_impuesto_id=subtipo_impuesto_id,
+                        cliente_facturacion_id=cliente_facturacion_id,
+                        tercero_nombre=tercero_nombre,
+                        tercero_tipo_documento=tercero_tipo_documento,
+                        tercero_numero_documento=tercero_numero_documento,
+                        tercero_direccion=tercero_direccion,
+                        tercero_telefono=tercero_telefono,
+                        tercero_email=tercero_email
+                    )
 
                 except DjangoValidationError as e:
                     return Response({
@@ -602,6 +632,17 @@ class ReservaViewSet(viewsets.ModelViewSet):
         - regenerar_pdf=true : Fuerza la regeneración del PDF
         - subtipo_impuesto_id : ID del subtipo de impuesto (opcional)
 
+        Facturación a nombre de tercero (opcional):
+        - cliente_facturacion_id : ID de ClienteFacturacion existente
+        - tercero_nombre : Nombre completo o razón social del tercero
+        - tercero_tipo_documento : Tipo de documento (CI, RUC, PASAPORTE, OTRO)
+        - tercero_numero_documento : Número de documento del tercero
+        - tercero_direccion : Dirección del tercero (opcional)
+        - tercero_telefono : Teléfono del tercero (opcional)
+        - tercero_email : Email del tercero (opcional)
+
+        Nota: Si no se especifican datos de tercero, la factura se emite a nombre del pasajero.
+
         Errores comunes:
         - 400: Falta pasajero_id o la reserva no cumple condiciones
         - 404: No existe configuración de facturación
@@ -640,8 +681,32 @@ class ReservaViewSet(viewsets.ModelViewSet):
             if not factura:
                 try:
                     validar_factura_individual(reserva, pasajero)
+
+                    # Obtener parámetros de facturación
                     subtipo_impuesto_id = request.query_params.get('subtipo_impuesto_id', None)
-                    factura = generar_factura_individual(reserva, pasajero, subtipo_impuesto_id)
+
+                    # Parámetros para facturación a nombre de tercero
+                    cliente_facturacion_id = request.query_params.get('cliente_facturacion_id', None)
+                    tercero_nombre = request.query_params.get('tercero_nombre', None)
+                    tercero_tipo_documento = request.query_params.get('tercero_tipo_documento', None)
+                    tercero_numero_documento = request.query_params.get('tercero_numero_documento', None)
+                    tercero_direccion = request.query_params.get('tercero_direccion', None)
+                    tercero_telefono = request.query_params.get('tercero_telefono', None)
+                    tercero_email = request.query_params.get('tercero_email', None)
+
+                    # Generar factura (con o sin tercero)
+                    factura = generar_factura_individual(
+                        reserva,
+                        pasajero,
+                        subtipo_impuesto_id=subtipo_impuesto_id,
+                        cliente_facturacion_id=cliente_facturacion_id,
+                        tercero_nombre=tercero_nombre,
+                        tercero_tipo_documento=tercero_tipo_documento,
+                        tercero_numero_documento=tercero_numero_documento,
+                        tercero_direccion=tercero_direccion,
+                        tercero_telefono=tercero_telefono,
+                        tercero_email=tercero_email
+                    )
                 except DjangoValidationError as e:
                     return Response({
                         'error': 'No se puede generar factura individual',
