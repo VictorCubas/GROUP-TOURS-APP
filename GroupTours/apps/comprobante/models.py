@@ -131,7 +131,7 @@ class ComprobantePago(models.Model):
                 f"con el monto del comprobante (${self.monto})"
             )
 
-    def actualizar_monto_reserva(self, modalidad_facturacion=None):
+    def actualizar_monto_reserva(self, modalidad_facturacion=None, condicion_pago=None):
         """
         Recalcula el monto total pagado en la reserva sumando todos los comprobantes activos.
 
@@ -139,6 +139,9 @@ class ComprobantePago(models.Model):
             modalidad_facturacion: Modalidad de facturación ('global' o 'individual').
                                   Solo necesario si la reserva está en estado 'pendiente'
                                   y puede confirmarse con este pago.
+            condicion_pago: Condición de pago ('contado' o 'credito').
+                           Solo necesario si la reserva está en estado 'pendiente'
+                           y puede confirmarse con este pago.
         """
         from django.db.models import Sum
 
@@ -160,9 +163,12 @@ class ComprobantePago(models.Model):
         self.reserva.save(update_fields=['monto_pagado'])
 
         # Actualizar estado de la reserva
-        # Si la reserva está en estado pendiente, se requiere modalidad_facturacion
+        # Si la reserva está en estado pendiente, se requiere modalidad_facturacion Y condicion_pago
         # para poder confirmarla
-        self.reserva.actualizar_estado(modalidad_facturacion=modalidad_facturacion)
+        self.reserva.actualizar_estado(
+            modalidad_facturacion=modalidad_facturacion,
+            condicion_pago=condicion_pago
+        )
 
     def anular(self, motivo=None):
         """

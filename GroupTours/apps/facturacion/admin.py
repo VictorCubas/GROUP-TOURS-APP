@@ -7,7 +7,8 @@ from .models import (
     TipoImpuesto,
     SubtipoImpuesto,
     FacturaElectronica,
-    DetalleFactura
+    DetalleFactura,
+    ClienteFacturacion
 )
 
 # ---------- SubtipoImpuesto inline para TipoImpuesto ----------

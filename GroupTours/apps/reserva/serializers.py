@@ -93,6 +93,9 @@ class PasajeroSerializer(serializers.ModelSerializer):
     factura_id = serializers.SerializerMethodField(
         help_text="ID de la factura individual del pasajero (si existe)"
     )
+    factura_individual_generada = serializers.SerializerMethodField(
+        help_text="Indica si ya existe una factura individual generada para este pasajero"
+    )
 
     class Meta:
         model = Pasajero
@@ -115,6 +118,7 @@ class PasajeroSerializer(serializers.ModelSerializer):
             "fecha_registro",
             "puede_descargar_factura",
             "factura_id",
+            "factura_individual_generada",
         ]
         read_only_fields = [
             "monto_pagado",
@@ -187,6 +191,23 @@ class PasajeroSerializer(serializers.ModelSerializer):
         ).first()
 
         return factura.id if factura else None
+
+    def get_factura_individual_generada(self, obj):
+        """
+        Indica si ya existe una factura individual generada para este pasajero.
+        Retorna True si existe una factura activa, False en caso contrario.
+        """
+        reserva = obj.reserva
+
+        # Solo retornar True si es modalidad individual y tiene factura
+        if reserva.modalidad_facturacion != 'individual':
+            return False
+
+        # Verificar si existe factura individual activa
+        return obj.facturas.filter(
+            tipo_facturacion='por_pasajero',
+            activo=True
+        ).exists()
 
 
 class PasajeroCreateSerializer(serializers.Serializer):
@@ -278,6 +299,12 @@ class ReservaSerializer(serializers.ModelSerializer):
         read_only=True,
         help_text="Modalidad de facturación en formato legible"
     )
+    # NUEVO: Campo para mostrar la condición de pago en formato legible
+    condicion_pago_display = serializers.CharField(
+        source='get_condicion_pago_display',
+        read_only=True,
+        help_text="Condición de pago en formato legible"
+    )
 
     class Meta:
         model = Reserva
@@ -306,6 +333,8 @@ class ReservaSerializer(serializers.ModelSerializer):
             "estado_display",
             "modalidad_facturacion",  # NUEVO
             "modalidad_facturacion_display",  # NUEVO
+            "condicion_pago",  # NUEVO
+            "condicion_pago_display",  # NUEVO
             "pasajeros",
             "pasajeros_data",
             "titular_como_pasajero",
@@ -733,6 +762,12 @@ class ReservaDetalleSerializer(serializers.ModelSerializer):
         read_only=True,
         help_text="Modalidad de facturación en formato legible"
     )
+    # Condición de pago
+    condicion_pago_display = serializers.CharField(
+        source='get_condicion_pago_display',
+        read_only=True,
+        help_text="Condición de pago en formato legible"
+    )
 
     # Información de facturación
     puede_descargar_factura_global = serializers.SerializerMethodField(
@@ -740,6 +775,9 @@ class ReservaDetalleSerializer(serializers.ModelSerializer):
     )
     factura_global_id = serializers.SerializerMethodField(
         help_text="ID de la factura global (si existe)"
+    )
+    factura_global_generada = serializers.SerializerMethodField(
+        help_text="Indica si ya existe una factura global generada para esta reserva"
     )
 
     class Meta:
@@ -779,8 +817,11 @@ class ReservaDetalleSerializer(serializers.ModelSerializer):
             # Modalidad de facturación
             'modalidad_facturacion',
             'modalidad_facturacion_display',
+            'condicion_pago',
+            'condicion_pago_display',
             'puede_descargar_factura_global',
             'factura_global_id',
+            'factura_global_generada',
             # Servicios
             'servicios_base',
             'servicios_adicionales',
@@ -1007,9 +1048,16 @@ class ReservaDetalleSerializer(serializers.ModelSerializer):
         Solo aplica si la reserva está en modalidad 'global'.
 
         Condiciones para habilitar el botón "Generar Factura":
+
+        Para CONTADO:
         - Reserva en modalidad 'global'
         - Reserva en estado 'finalizada'
         - Reserva totalmente pagada
+
+        Para CRÉDITO:
+        - Reserva en modalidad 'global'
+        - Reserva en estado 'confirmada' o 'finalizada'
+        - NO requiere pago completo (puede generar factura después de pagar seña)
 
         NOTA: No se requiere que la factura ya esté generada. Este campo
         indica si se PUEDE generar la factura (si aún no existe) o descargarla
@@ -1019,13 +1067,21 @@ class ReservaDetalleSerializer(serializers.ModelSerializer):
         if obj.modalidad_facturacion != 'global':
             return False
 
-        # Si la reserva no está finalizada, no puede generar factura
-        if obj.estado != 'finalizada':
+        # Si la condición de pago no está definida, no puede facturar
+        if not obj.condicion_pago:
             return False
 
-        # Si la reserva no está totalmente pagada, no puede generar factura
-        if not obj.esta_totalmente_pagada():
-            return False
+        # Validación según condición de pago
+        if obj.condicion_pago == 'contado':
+            # CONTADO: Requiere estado finalizada y pago completo
+            if obj.estado != 'finalizada':
+                return False
+            if not obj.esta_totalmente_pagada():
+                return False
+        elif obj.condicion_pago == 'credito':
+            # CRÉDITO: Solo requiere estado confirmada o finalizada (NO requiere pago completo)
+            if obj.estado not in ['confirmada', 'finalizada']:
+                return False
 
         # Si cumple todas las condiciones, puede generar/descargar la factura
         return True
@@ -1046,3 +1102,18 @@ class ReservaDetalleSerializer(serializers.ModelSerializer):
         ).first()
 
         return factura.id if factura else None
+
+    def get_factura_global_generada(self, obj):
+        """
+        Indica si ya existe una factura global generada para esta reserva.
+        Retorna True si existe una factura activa, False en caso contrario.
+        """
+        # Solo retornar True si es modalidad global y tiene factura
+        if obj.modalidad_facturacion != 'global':
+            return False
+
+        # Verificar si existe factura global activa
+        return obj.facturas.filter(
+            tipo_facturacion='total',
+            activo=True
+        ).exists()
