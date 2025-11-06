@@ -25,6 +25,11 @@ class Reserva(models.Model):
         ("individual", "Facturación Individual (Por pasajero)"),
     ]
 
+    CONDICIONES_PAGO = [
+        ("contado", "Contado"),
+        ("credito", "Crédito"),
+    ]
+
     codigo = models.CharField(
         max_length=20,
         unique=True,
@@ -110,6 +115,13 @@ class Reserva(models.Model):
         null=True,
         blank=True,
         help_text="Modalidad de facturación elegida al confirmar la reserva. NULL mientras esté pendiente."
+    )
+    condicion_pago = models.CharField(
+        max_length=20,
+        choices=CONDICIONES_PAGO,
+        null=True,
+        blank=True,
+        help_text="Condición de pago elegida al confirmar la reserva (contado o crédito). NULL mientras esté pendiente."
     )
 
     class Meta:
@@ -246,19 +258,20 @@ class Reserva(models.Model):
         pasajeros_reales = self.pasajeros.exclude(persona__documento__contains='_PEND')
         return pasajeros_reales.exists() and all(pasajero.esta_totalmente_pagado for pasajero in pasajeros_reales)
 
-    def actualizar_estado(self, modalidad_facturacion=None):
+    def actualizar_estado(self, modalidad_facturacion=None, condicion_pago=None):
         """
         Actualiza el estado de la reserva según pago y carga de pasajeros.
 
         Args:
             modalidad_facturacion: 'global' o 'individual' (requerido al confirmar desde pendiente)
+            condicion_pago: 'contado' o 'credito' (requerido al confirmar desde pendiente)
 
         Lógica de estados:
         - Pendiente: Sin pago o pago insuficiente para la seña
         - Confirmada: Seña pagada (o más, pero < 100%), cupo asegurado
           - datos_completos=True si todos los pasajeros están cargados
           - datos_completos=False si faltan datos de pasajeros
-          - NUEVO: Al pasar a confirmada desde pendiente, se debe definir modalidad_facturacion
+          - NUEVO: Al pasar a confirmada desde pendiente, se debe definir modalidad_facturacion Y condicion_pago
         - Finalizada: Pago total completo (100%) Y todos los pasajeros reales cargados
         - Cancelada: Reserva cancelada
 
@@ -273,7 +286,7 @@ class Reserva(models.Model):
         # Estado actual: pendiente
         if self.estado == "pendiente":
             if self.puede_confirmarse():  # seña total pagada
-                # Al confirmar, DEBE definir modalidad si viene de pendiente
+                # Al confirmar, DEBE definir modalidad Y condición de pago si viene de pendiente
                 if modalidad_facturacion is None:
                     raise ValidationError(
                         "Debe seleccionar la modalidad de facturación al confirmar la reserva. "
@@ -285,19 +298,44 @@ class Reserva(models.Model):
                         "Modalidad inválida. Use 'global' o 'individual'"
                     )
 
-                # Establecer modalidad (FIJO después de esto)
+                if condicion_pago is None:
+                    raise ValidationError(
+                        "Debe seleccionar la condición de pago al confirmar la reserva. "
+                        "Opciones: 'contado' o 'credito'"
+                    )
+
+                if condicion_pago not in ['contado', 'credito']:
+                    raise ValidationError(
+                        "Condición de pago inválida. Use 'contado' o 'credito'"
+                    )
+
+                # Validación: Si es facturación individual, NO puede ser crédito
+                if modalidad_facturacion == 'individual' and condicion_pago == 'credito':
+                    raise ValidationError(
+                        "Las facturas a crédito solo están disponibles para facturación global. "
+                        "Si desea crédito, seleccione modalidad 'global'."
+                    )
+
+                # Establecer modalidad y condición (FIJO después de esto)
                 self.modalidad_facturacion = modalidad_facturacion
+                self.condicion_pago = condicion_pago
                 self.estado = "confirmada"
-                self.save(update_fields=["estado", "datos_completos", "modalidad_facturacion"])
+                self.save(update_fields=["estado", "datos_completos", "modalidad_facturacion", "condicion_pago"])
                 return
 
         # Estado actual: confirmada
         elif self.estado == "confirmada":
-            # NO permitir cambiar modalidad
+            # NO permitir cambiar modalidad ni condición de pago
             if modalidad_facturacion is not None and modalidad_facturacion != self.modalidad_facturacion:
                 raise ValidationError(
                     f"No se puede cambiar la modalidad de facturación. "
                     f"Ya está definida como '{self.modalidad_facturacion}'"
+                )
+
+            if condicion_pago is not None and condicion_pago != self.condicion_pago:
+                raise ValidationError(
+                    f"No se puede cambiar la condición de pago. "
+                    f"Ya está definida como '{self.condicion_pago}'"
                 )
 
             # Continuar con lógica normal de transición a 'finalizada'

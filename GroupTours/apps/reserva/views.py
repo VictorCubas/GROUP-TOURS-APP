@@ -759,6 +759,7 @@ class ReservaViewSet(viewsets.ModelViewSet):
         Body:
         {
             "modalidad_facturacion": "global",  // requerido: "global" o "individual"
+            "condicion_pago": "credito",        // requerido: "contado" o "credito"
             "metodo_pago": "transferencia",     // requerido
             "referencia": "TRF-001",            // opcional
             "observaciones": "Seña inicial",    // opcional
@@ -830,6 +831,21 @@ class ReservaViewSet(viewsets.ModelViewSet):
         if modalidad_facturacion not in ['global', 'individual']:
             return Response(
                 {'error': 'Modalidad inválida. Use "global" o "individual"'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validar campo condicion_pago
+        if 'condicion_pago' not in request.data:
+            return Response(
+                {'error': 'El campo condicion_pago es requerido. Use "contado" o "credito"'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validar que la condicion_pago sea válida
+        condicion_pago = request.data['condicion_pago']
+        if condicion_pago not in ['contado', 'credito']:
+            return Response(
+                {'error': 'Condición de pago inválida. Use "contado" o "credito"'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -944,11 +960,14 @@ class ReservaViewSet(viewsets.ModelViewSet):
                 )
 
             # Actualizar monto pagado en la reserva y confirmar si corresponde
-            # El método actualizar_monto_reserva() ahora acepta modalidad_facturacion
+            # El método actualizar_monto_reserva() ahora acepta modalidad_facturacion y condicion_pago
             # y se encarga de confirmar la reserva automáticamente si es necesario
             from django.core.exceptions import ValidationError as DjangoValidationError
             try:
-                comprobante.actualizar_monto_reserva(modalidad_facturacion=modalidad_facturacion)
+                comprobante.actualizar_monto_reserva(
+                    modalidad_facturacion=modalidad_facturacion,
+                    condicion_pago=condicion_pago
+                )
             except DjangoValidationError as e:
                 # Si hay un error de validación, lo propagamos al usuario
                 # y eliminamos el comprobante creado (rollback manual)
@@ -1083,13 +1102,14 @@ class ReservaViewSet(viewsets.ModelViewSet):
         No se crean automáticamente al inicio del proceso.
 
         IMPORTANTE: Si la reserva está en estado 'pendiente' y este pago la confirmará,
-        es OBLIGATORIO especificar la modalidad de facturación.
+        es OBLIGATORIO especificar la modalidad de facturación Y la condición de pago.
 
         Body:
         {
             "tipo": "pago_parcial",          // requerido: "pago_parcial" o "pago_total"
             "metodo_pago": "transferencia",  // requerido
             "modalidad_facturacion": "global", // CONDICIONAL: requerido SOLO si la reserva está 'pendiente' y este pago la confirmará
+            "condicion_pago": "credito",     // CONDICIONAL: requerido SOLO si la reserva está 'pendiente' y este pago la confirmará
             "referencia": "TRF-002",         // opcional
             "observaciones": "Segundo pago", // opcional
             "empleado": 1,                   // opcional, usa el primer empleado si no se especifica
@@ -1138,7 +1158,7 @@ class ReservaViewSet(viewsets.ModelViewSet):
             )
 
         # ========================================================================
-        # VALIDACIÓN CONDICIONAL DE MODALIDAD DE FACTURACIÓN
+        # VALIDACIÓN CONDICIONAL DE MODALIDAD DE FACTURACIÓN Y CONDICIÓN DE PAGO
         # ========================================================================
         # Calcular el monto del pago actual para determinar si confirmará la reserva
         monto_actual = reserva.monto_pagado
@@ -1155,12 +1175,13 @@ class ReservaViewSet(viewsets.ModelViewSet):
         monto_total_proyectado = monto_actual + monto_nuevo_pago
         podria_confirmar = monto_total_proyectado >= reserva.seña_total
 
-        # Determinar si necesitamos modalidad de facturación
+        # Determinar si necesitamos modalidad de facturación y condición de pago
         modalidad_facturacion = None
+        condicion_pago = None
 
         if reserva.estado == 'pendiente' and not reserva.modalidad_facturacion and podria_confirmar:
             # La reserva está pendiente, no tiene modalidad y este pago la confirmará
-            # Por lo tanto, es OBLIGATORIO especificar la modalidad
+            # Por lo tanto, es OBLIGATORIO especificar la modalidad Y la condición de pago
             if 'modalidad_facturacion' not in request.data:
                 return Response({
                     'error': 'Modalidad de facturación requerida',
@@ -1182,6 +1203,24 @@ class ReservaViewSet(viewsets.ModelViewSet):
             if modalidad_facturacion not in ['global', 'individual']:
                 return Response({
                     'error': 'Modalidad inválida. Use "global" o "individual"'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Validar condición de pago
+            if 'condicion_pago' not in request.data:
+                return Response({
+                    'error': 'Condición de pago requerida',
+                    'detalle': 'Debe especificar la condición de pago: "contado" o "credito"',
+                    'opciones_condicion': [
+                        {'valor': 'contado', 'descripcion': 'Contado'},
+                        {'valor': 'credito', 'descripcion': 'Crédito'}
+                    ]
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Validar que la condición de pago sea válida
+            condicion_pago = request.data['condicion_pago']
+            if condicion_pago not in ['contado', 'credito']:
+                return Response({
+                    'error': 'Condición de pago inválida. Use "contado" o "credito"'
                 }, status=status.HTTP_400_BAD_REQUEST)
 
         # Si ya tiene modalidad o no la necesita, continuar sin ella
@@ -1310,10 +1349,13 @@ class ReservaViewSet(viewsets.ModelViewSet):
                     monto=dist_data['monto']
                 )
 
-            # Actualizar monto pagado en la reserva y establecer modalidad si corresponde
+            # Actualizar monto pagado en la reserva y establecer modalidad y condición de pago si corresponde
             from django.core.exceptions import ValidationError as DjangoValidationError
             try:
-                comprobante.actualizar_monto_reserva(modalidad_facturacion=modalidad_facturacion)
+                comprobante.actualizar_monto_reserva(
+                    modalidad_facturacion=modalidad_facturacion,
+                    condicion_pago=condicion_pago
+                )
             except DjangoValidationError as e:
                 # Si hay un error de validación, eliminamos el comprobante (rollback manual)
                 comprobante.delete()

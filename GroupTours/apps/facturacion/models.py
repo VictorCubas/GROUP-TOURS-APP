@@ -279,6 +279,13 @@ class FacturaElectronica(models.Model):
         blank=True
     )
 
+    # Campos específicos para crédito
+    fecha_vencimiento = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Fecha de vencimiento del crédito. Para crédito: fecha_salida - 15 días"
+    )
+
     # Moneda
     moneda = models.ForeignKey(
         'moneda.Moneda',
@@ -1043,19 +1050,33 @@ def validar_factura_global(reserva):
             "No se puede emitir factura global."
         )
 
-    # 3. Estado de reserva
-    if reserva.estado != 'finalizada':
+    # 3. Condición de pago debe estar definida
+    if reserva.condicion_pago is None:
         raise ValidationError(
-            "La reserva debe estar en estado 'finalizada' para emitir factura global."
+            "La condición de pago no ha sido definida. "
+            "Debe confirmar la reserva y elegir la condición de pago primero."
         )
 
-    # 4. Saldo de la reserva
-    if reserva.monto_pagado < reserva.costo_total_estimado:
-        saldo_pendiente = reserva.costo_total_estimado - reserva.monto_pagado
-        raise ValidationError(
-            f"La reserva tiene saldo pendiente de {saldo_pendiente}. "
-            f"Debe pagar el total antes de facturar."
-        )
+    # 4. Estado de reserva y validación de pago según condición
+    if reserva.condicion_pago == 'contado':
+        # Para CONTADO: Debe estar finalizada y totalmente pagada
+        if reserva.estado != 'finalizada':
+            raise ValidationError(
+                "La reserva debe estar en estado 'finalizada' para emitir factura al contado."
+            )
+
+        if reserva.monto_pagado < reserva.costo_total_estimado:
+            saldo_pendiente = reserva.costo_total_estimado - reserva.monto_pagado
+            raise ValidationError(
+                f"La reserva tiene saldo pendiente de {saldo_pendiente}. "
+                f"Debe pagar el total antes de facturar al contado."
+            )
+    elif reserva.condicion_pago == 'credito':
+        # Para CRÉDITO: Debe estar al menos confirmada (no requiere pago total)
+        if reserva.estado not in ['confirmada', 'finalizada']:
+            raise ValidationError(
+                "La reserva debe estar en estado 'confirmada' o 'finalizada' para emitir factura a crédito."
+            )
 
     # 5. No tener factura global previa
     if reserva.facturas.filter(tipo_facturacion='total', activo=True).exists():
@@ -1334,8 +1355,11 @@ def generar_factura_global(
 
     # --- 🔹 Determinar cliente de facturación (tercero o titular) ---
     cliente_facturacion = None
+    titular = reserva.titular
+    if not titular:
+        raise ValidationError("La reserva no tiene titular asignado")
 
-    # Prioridad 1: Intentar obtener/crear cliente de facturación (tercero)
+    # Prioridad 1: Intentar obtener/crear cliente de facturación (tercero completo)
     if cliente_facturacion_id or (tercero_nombre and tercero_tipo_documento and tercero_numero_documento):
         cliente_facturacion = obtener_o_crear_cliente_facturacion(
             cliente_facturacion_id=cliente_facturacion_id,
@@ -1348,7 +1372,39 @@ def generar_factura_global(
             persona=None  # No vinculamos a persona si es tercero explícito
         )
 
-    # Si hay cliente de facturación (tercero), usar sus datos
+    # Prioridad 2: Si SOLO se cambió el documento (tipo y/o número), crear ClienteFacturacion con datos del titular
+    elif tercero_tipo_documento or tercero_numero_documento:
+        # El usuario quiere usar el titular pero con documento diferente
+        # Obtener datos del titular
+        persona = titular
+
+        # Determinar tipo de persona y extraer datos base
+        if hasattr(persona, 'personajuridica'):
+            nombre_base = persona.razon_social
+            tipo_doc_base = persona.tipo_documento
+            num_doc_base = getattr(persona, 'ruc', getattr(persona, 'documento', 'S/N'))
+        else:
+            nombre_base = f"{getattr(persona, 'nombre', '')} {getattr(persona, 'apellido', '')}".strip()
+            tipo_doc_base = persona.tipo_documento
+            num_doc_base = getattr(persona, 'documento', getattr(persona, 'ci_numero', 'S/N'))
+
+        # Usar documento override si se proporciona, sino usar el original
+        tipo_doc_final = tercero_tipo_documento if tercero_tipo_documento else tipo_doc_base
+        num_doc_final = tercero_numero_documento if tercero_numero_documento else num_doc_base
+
+        # Crear/buscar ClienteFacturacion con el documento modificado pero mismo nombre
+        cliente_facturacion = obtener_o_crear_cliente_facturacion(
+            cliente_facturacion_id=None,
+            tercero_nombre=nombre_base,
+            tercero_tipo_documento=tipo_doc_final,
+            tercero_numero_documento=num_doc_final,
+            tercero_direccion=getattr(persona, 'direccion', ''),
+            tercero_telefono=getattr(persona, 'telefono', ''),
+            tercero_email=getattr(persona, 'correo', getattr(persona, 'email', '')),
+            persona=titular  # Vinculamos a la persona original
+        )
+
+    # Si hay cliente de facturación (tercero o titular con documento modificado), usar sus datos
     if cliente_facturacion:
         cliente_nombre = cliente_facturacion.nombre
         cliente_tipo_documento = cliente_facturacion.tipo_documento.nombre
@@ -1357,11 +1413,7 @@ def generar_factura_global(
         cliente_telefono = cliente_facturacion.telefono or ''
         cliente_email = cliente_facturacion.email or ''
     else:
-        # Prioridad 2: Usar datos del titular de la reserva
-        titular = reserva.titular
-        if not titular:
-            raise ValidationError("La reserva no tiene titular asignado")
-
+        # Prioridad 3: Usar datos del titular de la reserva sin modificaciones
         persona = titular
         # Determinar tipo de persona y documento
         if hasattr(persona, 'personajuridica'):
@@ -1378,6 +1430,27 @@ def generar_factura_global(
         cliente_direccion = getattr(persona, 'direccion', '')
         cliente_telefono = getattr(persona, 'telefono', '')
         cliente_email = getattr(persona, 'correo', getattr(persona, 'email', ''))
+
+    # --- Determinar condición de venta y calcular fecha de vencimiento ---
+    condicion_venta = reserva.condicion_pago or 'contado'
+    fecha_vencimiento_calculada = None
+
+    if condicion_venta == 'credito':
+        # Si es crédito, calcular fecha de vencimiento: fecha_salida - 15 días
+        if not reserva.salida or not reserva.salida.fecha_salida:
+            raise ValidationError(
+                "No se puede generar factura a crédito sin fecha de salida definida"
+            )
+
+        from datetime import timedelta
+        fecha_vencimiento_calculada = reserva.salida.fecha_salida - timedelta(days=15)
+
+        # Validar que la fecha de vencimiento no sea en el pasado
+        if fecha_vencimiento_calculada < timezone.now().date():
+            raise ValidationError(
+                f"La fecha de vencimiento calculada ({fecha_vencimiento_calculada}) ya pasó. "
+                f"La salida es el {reserva.salida.fecha_salida} y el vencimiento debe ser 15 días antes."
+            )
 
     # --- Crear factura ---
     factura = FacturaElectronica.objects.create(
@@ -1401,7 +1474,8 @@ def generar_factura_global(
         cliente_telefono=cliente_telefono,
         cliente_email=cliente_email,
 
-        condicion_venta='contado',
+        condicion_venta=condicion_venta,  # Usar condición de pago de la reserva
+        fecha_vencimiento=fecha_vencimiento_calculada,  # Solo si es crédito (fecha_salida - 15 días)
         moneda=reserva.paquete.moneda,
     )
 
@@ -1544,8 +1618,9 @@ def generar_factura_individual(
 
     # --- 🔹 Determinar cliente de facturación (tercero o pasajero) ---
     cliente_facturacion = None
+    persona = pasajero.persona
 
-    # Prioridad 1: Intentar obtener/crear cliente de facturación (tercero)
+    # Prioridad 1: Intentar obtener/crear cliente de facturación (tercero completo)
     if cliente_facturacion_id or (tercero_nombre and tercero_tipo_documento and tercero_numero_documento):
         cliente_facturacion = obtener_o_crear_cliente_facturacion(
             cliente_facturacion_id=cliente_facturacion_id,
@@ -1558,7 +1633,36 @@ def generar_factura_individual(
             persona=None  # No vinculamos a persona si es tercero explícito
         )
 
-    # Si hay cliente de facturación (tercero), usar sus datos
+    # Prioridad 2: Si SOLO se cambió el documento (tipo y/o número), crear ClienteFacturacion con datos del pasajero
+    elif tercero_tipo_documento or tercero_numero_documento:
+        # El usuario quiere usar el pasajero pero con documento diferente
+        # Determinar tipo de persona y extraer datos base
+        if hasattr(persona, 'personajuridica'):
+            nombre_base = persona.razon_social
+            tipo_doc_base = persona.tipo_documento
+            num_doc_base = persona.documento
+        else:
+            nombre_base = f"{getattr(persona, 'nombre', '')} {getattr(persona, 'apellido', '')}".strip()
+            tipo_doc_base = persona.tipo_documento
+            num_doc_base = persona.documento
+
+        # Usar documento override si se proporciona, sino usar el original
+        tipo_doc_final = tercero_tipo_documento if tercero_tipo_documento else tipo_doc_base
+        num_doc_final = tercero_numero_documento if tercero_numero_documento else num_doc_base
+
+        # Crear/buscar ClienteFacturacion con el documento modificado pero mismo nombre
+        cliente_facturacion = obtener_o_crear_cliente_facturacion(
+            cliente_facturacion_id=None,
+            tercero_nombre=nombre_base,
+            tercero_tipo_documento=tipo_doc_final,
+            tercero_numero_documento=num_doc_final,
+            tercero_direccion=getattr(persona, 'direccion', ''),
+            tercero_telefono=getattr(persona, 'telefono', ''),
+            tercero_email=getattr(persona, 'email', ''),
+            persona=persona  # Vinculamos a la persona original
+        )
+
+    # Si hay cliente de facturación (tercero o pasajero con documento modificado), usar sus datos
     if cliente_facturacion:
         cliente_nombre = cliente_facturacion.nombre
         cliente_tipo_documento = cliente_facturacion.tipo_documento.nombre
@@ -1567,9 +1671,7 @@ def generar_factura_individual(
         cliente_telefono = cliente_facturacion.telefono or ''
         cliente_email = cliente_facturacion.email or ''
     else:
-        # Prioridad 2: Usar datos del pasajero
-        persona = pasajero.persona
-
+        # Prioridad 3: Usar datos del pasajero sin modificaciones
         if hasattr(persona, 'personajuridica'):
             # Persona jurídica
             cliente_nombre = persona.razon_social
