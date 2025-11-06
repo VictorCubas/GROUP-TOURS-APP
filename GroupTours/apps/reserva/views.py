@@ -496,6 +496,17 @@ class ReservaViewSet(viewsets.ModelViewSet):
         - regenerar_pdf=true : Fuerza la regeneración del PDF
         - subtipo_impuesto_id : ID del subtipo de impuesto (si no se especifica, usa configuración)
 
+        Facturación a nombre de tercero (opcional):
+        - cliente_facturacion_id : ID de ClienteFacturacion existente
+        - tercero_nombre : Nombre completo o razón social del tercero
+        - tercero_tipo_documento : Tipo de documento (CI, RUC, PASAPORTE, OTRO)
+        - tercero_numero_documento : Número de documento del tercero
+        - tercero_direccion : Dirección del tercero (opcional)
+        - tercero_telefono : Teléfono del tercero (opcional)
+        - tercero_email : Email del tercero (opcional)
+
+        Nota: Si no se especifican datos de tercero, la factura se emite a nombre del titular de la reserva.
+
         Respuesta:
         - Content-Type: application/pdf
         - Content-Disposition: attachment; filename="factura_001-001-0000001.pdf"
@@ -529,11 +540,30 @@ class ReservaViewSet(viewsets.ModelViewSet):
                     # Validar que se puede facturar
                     validar_factura_global(reserva)
 
-                    # Obtener subtipo de impuesto si se especificó
+                    # Obtener parámetros de facturación
                     subtipo_impuesto_id = request.query_params.get('subtipo_impuesto_id', None)
 
-                    # Generar factura
-                    factura = generar_factura_global(reserva, subtipo_impuesto_id)
+                    # Parámetros para facturación a nombre de tercero
+                    cliente_facturacion_id = request.query_params.get('cliente_facturacion_id', None)
+                    tercero_nombre = request.query_params.get('tercero_nombre', None)
+                    tercero_tipo_documento = request.query_params.get('tercero_tipo_documento', None)
+                    tercero_numero_documento = request.query_params.get('tercero_numero_documento', None)
+                    tercero_direccion = request.query_params.get('tercero_direccion', None)
+                    tercero_telefono = request.query_params.get('tercero_telefono', None)
+                    tercero_email = request.query_params.get('tercero_email', None)
+
+                    # Generar factura (con o sin tercero)
+                    factura = generar_factura_global(
+                        reserva,
+                        subtipo_impuesto_id=subtipo_impuesto_id,
+                        cliente_facturacion_id=cliente_facturacion_id,
+                        tercero_nombre=tercero_nombre,
+                        tercero_tipo_documento=tercero_tipo_documento,
+                        tercero_numero_documento=tercero_numero_documento,
+                        tercero_direccion=tercero_direccion,
+                        tercero_telefono=tercero_telefono,
+                        tercero_email=tercero_email
+                    )
 
                 except DjangoValidationError as e:
                     return Response({
@@ -602,6 +632,17 @@ class ReservaViewSet(viewsets.ModelViewSet):
         - regenerar_pdf=true : Fuerza la regeneración del PDF
         - subtipo_impuesto_id : ID del subtipo de impuesto (opcional)
 
+        Facturación a nombre de tercero (opcional):
+        - cliente_facturacion_id : ID de ClienteFacturacion existente
+        - tercero_nombre : Nombre completo o razón social del tercero
+        - tercero_tipo_documento : Tipo de documento (CI, RUC, PASAPORTE, OTRO)
+        - tercero_numero_documento : Número de documento del tercero
+        - tercero_direccion : Dirección del tercero (opcional)
+        - tercero_telefono : Teléfono del tercero (opcional)
+        - tercero_email : Email del tercero (opcional)
+
+        Nota: Si no se especifican datos de tercero, la factura se emite a nombre del pasajero.
+
         Errores comunes:
         - 400: Falta pasajero_id o la reserva no cumple condiciones
         - 404: No existe configuración de facturación
@@ -640,8 +681,32 @@ class ReservaViewSet(viewsets.ModelViewSet):
             if not factura:
                 try:
                     validar_factura_individual(reserva, pasajero)
+
+                    # Obtener parámetros de facturación
                     subtipo_impuesto_id = request.query_params.get('subtipo_impuesto_id', None)
-                    factura = generar_factura_individual(reserva, pasajero, subtipo_impuesto_id)
+
+                    # Parámetros para facturación a nombre de tercero
+                    cliente_facturacion_id = request.query_params.get('cliente_facturacion_id', None)
+                    tercero_nombre = request.query_params.get('tercero_nombre', None)
+                    tercero_tipo_documento = request.query_params.get('tercero_tipo_documento', None)
+                    tercero_numero_documento = request.query_params.get('tercero_numero_documento', None)
+                    tercero_direccion = request.query_params.get('tercero_direccion', None)
+                    tercero_telefono = request.query_params.get('tercero_telefono', None)
+                    tercero_email = request.query_params.get('tercero_email', None)
+
+                    # Generar factura (con o sin tercero)
+                    factura = generar_factura_individual(
+                        reserva,
+                        pasajero,
+                        subtipo_impuesto_id=subtipo_impuesto_id,
+                        cliente_facturacion_id=cliente_facturacion_id,
+                        tercero_nombre=tercero_nombre,
+                        tercero_tipo_documento=tercero_tipo_documento,
+                        tercero_numero_documento=tercero_numero_documento,
+                        tercero_direccion=tercero_direccion,
+                        tercero_telefono=tercero_telefono,
+                        tercero_email=tercero_email
+                    )
                 except DjangoValidationError as e:
                     return Response({
                         'error': 'No se puede generar factura individual',
@@ -694,6 +759,7 @@ class ReservaViewSet(viewsets.ModelViewSet):
         Body:
         {
             "modalidad_facturacion": "global",  // requerido: "global" o "individual"
+            "condicion_pago": "credito",        // requerido: "contado" o "credito"
             "metodo_pago": "transferencia",     // requerido
             "referencia": "TRF-001",            // opcional
             "observaciones": "Seña inicial",    // opcional
@@ -765,6 +831,21 @@ class ReservaViewSet(viewsets.ModelViewSet):
         if modalidad_facturacion not in ['global', 'individual']:
             return Response(
                 {'error': 'Modalidad inválida. Use "global" o "individual"'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validar campo condicion_pago
+        if 'condicion_pago' not in request.data:
+            return Response(
+                {'error': 'El campo condicion_pago es requerido. Use "contado" o "credito"'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validar que la condicion_pago sea válida
+        condicion_pago = request.data['condicion_pago']
+        if condicion_pago not in ['contado', 'credito']:
+            return Response(
+                {'error': 'Condición de pago inválida. Use "contado" o "credito"'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -879,11 +960,14 @@ class ReservaViewSet(viewsets.ModelViewSet):
                 )
 
             # Actualizar monto pagado en la reserva y confirmar si corresponde
-            # El método actualizar_monto_reserva() ahora acepta modalidad_facturacion
+            # El método actualizar_monto_reserva() ahora acepta modalidad_facturacion y condicion_pago
             # y se encarga de confirmar la reserva automáticamente si es necesario
             from django.core.exceptions import ValidationError as DjangoValidationError
             try:
-                comprobante.actualizar_monto_reserva(modalidad_facturacion=modalidad_facturacion)
+                comprobante.actualizar_monto_reserva(
+                    modalidad_facturacion=modalidad_facturacion,
+                    condicion_pago=condicion_pago
+                )
             except DjangoValidationError as e:
                 # Si hay un error de validación, lo propagamos al usuario
                 # y eliminamos el comprobante creado (rollback manual)
@@ -1018,13 +1102,14 @@ class ReservaViewSet(viewsets.ModelViewSet):
         No se crean automáticamente al inicio del proceso.
 
         IMPORTANTE: Si la reserva está en estado 'pendiente' y este pago la confirmará,
-        es OBLIGATORIO especificar la modalidad de facturación.
+        es OBLIGATORIO especificar la modalidad de facturación Y la condición de pago.
 
         Body:
         {
             "tipo": "pago_parcial",          // requerido: "pago_parcial" o "pago_total"
             "metodo_pago": "transferencia",  // requerido
             "modalidad_facturacion": "global", // CONDICIONAL: requerido SOLO si la reserva está 'pendiente' y este pago la confirmará
+            "condicion_pago": "credito",     // CONDICIONAL: requerido SOLO si la reserva está 'pendiente' y este pago la confirmará
             "referencia": "TRF-002",         // opcional
             "observaciones": "Segundo pago", // opcional
             "empleado": 1,                   // opcional, usa el primer empleado si no se especifica
@@ -1073,7 +1158,7 @@ class ReservaViewSet(viewsets.ModelViewSet):
             )
 
         # ========================================================================
-        # VALIDACIÓN CONDICIONAL DE MODALIDAD DE FACTURACIÓN
+        # VALIDACIÓN CONDICIONAL DE MODALIDAD DE FACTURACIÓN Y CONDICIÓN DE PAGO
         # ========================================================================
         # Calcular el monto del pago actual para determinar si confirmará la reserva
         monto_actual = reserva.monto_pagado
@@ -1090,12 +1175,13 @@ class ReservaViewSet(viewsets.ModelViewSet):
         monto_total_proyectado = monto_actual + monto_nuevo_pago
         podria_confirmar = monto_total_proyectado >= reserva.seña_total
 
-        # Determinar si necesitamos modalidad de facturación
+        # Determinar si necesitamos modalidad de facturación y condición de pago
         modalidad_facturacion = None
+        condicion_pago = None
 
         if reserva.estado == 'pendiente' and not reserva.modalidad_facturacion and podria_confirmar:
             # La reserva está pendiente, no tiene modalidad y este pago la confirmará
-            # Por lo tanto, es OBLIGATORIO especificar la modalidad
+            # Por lo tanto, es OBLIGATORIO especificar la modalidad Y la condición de pago
             if 'modalidad_facturacion' not in request.data:
                 return Response({
                     'error': 'Modalidad de facturación requerida',
@@ -1117,6 +1203,24 @@ class ReservaViewSet(viewsets.ModelViewSet):
             if modalidad_facturacion not in ['global', 'individual']:
                 return Response({
                     'error': 'Modalidad inválida. Use "global" o "individual"'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Validar condición de pago
+            if 'condicion_pago' not in request.data:
+                return Response({
+                    'error': 'Condición de pago requerida',
+                    'detalle': 'Debe especificar la condición de pago: "contado" o "credito"',
+                    'opciones_condicion': [
+                        {'valor': 'contado', 'descripcion': 'Contado'},
+                        {'valor': 'credito', 'descripcion': 'Crédito'}
+                    ]
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Validar que la condición de pago sea válida
+            condicion_pago = request.data['condicion_pago']
+            if condicion_pago not in ['contado', 'credito']:
+                return Response({
+                    'error': 'Condición de pago inválida. Use "contado" o "credito"'
                 }, status=status.HTTP_400_BAD_REQUEST)
 
         # Si ya tiene modalidad o no la necesita, continuar sin ella
@@ -1245,10 +1349,13 @@ class ReservaViewSet(viewsets.ModelViewSet):
                     monto=dist_data['monto']
                 )
 
-            # Actualizar monto pagado en la reserva y establecer modalidad si corresponde
+            # Actualizar monto pagado en la reserva y establecer modalidad y condición de pago si corresponde
             from django.core.exceptions import ValidationError as DjangoValidationError
             try:
-                comprobante.actualizar_monto_reserva(modalidad_facturacion=modalidad_facturacion)
+                comprobante.actualizar_monto_reserva(
+                    modalidad_facturacion=modalidad_facturacion,
+                    condicion_pago=condicion_pago
+                )
             except DjangoValidationError as e:
                 # Si hay un error de validación, eliminamos el comprobante (rollback manual)
                 comprobante.delete()
