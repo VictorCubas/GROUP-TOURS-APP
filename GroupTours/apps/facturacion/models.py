@@ -355,6 +355,63 @@ class FacturaElectronica(models.Model):
             return f"CONFIG - {self.empresa.nombre}"
         return f"{self.numero_factura} - {self.empresa.nombre}"
 
+    @property
+    def total_acreditado(self):
+        """
+        Calcula el total acreditado por notas de crédito activas.
+        Suma todos los totales de las NC que afectan esta factura.
+        """
+        from django.db.models import Sum
+        total = self.notas_credito.filter(activo=True).aggregate(
+            total=Sum('total_general')
+        )['total']
+        return total or Decimal('0')
+
+    @property
+    def saldo_neto(self):
+        """
+        Calcula el saldo neto de la factura.
+        Formula: total_general - total_acreditado
+        Este es el monto que aún está vigente de la factura.
+        """
+        return self.total_general - self.total_acreditado
+
+    @property
+    def esta_totalmente_acreditada(self):
+        """
+        Verifica si la factura fue completamente anulada por notas de crédito.
+        Retorna True si el saldo neto es 0.
+        """
+        return self.saldo_neto == Decimal('0')
+
+    @property
+    def esta_parcialmente_acreditada(self):
+        """
+        Verifica si la factura tiene notas de crédito pero no está totalmente anulada.
+        """
+        return self.total_acreditado > Decimal('0') and not self.esta_totalmente_acreditada
+
+    def puede_generar_nota_credito(self):
+        """
+        Valida si se puede generar una nota de crédito para esta factura.
+
+        Returns:
+            tuple: (bool, str) - (puede_generar, mensaje)
+        """
+        if not self.activo:
+            return False, "Factura inactiva"
+
+        if self.es_configuracion:
+            return False, "No se puede acreditar una factura de configuración"
+
+        if self.esta_totalmente_acreditada:
+            return False, "Factura ya totalmente acreditada"
+
+        if self.saldo_neto <= Decimal('0'):
+            return False, "No hay saldo disponible para acreditar"
+
+        return True, "OK"
+
     def save(self, *args, **kwargs):
         # Validar si es configuración
         if self.es_configuracion:
@@ -1805,3 +1862,791 @@ def generar_todas_facturas_pasajeros(reserva, subtipo_impuesto_id=None):
         'facturas_generadas': facturas_generadas,
         'pasajeros_omitidos': pasajeros_omitidos
     }
+
+
+# ========================================
+# NOTAS DE CRÉDITO
+# ========================================
+
+class NotaCreditoElectronica(models.Model):
+    """
+    Nota de crédito que anula total o parcialmente una factura electrónica.
+    Sigue las normativas de la SET de Paraguay.
+    """
+
+    TIPO_NOTA_CHOICES = (
+        ('total', 'Anulación Total'),
+        ('parcial', 'Anulación Parcial'),
+    )
+
+    # Códigos oficiales SIFEN - Campo E401 (iMotEmi)
+    MOTIVO_CHOICES = (
+        ('1', 'Devolución y Ajuste de precios'),
+        ('2', 'Devolución'),
+        ('3', 'Descuento'),
+        ('4', 'Bonificación'),
+        ('5', 'Crédito incobrable'),
+        ('6', 'Recupero de costo'),
+        ('7', 'Recupero de gasto'),
+        ('8', 'Ajuste de precio'),
+    )
+
+    # Relación con factura original (PROTEGIDA - no se puede borrar factura con NC)
+    factura_afectada = models.ForeignKey(
+        'FacturaElectronica',
+        on_delete=models.PROTECT,
+        related_name='notas_credito',
+        help_text="Factura que se está anulando (total o parcialmente)"
+    )
+
+    # Datos de la empresa (heredados de factura, no se puede cambiar punto de expedición)
+    empresa = models.ForeignKey('Empresa', on_delete=models.PROTECT)
+    establecimiento = models.ForeignKey('Establecimiento', on_delete=models.PROTECT)
+    punto_expedicion = models.ForeignKey('PuntoExpedicion', on_delete=models.PROTECT)
+    timbrado = models.ForeignKey('Timbrado', on_delete=models.PROTECT)
+
+    # Número de nota de crédito (formato: XXX-XXX-XXXXXXX) - Correlativo INDEPENDIENTE de facturas
+    numero_nota_credito = models.CharField(
+        max_length=15,
+        editable=False,
+        help_text="Número correlativo de la nota de crédito (formato: XXX-XXX-XXXXXXX)"
+    )
+
+    # Información general
+    fecha_emision = models.DateTimeField(
+        auto_now_add=True,
+        help_text="Fecha y hora de emisión de la nota de crédito"
+    )
+
+    tipo_nota = models.CharField(
+        max_length=20,
+        choices=TIPO_NOTA_CHOICES,
+        help_text="Tipo de anulación: total (100% de la factura) o parcial (monto menor)"
+    )
+
+    motivo = models.CharField(
+        max_length=1,
+        choices=MOTIVO_CHOICES,
+        verbose_name='Motivo de emisión',
+        help_text="Código según campo E401 (iMotEmi) de SIFEN. Este valor se enviará directamente en el XML"
+    )
+
+    observaciones = models.TextField(
+        blank=True,
+        null=True,
+        help_text="Observaciones adicionales sobre la nota de crédito"
+    )
+
+    # Datos del cliente (copiados de factura afectada - garantiza trazabilidad)
+    cliente_tipo_documento = models.CharField(max_length=50)
+    cliente_numero_documento = models.CharField(max_length=20)
+    cliente_nombre = models.CharField(max_length=200)
+    cliente_direccion = models.CharField(max_length=200, blank=True)
+    cliente_telefono = models.CharField(max_length=20, blank=True)
+    cliente_email = models.EmailField(blank=True)
+
+    # Impuesto (igual que factura afectada)
+    tipo_impuesto = models.ForeignKey('TipoImpuesto', on_delete=models.PROTECT)
+    subtipo_impuesto = models.ForeignKey('SubtipoImpuesto', on_delete=models.PROTECT)
+
+    # Moneda (igual que factura afectada)
+    moneda = models.ForeignKey('moneda.Moneda', on_delete=models.PROTECT)
+
+    # Totales (pueden ser menores que factura si es parcial)
+    total_exenta = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=0,
+        help_text="Total de operaciones exentas acreditadas"
+    )
+    total_gravada_5 = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=0,
+        help_text="Total gravado IVA 5% acreditado"
+    )
+    total_gravada_10 = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=0,
+        help_text="Total gravado IVA 10% acreditado"
+    )
+    total_iva_5 = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=0,
+        help_text="IVA 5% acreditado"
+    )
+    total_iva_10 = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=0,
+        help_text="IVA 10% acreditado"
+    )
+    total_iva = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=0,
+        help_text="Total IVA acreditado"
+    )
+    total_general = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=0,
+        help_text="Total general acreditado (monto que se resta de la factura)"
+    )
+
+    # PDF generado
+    pdf_generado = models.FileField(
+        upload_to='facturas/notas_credito/pdf/',
+        blank=True,
+        null=True,
+        help_text="PDF de la nota de crédito"
+    )
+
+    # Metadata
+    activo = models.BooleanField(
+        default=True,
+        help_text="Indica si la nota de crédito está activa"
+    )
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_modificacion = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'nota_credito_electronica'
+        unique_together = ('establecimiento', 'punto_expedicion', 'numero_nota_credito')
+        ordering = ['-fecha_emision']
+        verbose_name = 'Nota de Crédito Electrónica'
+        verbose_name_plural = 'Notas de Crédito Electrónicas'
+
+    def __str__(self):
+        return f"NC {self.numero_nota_credito} - Afecta: {self.factura_afectada.numero_factura}"
+
+    def save(self, *args, **kwargs):
+        """Genera número de nota de crédito si no existe"""
+        if not self.pk and not self.numero_nota_credito:
+            self.numero_nota_credito = self.generar_numero_nota_credito()
+        super().save(*args, **kwargs)
+
+    def generar_numero_nota_credito(self):
+        """
+        Genera número correlativo INDEPENDIENTE de facturas: XXX-XXX-XXXXXXX
+        Ej: 001-001-0000001 (primera NC del punto de expedición)
+        """
+        ultima_nota = NotaCreditoElectronica.objects.filter(
+            establecimiento=self.establecimiento,
+            punto_expedicion=self.punto_expedicion
+        ).aggregate(max_num=Max('numero_nota_credito'))['max_num']
+
+        if ultima_nota:
+            try:
+                # Extraer el número correlativo (último segmento)
+                ultimo_numero = int(ultima_nota.split('-')[2])
+                nuevo_numero = ultimo_numero + 1
+            except:
+                nuevo_numero = 1
+        else:
+            nuevo_numero = 1
+
+        # Formato: XXX-XXX-XXXXXXX
+        correlativo_str = str(nuevo_numero).zfill(7)
+        return f"{self.establecimiento.codigo}-{self.punto_expedicion.codigo}-{correlativo_str}"
+
+    def calcular_totales(self):
+        """Calcula los totales sumando los detalles de la nota de crédito"""
+        from django.db.models import Sum
+
+        totales = self.detalles.aggregate(
+            exenta=Sum('monto_exenta'),
+            gravada_5=Sum('monto_gravada_5'),
+            gravada_10=Sum('monto_gravada_10')
+        )
+
+        self.total_exenta = totales['exenta'] or Decimal('0')
+        self.total_gravada_5 = totales['gravada_5'] or Decimal('0')
+        self.total_gravada_10 = totales['gravada_10'] or Decimal('0')
+
+        # Calcular IVA (extraído del monto gravado)
+        self.total_iva_5 = (self.total_gravada_5 * Decimal('5')) / Decimal('105')
+        self.total_iva_10 = (self.total_gravada_10 * Decimal('10')) / Decimal('110')
+        self.total_iva = self.total_iva_5 + self.total_iva_10
+
+        # Total general
+        self.total_general = self.total_exenta + self.total_gravada_5 + self.total_gravada_10
+
+    @property
+    def saldo_factura_restante(self):
+        """
+        Calcula el saldo que queda de la factura afectada después de esta nota de crédito.
+        """
+        return self.factura_afectada.saldo_neto
+
+    def generar_pdf(self):
+        """
+        Genera PDF de la nota de crédito.
+        Similar a la factura pero con título "NOTA DE CRÉDITO ELECTRÓNICA"
+        y referenciando la factura afectada.
+        """
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib import colors
+        from reportlab.lib.units import inch
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.enums import TA_CENTER, TA_LEFT
+        from django.core.files.base import ContentFile
+        from django.conf import settings
+        import io
+        import os
+
+        # Crear buffer para el PDF
+        buffer = io.BytesIO()
+
+        # Crear documento
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=letter,
+            rightMargin=0.75*inch,
+            leftMargin=0.75*inch,
+            topMargin=0.5*inch,
+            bottomMargin=0.5*inch
+        )
+
+        elements = []
+        styles = getSampleStyleSheet()
+
+        # Estilos personalizados
+        small_style = ParagraphStyle(
+            'Small',
+            parent=styles['Normal'],
+            fontSize=8,
+            alignment=TA_LEFT
+        )
+
+        # ===== ENCABEZADO =====
+        logo_path = os.path.join(settings.MEDIA_ROOT, 'logos', 'logo_group_tours.png')
+
+        if os.path.exists(logo_path):
+            logo = Image(logo_path, width=1.5*inch, height=1.5*inch)
+            empresa_info = Paragraph(f'''
+                <b>{self.empresa.nombre}</b><br/>
+                {self.empresa.direccion or ''}<br/>
+                Teléfono: {self.empresa.telefono or 'N/A'}<br/>
+                {self.empresa.correo or ''}
+            ''', small_style)
+
+            datos_fiscales = Paragraph(f'''
+                <b>RUC:</b> {self.empresa.ruc}<br/>
+                <b>Timbrado N°:</b> {self.timbrado.numero}<br/>
+                <b>Fecha Inicio Vigencia:</b> {self.timbrado.inicio_vigencia.strftime('%d/%m/%Y')}<br/>
+                <br/>
+                <b><font color="red">NOTA DE CRÉDITO ELECTRÓNICA</font></b><br/>
+                <b>{self.numero_nota_credito}</b><br/>
+                <br/>
+                <b>Factura Afectada:</b><br/>
+                {self.factura_afectada.numero_factura}
+            ''', small_style)
+
+            header_table = Table([[logo, empresa_info, datos_fiscales]],
+                                colWidths=[1.5*inch, 3.0*inch, 2.0*inch])
+        else:
+            empresa_info = Paragraph(f'''
+                <b>{self.empresa.nombre}</b><br/>
+                {self.empresa.direccion or ''}<br/>
+                RUC: {self.empresa.ruc}
+            ''', small_style)
+
+            datos_fiscales = Paragraph(f'''
+                <b><font color="red">NOTA DE CRÉDITO ELECTRÓNICA</font></b><br/>
+                <b>{self.numero_nota_credito}</b><br/>
+                <br/>
+                <b>Factura Afectada:</b> {self.factura_afectada.numero_factura}
+            ''', small_style)
+
+            header_table = Table([[empresa_info, datos_fiscales]],
+                                colWidths=[4.5*inch, 2.0*inch])
+
+        header_table.setStyle(TableStyle([
+            ('BOX', (0, 0), (-1, -1), 1, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 8),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ]))
+
+        elements.append(header_table)
+        elements.append(Spacer(1, 0.15*inch))
+
+        # ===== DATOS DE LA NOTA DE CRÉDITO =====
+        transaccion_data = [
+            [
+                Paragraph(f'<b>Fecha de Emisión:</b> {self.fecha_emision.strftime("%d-%m-%Y %H:%M:%S")}', small_style),
+                Paragraph(f'<b>Cliente:</b> {self.cliente_nombre}', small_style)
+            ],
+            [
+                Paragraph(f'<b>Tipo:</b> {self.get_tipo_nota_display()}', small_style),
+                Paragraph(f'<b>Documento:</b> {self.cliente_numero_documento}', small_style)
+            ],
+            [
+                Paragraph(f'<b>Motivo:</b> {self.get_motivo_display()}', small_style),
+                Paragraph(f'<b>Moneda:</b> {self.moneda.nombre.upper()}', small_style)
+            ],
+        ]
+
+        if self.observaciones:
+            transaccion_data.append([
+                Paragraph(f'<b>Observaciones:</b> {self.observaciones[:100]}', small_style),
+                Paragraph('', small_style)
+            ])
+
+        transaccion_table = Table(transaccion_data, colWidths=[3.25*inch, 3.25*inch])
+        transaccion_table.setStyle(TableStyle([
+            ('BOX', (0, 0), (-1, -1), 1, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 3),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ]))
+
+        elements.append(transaccion_table)
+        elements.append(Spacer(1, 0.15*inch))
+
+        # ===== TABLA DE DETALLES =====
+        detalle_header = ['#', 'Descripción', 'Cant.', 'Precio Unit.', 'Exentas', '5%', '10%']
+        detalle_data = [detalle_header]
+
+        for detalle in self.detalles.all():
+            exenta_val = f"{int(detalle.monto_exenta):,}" if detalle.monto_exenta > 0 else "0"
+            iva5_val = f"{int(detalle.monto_gravada_5):,}" if detalle.monto_gravada_5 > 0 else "0"
+            iva10_val = f"{int(detalle.monto_gravada_10):,}" if detalle.monto_gravada_10 > 0 else "0"
+
+            detalle_data.append([
+                str(detalle.numero_item),
+                str(detalle.descripcion)[:40],
+                str(int(detalle.cantidad)),
+                f"{int(detalle.precio_unitario):,}",
+                exenta_val,
+                iva5_val,
+                iva10_val
+            ])
+
+        # Llenar filas vacías
+        while len(detalle_data) < 6:
+            detalle_data.append(['', '', '', '', '', '', ''])
+
+        detalle_table = Table(detalle_data,
+                            colWidths=[0.4*inch, 2.5*inch, 0.6*inch, 0.9*inch, 0.8*inch, 0.7*inch, 0.7*inch])
+        detalle_table.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+            ('BOX', (0, 0), (-1, -1), 1, colors.black),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 7),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('ALIGN', (2, 1), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ]))
+
+        elements.append(detalle_table)
+        elements.append(Spacer(1, 0.1*inch))
+
+        # ===== TOTALES =====
+        totales_data = [
+            ['SUBTOTAL:', '', '', f"{int(self.total_general):,}"],
+            ['TOTAL ACREDITADO:', '', '', f"{int(self.total_general):,}"],
+            ['LIQUIDACIÓN IVA:', f"(5%) {int(self.total_iva_5):,}", f"(10%) {int(self.total_iva_10):,}", f"{int(self.total_iva):,}"]
+        ]
+
+        totales_table = Table(totales_data, colWidths=[2.5*inch, 1.5*inch, 1.5*inch, 1.0*inch])
+        totales_table.setStyle(TableStyle([
+            ('BOX', (0, 0), (-1, -1), 1, colors.black),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+            ('FONTSIZE', (0, 0), (-1, -1), 7),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ]))
+
+        elements.append(totales_table)
+        elements.append(Spacer(1, 0.15*inch))
+
+        # ===== PIE DE PÁGINA =====
+        footer_text = Paragraph(
+            f'''
+            <b>NOTA DE CRÉDITO ELECTRÓNICA</b><br/>
+            <b>Documento que anula {self.get_tipo_nota_display().lower()} la Factura N° {self.factura_afectada.numero_factura}</b><br/>
+            <br/>
+            Este documento es una representación gráfica de una Nota de Crédito Electrónica.<br/>
+            Saldo restante de la factura: {int(self.saldo_factura_restante):,} {self.moneda.codigo}
+            ''',
+            small_style
+        )
+        elements.append(footer_text)
+
+        # Construir PDF
+        doc.build(elements)
+
+        # Guardar el PDF
+        buffer.seek(0)
+        filename = f"nota_credito_{self.numero_nota_credito.replace('-', '_')}.pdf"
+        self.pdf_generado.save(filename, ContentFile(buffer.read()), save=True)
+
+        return self.pdf_generado.path
+
+
+class DetalleNotaCredito(models.Model):
+    """
+    Detalle de items que se están acreditando (anulando) en una nota de crédito.
+    Cada detalle corresponde a un item de la factura afectada.
+    """
+
+    nota_credito = models.ForeignKey(
+        'NotaCreditoElectronica',
+        on_delete=models.CASCADE,
+        related_name='detalles',
+        help_text="Nota de crédito a la que pertenece este detalle"
+    )
+
+    numero_item = models.PositiveIntegerField(
+        help_text="Número de línea en la nota de crédito"
+    )
+
+    # Descripción del item que se acredita
+    descripcion = models.CharField(
+        max_length=250,
+        help_text="Descripción del producto/servicio que se está acreditando"
+    )
+
+    # Cantidades
+    cantidad = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        help_text="Cantidad a acreditar"
+    )
+
+    precio_unitario = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        help_text="Precio unitario del item acreditado"
+    )
+
+    # Montos según IVA (distribuidos según subtipo_impuesto)
+    monto_exenta = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=0,
+        help_text="Monto exento de IVA acreditado"
+    )
+
+    monto_gravada_5 = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=0,
+        help_text="Monto gravado IVA 5% acreditado"
+    )
+
+    monto_gravada_10 = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=0,
+        help_text="Monto gravado IVA 10% acreditado"
+    )
+
+    # Subtotal = cantidad * precio_unitario
+    subtotal = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        help_text="Subtotal del item (cantidad * precio_unitario)"
+    )
+
+    # Referencia al detalle de factura original (opcional pero recomendado para trazabilidad)
+    detalle_factura_afectado = models.ForeignKey(
+        'DetalleFactura',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='detalles_nota_credito',
+        help_text="Detalle de factura que se está acreditando (opcional)"
+    )
+
+    class Meta:
+        db_table = 'detalle_nota_credito'
+        unique_together = ('nota_credito', 'numero_item')
+        ordering = ['numero_item']
+        verbose_name = 'Detalle de Nota de Crédito'
+        verbose_name_plural = 'Detalles de Nota de Crédito'
+
+    def __str__(self):
+        return f"NC {self.nota_credito.numero_nota_credito} - Item {self.numero_item}: {self.descripcion}"
+
+    def save(self, *args, **kwargs):
+        """Calcula el subtotal automáticamente"""
+        self.subtotal = Decimal(str(self.cantidad)) * Decimal(str(self.precio_unitario))
+        super().save(*args, **kwargs)
+
+
+# ========================================
+# FUNCIONES PARA NOTAS DE CRÉDITO
+# ========================================
+
+def validar_nota_credito(factura_afectada, tipo_nota, detalles_a_acreditar):
+    """
+    Validaciones exhaustivas antes de generar una nota de crédito.
+
+    Args:
+        factura_afectada: Instancia de FacturaElectronica
+        tipo_nota: 'total' o 'parcial'
+        detalles_a_acreditar: Lista de dict con {'subtotal': Decimal}
+
+    Raises:
+        ValidationError: Si no cumple las condiciones
+    """
+    # 1. La factura debe existir y estar activa
+    if not factura_afectada.activo:
+        raise ValidationError("La factura está inactiva")
+
+    # 2. No se puede acreditar una factura de configuración
+    if factura_afectada.es_configuracion:
+        raise ValidationError("No se puede acreditar una factura de configuración")
+
+    # 3. Verificar que no exceda el saldo disponible
+    total_acreditado = factura_afectada.total_acreditado
+    total_nuevo = sum(Decimal(str(detalle['subtotal'])) for detalle in detalles_a_acreditar)
+
+    saldo_disponible = factura_afectada.total_general - total_acreditado
+
+    if total_acreditado + total_nuevo > factura_afectada.total_general:
+        raise ValidationError(
+            f"El monto a acreditar ({total_nuevo}) supera el saldo disponible ({saldo_disponible})"
+        )
+
+    # 4. Si es nota total, verificar que no haya notas previas
+    if tipo_nota == 'total' and factura_afectada.notas_credito.filter(activo=True).exists():
+        raise ValidationError(
+            "No se puede generar nota de crédito total si ya existen notas parciales. "
+            "Use una nota parcial por el saldo restante."
+        )
+
+    # 5. Si es nota total, el monto debe ser igual al saldo disponible
+    if tipo_nota == 'total' and total_nuevo != saldo_disponible:
+        raise ValidationError(
+            f"La nota de crédito total debe acreditar el saldo completo ({saldo_disponible})"
+        )
+
+    return True
+
+
+@transaction.atomic
+def generar_nota_credito_total(factura_id, motivo, observaciones=''):
+    """
+    Anula completamente una factura (o su saldo restante si hay NC previas).
+
+    Args:
+        factura_id: ID de la factura a acreditar
+        motivo: Motivo de la nota de crédito (de MOTIVO_CHOICES)
+        observaciones: Texto adicional (opcional)
+
+    Returns:
+        NotaCreditoElectronica: La nota de crédito generada
+
+    Raises:
+        ValidationError: Si la factura no se puede acreditar
+    """
+    factura = FacturaElectronica.objects.get(id=factura_id)
+
+    # Validar posibilidad
+    puede_nc, mensaje = factura.puede_generar_nota_credito()
+    if not puede_nc:
+        raise ValidationError(mensaje)
+
+    # Calcular saldo a acreditar (puede ser menor que total si hay NC previas)
+    saldo_a_acreditar = factura.saldo_neto
+
+    # Validar
+    validar_nota_credito(
+        factura_afectada=factura,
+        tipo_nota='total',
+        detalles_a_acreditar=[{'subtotal': saldo_a_acreditar}]
+    )
+
+    # Crear nota de crédito
+    nota_credito = NotaCreditoElectronica.objects.create(
+        factura_afectada=factura,
+        empresa=factura.empresa,
+        establecimiento=factura.establecimiento,
+        punto_expedicion=factura.punto_expedicion,
+        timbrado=factura.timbrado,
+        tipo_nota='total',
+        motivo=motivo,
+        observaciones=observaciones,
+
+        # Copiar datos del cliente
+        cliente_tipo_documento=factura.cliente_tipo_documento,
+        cliente_numero_documento=factura.cliente_numero_documento,
+        cliente_nombre=factura.cliente_nombre,
+        cliente_direccion=factura.cliente_direccion,
+        cliente_telefono=factura.cliente_telefono,
+        cliente_email=factura.cliente_email,
+
+        # Impuestos y moneda
+        tipo_impuesto=factura.tipo_impuesto,
+        subtipo_impuesto=factura.subtipo_impuesto,
+        moneda=factura.moneda,
+
+        # Totales (copiar saldo restante)
+        total_exenta=factura.total_exenta,
+        total_gravada_5=factura.total_gravada_5,
+        total_gravada_10=factura.total_gravada_10,
+        total_iva_5=factura.total_iva_5,
+        total_iva_10=factura.total_iva_10,
+        total_iva=factura.total_iva,
+        total_general=saldo_a_acreditar,
+    )
+
+    # Copiar todos los detalles de la factura
+    for detalle_factura in factura.detalles.all():
+        DetalleNotaCredito.objects.create(
+            nota_credito=nota_credito,
+            numero_item=detalle_factura.numero_item,
+            descripcion=detalle_factura.descripcion,
+            cantidad=detalle_factura.cantidad,
+            precio_unitario=detalle_factura.precio_unitario,
+            monto_exenta=detalle_factura.monto_exenta,
+            monto_gravada_5=detalle_factura.monto_gravada_5,
+            monto_gravada_10=detalle_factura.monto_gravada_10,
+            subtotal=detalle_factura.subtotal,
+            detalle_factura_afectado=detalle_factura
+        )
+
+    # Generar PDF
+    try:
+        nota_credito.generar_pdf()
+    except Exception as e:
+        # No fallar si el PDF no se genera
+        print(f"Error generando PDF de NC: {e}")
+
+    return nota_credito
+
+
+@transaction.atomic
+def generar_nota_credito_parcial(factura_id, items_a_acreditar, motivo, observaciones=''):
+    """
+    Anula parcialmente una factura acreditando items específicos.
+
+    Args:
+        factura_id: ID de la factura a acreditar
+        items_a_acreditar: Lista de dicts con estructura:
+            [
+                {
+                    'descripcion': 'Descripción del item',
+                    'cantidad': Decimal('2'),
+                    'precio_unitario': Decimal('1000.00'),
+                    'detalle_factura_id': 123  # Opcional
+                },
+                ...
+            ]
+        motivo: Motivo de la nota de crédito
+        observaciones: Texto adicional (opcional)
+
+    Returns:
+        NotaCreditoElectronica: La nota de crédito generada
+
+    Raises:
+        ValidationError: Si los datos son inválidos
+    """
+    factura = FacturaElectronica.objects.get(id=factura_id)
+
+    # Validar posibilidad
+    puede_nc, mensaje = factura.puede_generar_nota_credito()
+    if not puede_nc:
+        raise ValidationError(mensaje)
+
+    # Calcular totales de items a acreditar
+    detalles_calculados = []
+    total_a_acreditar = Decimal('0')
+
+    for item in items_a_acreditar:
+        cantidad = Decimal(str(item['cantidad']))
+        precio_unitario = Decimal(str(item['precio_unitario']))
+        subtotal = cantidad * precio_unitario
+        total_a_acreditar += subtotal
+        detalles_calculados.append({'subtotal': subtotal})
+
+    # Validar
+    validar_nota_credito(
+        factura_afectada=factura,
+        tipo_nota='parcial',
+        detalles_a_acreditar=detalles_calculados
+    )
+
+    # Crear nota de crédito
+    nota_credito = NotaCreditoElectronica.objects.create(
+        factura_afectada=factura,
+        empresa=factura.empresa,
+        establecimiento=factura.establecimiento,
+        punto_expedicion=factura.punto_expedicion,
+        timbrado=factura.timbrado,
+        tipo_nota='parcial',
+        motivo=motivo,
+        observaciones=observaciones,
+
+        # Copiar cliente
+        cliente_tipo_documento=factura.cliente_tipo_documento,
+        cliente_numero_documento=factura.cliente_numero_documento,
+        cliente_nombre=factura.cliente_nombre,
+        cliente_direccion=factura.cliente_direccion,
+        cliente_telefono=factura.cliente_telefono,
+        cliente_email=factura.cliente_email,
+
+        # Impuestos
+        tipo_impuesto=factura.tipo_impuesto,
+        subtipo_impuesto=factura.subtipo_impuesto,
+        moneda=factura.moneda,
+    )
+
+    # Crear detalles y calcular totales
+    porcentaje_iva = nota_credito.subtipo_impuesto.porcentaje or Decimal('10')
+
+    for idx, item in enumerate(items_a_acreditar, 1):
+        cantidad = Decimal(str(item['cantidad']))
+        precio_unitario = Decimal(str(item['precio_unitario']))
+        subtotal = cantidad * precio_unitario
+
+        # Distribuir según IVA
+        if porcentaje_iva == Decimal('0'):
+            monto_exenta = subtotal
+            monto_gravada_5 = Decimal('0')
+            monto_gravada_10 = Decimal('0')
+        elif porcentaje_iva == Decimal('5'):
+            monto_exenta = Decimal('0')
+            monto_gravada_5 = subtotal
+            monto_gravada_10 = Decimal('0')
+        else:  # 10%
+            monto_exenta = Decimal('0')
+            monto_gravada_5 = Decimal('0')
+            monto_gravada_10 = subtotal
+
+        DetalleNotaCredito.objects.create(
+            nota_credito=nota_credito,
+            numero_item=idx,
+            descripcion=item['descripcion'],
+            cantidad=cantidad,
+            precio_unitario=precio_unitario,
+            monto_exenta=monto_exenta,
+            monto_gravada_5=monto_gravada_5,
+            monto_gravada_10=monto_gravada_10,
+            subtotal=subtotal,
+            detalle_factura_afectado_id=item.get('detalle_factura_id')
+        )
+
+    # Calcular totales de la nota
+    nota_credito.calcular_totales()
+    nota_credito.save()
+
+    # Generar PDF
+    try:
+        nota_credito.generar_pdf()
+    except Exception as e:
+        print(f"Error generando PDF de NC: {e}")
+
+    return nota_credito
