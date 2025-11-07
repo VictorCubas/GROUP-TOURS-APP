@@ -7,19 +7,24 @@ from rest_framework import status
 from django.shortcuts import get_object_or_404
 from .models import (
     Empresa, Establecimiento, PuntoExpedicion,
-    TipoImpuesto, Timbrado, FacturaElectronica
+    TipoImpuesto, Timbrado, FacturaElectronica,
+    NotaCreditoElectronica, DetalleNotaCredito
 )
 from .serializers import (
     EmpresaSerializer, EstablecimientoSerializer,
     PuntoExpedicionSerializer, TipoImpuestoSerializer,
     TimbradoSerializer, FacturaElectronicaSerializer,
-    FacturaElectronicaDetalladaSerializer
+    FacturaElectronicaDetalladaSerializer,
+    NotaCreditoElectronicaSerializer,
+    NotaCreditoElectronicaDetalladaSerializer
 )
 from .models import (
     generar_factura_desde_reserva,
     generar_factura_global,
     generar_factura_individual,
-    generar_todas_facturas_pasajeros
+    generar_todas_facturas_pasajeros,
+    generar_nota_credito_total,
+    generar_nota_credito_parcial
 )
 from apps.reserva.models import Reserva, Pasajero
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -481,6 +486,295 @@ def descargar_pdf_factura(request, factura_id):
                 content_type='application/pdf'
             )
             filename = f'factura_{factura.numero_factura}.pdf'
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return response
+        except Exception as e:
+            return Response({
+                "error": f"Error al leer el archivo PDF: {str(e)}"
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    except Exception as e:
+        return Response({
+            "error": f"Error al descargar PDF: {str(e)}"
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ========================================
+# ENDPOINTS PARA NOTAS DE CRÉDITO
+# ========================================
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def generar_nota_credito_total_view(request, factura_id):
+    """
+    Genera una nota de crédito total para anular completamente una factura.
+
+    POST /api/facturacion/generar-nota-credito-total/{factura_id}/
+
+    Body:
+    {
+        "motivo": "cancelacion_reserva",  # obligatorio
+        "observaciones": "Cliente canceló el viaje"  # opcional
+    }
+    """
+    try:
+        motivo = request.data.get('motivo')
+        observaciones = request.data.get('observaciones', '')
+
+        if not motivo:
+            return Response({
+                "error": "El motivo es obligatorio"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Generar nota de crédito
+        nota_credito = generar_nota_credito_total(
+            factura_id=factura_id,
+            motivo=motivo,
+            observaciones=observaciones
+        )
+
+        # Serializar
+        nota_credito_data = NotaCreditoElectronicaDetalladaSerializer(nota_credito).data
+
+        return Response({
+            "message": "Nota de crédito total generada exitosamente",
+            "nota_credito": nota_credito_data
+        }, status=status.HTTP_201_CREATED)
+
+    except DjangoValidationError as e:
+        return Response({
+            "error": str(e)
+        }, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({
+            "error": f"Error al generar nota de crédito: {str(e)}"
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def generar_nota_credito_parcial_view(request, factura_id):
+    """
+    Genera una nota de crédito parcial para anular items específicos de una factura.
+
+    POST /api/facturacion/generar-nota-credito-parcial/{factura_id}/
+
+    Body:
+    {
+        "motivo": "reduccion_pasajeros",  # obligatorio
+        "observaciones": "2 pasajeros cancelaron",  # opcional
+        "items": [  # obligatorio
+            {
+                "descripcion": "Paquete Tour a Iguazú",
+                "cantidad": 2,
+                "precio_unitario": 2500000,
+                "detalle_factura_id": 123  # opcional
+            }
+        ]
+    }
+    """
+    try:
+        motivo = request.data.get('motivo')
+        observaciones = request.data.get('observaciones', '')
+        items = request.data.get('items', [])
+
+        # Validaciones
+        if not motivo:
+            return Response({
+                "error": "El motivo es obligatorio"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if not items or len(items) == 0:
+            return Response({
+                "error": "Debe especificar al menos un item a acreditar"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validar estructura de items
+        for item in items:
+            if not all(k in item for k in ['descripcion', 'cantidad', 'precio_unitario']):
+                return Response({
+                    "error": "Cada item debe tener: descripcion, cantidad y precio_unitario"
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Generar nota de crédito
+        nota_credito = generar_nota_credito_parcial(
+            factura_id=factura_id,
+            items_a_acreditar=items,
+            motivo=motivo,
+            observaciones=observaciones
+        )
+
+        # Serializar
+        nota_credito_data = NotaCreditoElectronicaDetalladaSerializer(nota_credito).data
+
+        return Response({
+            "message": "Nota de crédito parcial generada exitosamente",
+            "nota_credito": nota_credito_data
+        }, status=status.HTTP_201_CREATED)
+
+    except DjangoValidationError as e:
+        return Response({
+            "error": str(e)
+        }, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({
+            "error": f"Error al generar nota de crédito: {str(e)}"
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def listar_notas_credito(request):
+    """
+    Lista todas las notas de crédito activas.
+
+    GET /api/facturacion/notas-credito/
+
+    Query params:
+        - factura_id: Filtra por factura afectada
+        - tipo_nota: Filtra por tipo (total/parcial)
+        - motivo: Filtra por motivo
+    """
+    try:
+        notas_credito = NotaCreditoElectronica.objects.filter(activo=True).order_by('-fecha_emision')
+
+        # Filtros opcionales
+        factura_id = request.query_params.get('factura_id')
+        if factura_id:
+            notas_credito = notas_credito.filter(factura_afectada_id=factura_id)
+
+        tipo_nota = request.query_params.get('tipo_nota')
+        if tipo_nota:
+            notas_credito = notas_credito.filter(tipo_nota=tipo_nota)
+
+        motivo = request.query_params.get('motivo')
+        if motivo:
+            notas_credito = notas_credito.filter(motivo=motivo)
+
+        # Serializar
+        notas_credito_data = NotaCreditoElectronicaSerializer(notas_credito, many=True).data
+
+        return Response({
+            "notas_credito": notas_credito_data,
+            "total": notas_credito.count()
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            "error": f"Error al listar notas de crédito: {str(e)}"
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def detalle_nota_credito(request, nota_credito_id):
+    """
+    Obtiene el detalle completo de una nota de crédito.
+
+    GET /api/facturacion/notas-credito/{nota_credito_id}/
+    """
+    try:
+        nota_credito = get_object_or_404(NotaCreditoElectronica, id=nota_credito_id, activo=True)
+
+        # Serializar
+        nota_credito_data = NotaCreditoElectronicaDetalladaSerializer(nota_credito).data
+
+        return Response(nota_credito_data, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            "error": f"Error al obtener nota de crédito: {str(e)}"
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def notas_credito_de_factura(request, factura_id):
+    """
+    Obtiene todas las notas de crédito de una factura específica.
+
+    GET /api/facturacion/notas-credito-factura/{factura_id}/
+    """
+    try:
+        factura = get_object_or_404(FacturaElectronica, id=factura_id)
+
+        # Obtener notas de crédito
+        notas_credito = factura.notas_credito.filter(activo=True).order_by('-fecha_emision')
+
+        # Serializar
+        notas_credito_data = NotaCreditoElectronicaSerializer(notas_credito, many=True).data
+
+        return Response({
+            "factura": {
+                "id": factura.id,
+                "numero_factura": factura.numero_factura,
+                "total_general": factura.total_general,
+                "total_acreditado": factura.total_acreditado,
+                "saldo_neto": factura.saldo_neto,
+                "esta_totalmente_acreditada": factura.esta_totalmente_acreditada,
+                "esta_parcialmente_acreditada": factura.esta_parcialmente_acreditada
+            },
+            "notas_credito": notas_credito_data,
+            "total_nc": notas_credito.count()
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            "error": f"Error al obtener notas de crédito: {str(e)}"
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def descargar_pdf_nota_credito(request, nota_credito_id):
+    """
+    Descarga el PDF de una nota de crédito.
+    Si no existe, lo genera automáticamente.
+
+    GET /api/facturacion/descargar-pdf-nota-credito/{nota_credito_id}/
+
+    Query params:
+        - regenerar: true/false (default: false) - Fuerza la regeneración del PDF
+    """
+    from django.http import FileResponse
+    import os
+
+    try:
+        nota_credito = get_object_or_404(NotaCreditoElectronica, id=nota_credito_id, activo=True)
+
+        regenerar = request.query_params.get('regenerar', 'false').lower() == 'true'
+
+        # Si no existe PDF o se solicita regenerar
+        if not nota_credito.pdf_generado or regenerar:
+            try:
+                print(f"Generando PDF para nota de crédito {nota_credito.numero_nota_credito}...")
+                nota_credito.generar_pdf()
+                print(f"PDF generado exitosamente: {nota_credito.pdf_generado.path}")
+
+            except Exception as e:
+                return Response({
+                    "error": f"Error al generar PDF: {str(e)}"
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # Verificar que el archivo físico existe
+        if not nota_credito.pdf_generado:
+            return Response({
+                "error": "No se pudo generar el PDF"
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        pdf_path = nota_credito.pdf_generado.path
+        if not os.path.exists(pdf_path):
+            return Response({
+                "error": "El archivo PDF no existe en el sistema de archivos"
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        # Retornar el archivo PDF
+        try:
+            response = FileResponse(
+                open(pdf_path, 'rb'),
+                content_type='application/pdf'
+            )
+            filename = f'nota_credito_{nota_credito.numero_nota_credito}.pdf'
             response['Content-Disposition'] = f'attachment; filename="{filename}"'
             return response
         except Exception as e:
