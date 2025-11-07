@@ -286,39 +286,43 @@ class Reserva(models.Model):
         # Estado actual: pendiente
         if self.estado == "pendiente":
             if self.puede_confirmarse():  # seña total pagada
-                # Al confirmar, DEBE definir modalidad Y condición de pago si viene de pendiente
-                if modalidad_facturacion is None:
+                # Al confirmar, DEBE definir modalidad Y condición de pago si aún NO están definidas
+                # Si la reserva ya tiene modalidad y condición, usar esas
+                modalidad_a_usar = modalidad_facturacion or self.modalidad_facturacion
+                condicion_a_usar = condicion_pago or self.condicion_pago
+
+                if modalidad_a_usar is None:
                     raise ValidationError(
                         "Debe seleccionar la modalidad de facturación al confirmar la reserva. "
                         "Opciones: 'global' (una factura total) o 'individual' (factura por pasajero)"
                     )
 
-                if modalidad_facturacion not in ['global', 'individual']:
+                if modalidad_a_usar not in ['global', 'individual']:
                     raise ValidationError(
                         "Modalidad inválida. Use 'global' o 'individual'"
                     )
 
-                if condicion_pago is None:
+                if condicion_a_usar is None:
                     raise ValidationError(
                         "Debe seleccionar la condición de pago al confirmar la reserva. "
                         "Opciones: 'contado' o 'credito'"
                     )
 
-                if condicion_pago not in ['contado', 'credito']:
+                if condicion_a_usar not in ['contado', 'credito']:
                     raise ValidationError(
                         "Condición de pago inválida. Use 'contado' o 'credito'"
                     )
 
                 # Validación: Si es facturación individual, NO puede ser crédito
-                if modalidad_facturacion == 'individual' and condicion_pago == 'credito':
+                if modalidad_a_usar == 'individual' and condicion_a_usar == 'credito':
                     raise ValidationError(
                         "Las facturas a crédito solo están disponibles para facturación global. "
                         "Si desea crédito, seleccione modalidad 'global'."
                     )
 
                 # Establecer modalidad y condición (FIJO después de esto)
-                self.modalidad_facturacion = modalidad_facturacion
-                self.condicion_pago = condicion_pago
+                self.modalidad_facturacion = modalidad_a_usar
+                self.condicion_pago = condicion_a_usar
                 self.estado = "confirmada"
                 self.save(update_fields=["estado", "datos_completos", "modalidad_facturacion", "condicion_pago"])
                 return

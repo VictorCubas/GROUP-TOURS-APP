@@ -646,6 +646,13 @@ class ReservaListadoSerializer(serializers.ModelSerializer):
     )
     estado_display = serializers.CharField(read_only=True)
 
+    # Condición de pago
+    condicion_pago_display = serializers.CharField(
+        source='get_condicion_pago_display',
+        read_only=True,
+        help_text="Condición de pago en formato legible"
+    )
+
     class Meta:
         model = Reserva
         fields = [
@@ -665,6 +672,8 @@ class ReservaListadoSerializer(serializers.ModelSerializer):
             'moneda',
             'precio_unitario',
             'costo_total_estimado',
+            'condicion_pago',
+            'condicion_pago_display',
         ]
 
     def get_titular_nombre(self, obj):
