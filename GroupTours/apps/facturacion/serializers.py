@@ -64,6 +64,11 @@ class FacturaElectronicaSerializer(serializers.ModelSerializer):
     moneda_codigo = serializers.CharField(source='moneda.codigo', read_only=True)
     reserva_codigo = serializers.CharField(source='reserva.codigo', read_only=True)
 
+    # NUEVO: Campos de conversión de moneda
+    moneda_original_nombre = serializers.CharField(source='moneda_original.nombre', read_only=True, allow_null=True)
+    moneda_original_codigo = serializers.CharField(source='moneda_original.codigo', read_only=True, allow_null=True)
+    moneda_original_simbolo = serializers.CharField(source='moneda_original.simbolo', read_only=True, allow_null=True)
+
     # NUEVO: Campos para facturación dual
     tipo_facturacion_display = serializers.CharField(source='get_tipo_facturacion_display', read_only=True)
     pasajero_nombre = serializers.SerializerMethodField(read_only=True)

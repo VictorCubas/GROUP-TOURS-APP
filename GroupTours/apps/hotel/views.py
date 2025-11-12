@@ -180,6 +180,12 @@ class HotelViewSet(viewsets.ModelViewSet):
                     precio_catalogo = precios_catalogo.get(habitacion.id, Decimal('0'))
                     precio_venta_final = precio_catalogo * factor
 
+                    # Calcular precio en moneda alternativa
+                    precio_moneda_alternativa = self._calcular_precio_moneda_alternativa(
+                        salida=salida,
+                        precio_venta_final=precio_venta_final
+                    )
+
                     resumen_habitaciones.append({
                         'habitacion_id': habitacion.id,
                         'hotel_id': hotel.id,
@@ -190,6 +196,7 @@ class HotelViewSet(viewsets.ModelViewSet):
                         'precio_noche': None,  # No aplica para distribuidora
                         'precio_catalogo': str(precio_catalogo),
                         'precio_venta_final': str(precio_venta_final),
+                        'precio_moneda_alternativa': precio_moneda_alternativa,
                         'cupo': None,  # No se maneja cupo para distribuidora
                         'es_distribuidora': True
                     })
@@ -224,6 +231,12 @@ class HotelViewSet(viewsets.ModelViewSet):
                     costo_base = precio_habitacion_total + total_servicios
                     precio_venta_final = costo_base * factor
 
+                    # Calcular precio en moneda alternativa
+                    precio_moneda_alternativa = self._calcular_precio_moneda_alternativa(
+                        salida=salida,
+                        precio_venta_final=precio_venta_final
+                    )
+
                     resumen_habitaciones.append({
                         'habitacion_id': habitacion.id,
                         'hotel_id': hotel.id,
@@ -233,6 +246,7 @@ class HotelViewSet(viewsets.ModelViewSet):
                         'capacidad': habitacion.capacidad,
                         'precio_noche': str(precio_noche),
                         'precio_venta_final': str(precio_venta_final),
+                        'precio_moneda_alternativa': precio_moneda_alternativa,
                         'cupo': cupo,
                         'es_distribuidora': False
                     })
@@ -266,6 +280,75 @@ class HotelViewSet(viewsets.ModelViewSet):
                 'precio_venta_sugerido_max': str(salida.precio_venta_sugerido_max) if salida.precio_venta_sugerido_max else None,
             }
         })
+
+    def _calcular_precio_moneda_alternativa(self, salida, precio_venta_final):
+        """
+        Calcula el precio en moneda alternativa para una habitación específica.
+        Usa la misma lógica que SalidaPaquete.obtener_precio_en_moneda_alternativa()
+        - Si la salida está en PYG → convierte a USD
+        - Si la salida está en USD → convierte a PYG
+
+        Args:
+            salida: SalidaPaquete instance
+            precio_venta_final: Decimal - precio en la moneda original de la salida
+
+        Returns:
+            dict con la conversión o None si no se puede calcular
+        """
+        from apps.moneda.models import Moneda, CotizacionMoneda
+        from apps.paquete.utils import convertir_entre_monedas
+        from decimal import Decimal
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        try:
+            if not salida.moneda:
+                return None
+
+            if not salida.fecha_salida:
+                return None
+
+            fecha_referencia = salida.fecha_salida
+
+            # Determinar moneda alternativa
+            if salida.moneda.codigo == 'PYG':
+                moneda_alternativa = Moneda.objects.get(codigo='USD')
+            elif salida.moneda.codigo == 'USD':
+                moneda_alternativa = Moneda.objects.get(codigo='PYG')
+            else:
+                return None  # No soportado
+
+            # Obtener cotización
+            if salida.moneda.codigo == 'USD' or moneda_alternativa.codigo == 'USD':
+                moneda_usd = Moneda.objects.get(codigo='USD')
+                cotizacion = CotizacionMoneda.obtener_cotizacion_vigente(moneda_usd, fecha_referencia)
+
+                if not cotizacion:
+                    return None
+
+                tasa_cambio = cotizacion.valor_en_guaranies
+                fecha_cotizacion = cotizacion.fecha_vigencia
+            else:
+                return None
+
+            # Convertir precio usando la función utilitaria
+            precio_convertido = convertir_entre_monedas(
+                precio_venta_final,
+                salida.moneda,
+                moneda_alternativa,
+                fecha_referencia
+            )
+
+            return {
+                'moneda': moneda_alternativa.codigo,
+                'precio_venta_final': str(precio_convertido),
+                'cotizacion': str(tasa_cambio),
+                'fecha_cotizacion': fecha_cotizacion.isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Error calculando precio_moneda_alternativa: {e}", exc_info=True)
+            return None
 
 # -------------------- SERVICIO --------------------
 class ServicioViewSet(viewsets.ModelViewSet):

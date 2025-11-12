@@ -306,6 +306,13 @@ class ReservaSerializer(serializers.ModelSerializer):
         help_text="Condición de pago en formato legible"
     )
 
+    # Campos de conversión a guaraníes
+    precio_unitario_en_guaranies = serializers.SerializerMethodField()
+    precio_base_paquete_en_guaranies = serializers.SerializerMethodField()
+    costo_total_estimado_en_guaranies = serializers.SerializerMethodField()
+    senia_total_en_guaranies = serializers.SerializerMethodField()
+    monto_pagado_en_guaranies = serializers.SerializerMethodField()
+
     class Meta:
         model = Reserva
         fields = [
@@ -335,6 +342,12 @@ class ReservaSerializer(serializers.ModelSerializer):
             "modalidad_facturacion_display",  # NUEVO
             "condicion_pago",  # NUEVO
             "condicion_pago_display",  # NUEVO
+            # Campos de conversión a guaraníes
+            "precio_unitario_en_guaranies",
+            "precio_base_paquete_en_guaranies",
+            "costo_total_estimado_en_guaranies",
+            "senia_total_en_guaranies",
+            "monto_pagado_en_guaranies",
             "pasajeros",
             "pasajeros_data",
             "titular_como_pasajero",
@@ -412,6 +425,55 @@ class ReservaSerializer(serializers.ModelSerializer):
         if not estado_manual:  # si no se pasó manualmente
             instance.actualizar_estado()
         return instance
+
+    # ========== MÉTODOS DE CONVERSIÓN A GUARANÍES ==========
+
+    def _convertir_a_guaranies(self, monto, obj):
+        """
+        Helper privado para convertir montos a guaraníes.
+        Reutilizable por todos los métodos de conversión.
+        """
+        from apps.moneda.models import CotizacionMoneda
+        from django.core.exceptions import ValidationError
+        from decimal import Decimal
+
+        if not monto or monto == Decimal("0"):
+            return None
+
+        # Si el paquete no tiene moneda definida, no podemos convertir
+        if not obj.paquete or not obj.paquete.moneda:
+            return None
+
+        # Si ya está en guaraníes, retornar el mismo valor
+        if obj.paquete.moneda.codigo == 'PYG':
+            return monto
+
+        # Intentar convertir a guaraníes
+        try:
+            return CotizacionMoneda.convertir_a_guaranies(monto, obj.paquete.moneda)
+        except ValidationError:
+            # No hay cotización vigente para esta moneda
+            return None
+
+    def get_precio_unitario_en_guaranies(self, obj):
+        """Convierte el precio unitario a guaraníes"""
+        return self._convertir_a_guaranies(obj.precio_unitario, obj)
+
+    def get_precio_base_paquete_en_guaranies(self, obj):
+        """Convierte el precio base del paquete a guaraníes"""
+        return self._convertir_a_guaranies(obj.precio_base_paquete, obj)
+
+    def get_costo_total_estimado_en_guaranies(self, obj):
+        """Convierte el costo total estimado a guaraníes"""
+        return self._convertir_a_guaranies(obj.costo_total_estimado, obj)
+
+    def get_senia_total_en_guaranies(self, obj):
+        """Convierte la seña total a guaraníes"""
+        return self._convertir_a_guaranies(obj.seña_total, obj)
+
+    def get_monto_pagado_en_guaranies(self, obj):
+        """Convierte el monto pagado a guaraníes"""
+        return self._convertir_a_guaranies(obj.monto_pagado, obj)
 
 
 class ServicioSimpleSerializer(serializers.ModelSerializer):
@@ -653,6 +715,10 @@ class ReservaListadoSerializer(serializers.ModelSerializer):
         help_text="Condición de pago en formato legible"
     )
 
+    # Campos de conversión a guaraníes
+    precio_unitario_en_guaranies = serializers.SerializerMethodField()
+    costo_total_estimado_en_guaranies = serializers.SerializerMethodField()
+
     class Meta:
         model = Reserva
         fields = [
@@ -672,6 +738,8 @@ class ReservaListadoSerializer(serializers.ModelSerializer):
             'moneda',
             'precio_unitario',
             'costo_total_estimado',
+            'precio_unitario_en_guaranies',
+            'costo_total_estimado_en_guaranies',
             'condicion_pago',
             'condicion_pago_display',
         ]
@@ -713,6 +781,64 @@ class ReservaListadoSerializer(serializers.ModelSerializer):
                 'codigo': obj.paquete.moneda.codigo,
             }
         return None
+
+    def get_precio_unitario_en_guaranies(self, obj):
+        """
+        Convierte el precio unitario a guaraníes usando la cotización vigente.
+        Si ya está en guaraníes, retorna el mismo valor.
+        Si no hay cotización vigente, retorna None.
+        """
+        from apps.moneda.models import CotizacionMoneda
+        from django.core.exceptions import ValidationError
+        from decimal import Decimal
+
+        precio_unitario = obj.precio_base_paquete
+        if not precio_unitario or precio_unitario == Decimal("0"):
+            return None
+
+        # Si el paquete no tiene moneda definida, no podemos convertir
+        if not obj.paquete or not obj.paquete.moneda:
+            return None
+
+        # Si ya está en guaraníes, retornar el mismo valor
+        if obj.paquete.moneda.codigo == 'PYG':
+            return precio_unitario
+
+        # Intentar convertir a guaraníes
+        try:
+            return CotizacionMoneda.convertir_a_guaranies(precio_unitario, obj.paquete.moneda)
+        except ValidationError:
+            # No hay cotización vigente para esta moneda
+            return None
+
+    def get_costo_total_estimado_en_guaranies(self, obj):
+        """
+        Convierte el costo total estimado a guaraníes usando la cotización vigente.
+        Si ya está en guaraníes, retorna el mismo valor.
+        Si no hay cotización vigente, retorna None.
+        """
+        from apps.moneda.models import CotizacionMoneda
+        from django.core.exceptions import ValidationError
+        from decimal import Decimal
+
+        costo_total = obj.costo_total_estimado
+        if not costo_total or costo_total == Decimal("0"):
+            return None
+
+        # Si el paquete no tiene moneda definida, no podemos convertir
+        if not obj.paquete or not obj.paquete.moneda:
+            return None
+
+        # Si ya está en guaraníes, retornar el mismo valor
+        if obj.paquete.moneda.codigo == 'PYG':
+            return costo_total
+
+        # Intentar convertir a guaraníes
+        try:
+            return CotizacionMoneda.convertir_a_guaranies(costo_total, obj.paquete.moneda)
+        except ValidationError:
+            # No hay cotización vigente para esta moneda
+            return None
 
 
 class ReservaDetalleSerializer(serializers.ModelSerializer):
@@ -789,6 +915,15 @@ class ReservaDetalleSerializer(serializers.ModelSerializer):
         help_text="Indica si ya existe una factura global generada para esta reserva"
     )
 
+    # Campos de conversión a guaraníes
+    precio_unitario_en_guaranies = serializers.SerializerMethodField()
+    precio_base_paquete_en_guaranies = serializers.SerializerMethodField()
+    costo_servicios_adicionales_en_guaranies = serializers.SerializerMethodField()
+    costo_total_estimado_en_guaranies = serializers.SerializerMethodField()
+    senia_total_en_guaranies = serializers.SerializerMethodField()
+    monto_pagado_en_guaranies = serializers.SerializerMethodField()
+    saldo_pendiente_en_guaranies = serializers.SerializerMethodField()
+
     class Meta:
         model = Reserva
         fields = [
@@ -818,6 +953,14 @@ class ReservaDetalleSerializer(serializers.ModelSerializer):
             'seña_total',
             'monto_pagado',
             'saldo_pendiente',
+            # Costos en guaraníes
+            'precio_unitario_en_guaranies',
+            'precio_base_paquete_en_guaranies',
+            'costo_servicios_adicionales_en_guaranies',
+            'costo_total_estimado_en_guaranies',
+            'senia_total_en_guaranies',
+            'monto_pagado_en_guaranies',
+            'saldo_pendiente_en_guaranies',
             # Estado
             'estado',
             'estado_display',
@@ -1126,3 +1269,61 @@ class ReservaDetalleSerializer(serializers.ModelSerializer):
             tipo_facturacion='total',
             activo=True
         ).exists()
+
+    # ========== MÉTODOS DE CONVERSIÓN A GUARANÍES ==========
+
+    def _convertir_a_guaranies(self, monto, obj):
+        """
+        Helper privado para convertir montos a guaraníes.
+        Reutilizable por todos los métodos de conversión.
+        """
+        from apps.moneda.models import CotizacionMoneda
+        from django.core.exceptions import ValidationError
+        from decimal import Decimal
+
+        if not monto or monto == Decimal("0"):
+            return None
+
+        # Si el paquete no tiene moneda definida, no podemos convertir
+        if not obj.paquete or not obj.paquete.moneda:
+            return None
+
+        # Si ya está en guaraníes, retornar el mismo valor
+        if obj.paquete.moneda.codigo == 'PYG':
+            return monto
+
+        # Intentar convertir a guaraníes
+        try:
+            return CotizacionMoneda.convertir_a_guaranies(monto, obj.paquete.moneda)
+        except ValidationError:
+            # No hay cotización vigente para esta moneda
+            return None
+
+    def get_precio_unitario_en_guaranies(self, obj):
+        """Convierte el precio unitario a guaraníes"""
+        return self._convertir_a_guaranies(obj.precio_unitario, obj)
+
+    def get_precio_base_paquete_en_guaranies(self, obj):
+        """Convierte el precio base del paquete a guaraníes"""
+        return self._convertir_a_guaranies(obj.precio_base_paquete, obj)
+
+    def get_costo_servicios_adicionales_en_guaranies(self, obj):
+        """Convierte el costo de servicios adicionales a guaraníes"""
+        return self._convertir_a_guaranies(obj.costo_servicios_adicionales, obj)
+
+    def get_costo_total_estimado_en_guaranies(self, obj):
+        """Convierte el costo total estimado a guaraníes"""
+        return self._convertir_a_guaranies(obj.costo_total_estimado, obj)
+
+    def get_senia_total_en_guaranies(self, obj):
+        """Convierte la seña total a guaraníes"""
+        return self._convertir_a_guaranies(obj.seña_total, obj)
+
+    def get_monto_pagado_en_guaranies(self, obj):
+        """Convierte el monto pagado a guaraníes"""
+        return self._convertir_a_guaranies(obj.monto_pagado, obj)
+
+    def get_saldo_pendiente_en_guaranies(self, obj):
+        """Convierte el saldo pendiente a guaraníes"""
+        saldo = self.get_saldo_pendiente(obj)
+        return self._convertir_a_guaranies(saldo, obj)

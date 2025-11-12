@@ -316,6 +316,172 @@ class SalidaPaquete(models.Model):
         self.save(update_fields=["precio_venta_sugerido_min", "precio_venta_sugerido_max"])
 
     # -----------------------------
+    # CONVERSIÓN DE MONEDA
+    # -----------------------------
+    def obtener_precio_en_guaranies(self):
+        """
+        Retorna el precio de la salida convertido a guaraníes.
+        Si ya está en guaraníes, retorna el precio original.
+
+        Returns:
+            dict: {
+                'precio_min': Decimal,
+                'precio_max': Decimal,
+                'moneda_original': str (código),
+                'cotizacion_aplicada': Decimal o None,
+                'fecha_cotizacion': date o None
+            }
+        """
+        from apps.moneda.models import CotizacionMoneda
+        from django.core.exceptions import ValidationError
+
+        # Si la moneda es guaraníes, retornar directamente
+        if self.moneda.codigo == 'PYG':
+            return {
+                'precio_min': self.precio_actual,
+                'precio_max': self.precio_final or self.precio_actual,
+                'moneda_original': self.moneda.codigo,
+                'cotizacion_aplicada': None,
+                'fecha_cotizacion': None
+            }
+
+        # Obtener cotización vigente
+        cotizacion = CotizacionMoneda.obtener_cotizacion_vigente(self.moneda)
+
+        if not cotizacion:
+            raise ValidationError(
+                f"No se puede calcular precio en guaraníes. "
+                f"No existe cotización vigente para {self.moneda.nombre}"
+            )
+
+        valor_cotizacion = _to_decimal(cotizacion.valor_en_guaranies)
+
+        return {
+            'precio_min': self.precio_actual * valor_cotizacion,
+            'precio_max': (self.precio_final or self.precio_actual) * valor_cotizacion,
+            'moneda_original': self.moneda.codigo,
+            'cotizacion_aplicada': cotizacion.valor_en_guaranies,
+            'fecha_cotizacion': cotizacion.fecha_vigencia
+        }
+
+    @property
+    def precio_en_guaranies(self):
+        """Property para acceso rápido al precio convertido"""
+        try:
+            return self.obtener_precio_en_guaranies()
+        except ValidationError:
+            return None
+
+    # -----------------------------
+    # CONVERSIÓN A MONEDA ALTERNATIVA (USD/PYG)
+    # -----------------------------
+    def obtener_precio_en_moneda_alternativa(self, fecha=None):
+        """
+        Retorna el precio de la salida en la moneda alternativa.
+        - Si la salida es en PYG, convierte a USD
+        - Si la salida es en USD, convierte a PYG
+
+        Args:
+            fecha: date (opcional) - Fecha para obtener cotización. Default: fecha_salida
+
+        Returns:
+            dict: {
+                'moneda_alternativa': str (código),
+                'precio_min': Decimal,
+                'precio_max': Decimal,
+                'precio_venta_min': Decimal o None,
+                'precio_venta_max': Decimal o None,
+                'senia': Decimal o None,
+                'cotizacion_aplicada': Decimal,
+                'fecha_cotizacion': date
+            }
+
+        Raises:
+            ValidationError: Si no existe cotización vigente
+        """
+        from apps.moneda.models import Moneda, CotizacionMoneda
+        from .utils import convertir_entre_monedas
+
+        fecha_referencia = fecha or self.fecha_salida
+
+        # Determinar moneda alternativa
+        if self.moneda.codigo == 'PYG':
+            # Salida en PYG, mostrar en USD
+            moneda_alternativa = Moneda.objects.get(codigo='USD')
+        elif self.moneda.codigo == 'USD':
+            # Salida en USD, mostrar en PYG
+            moneda_alternativa = Moneda.objects.get(codigo='PYG')
+        else:
+            raise ValidationError(f"Moneda no soportada: {self.moneda.codigo}")
+
+        # Obtener cotización
+        if self.moneda.codigo == 'USD' or moneda_alternativa.codigo == 'USD':
+            moneda_usd = Moneda.objects.get(codigo='USD')
+            cotizacion = CotizacionMoneda.obtener_cotizacion_vigente(moneda_usd, fecha_referencia)
+
+            if not cotizacion:
+                raise ValidationError(
+                    f"No existe cotización de USD vigente para {fecha_referencia.strftime('%d/%m/%Y')}"
+                )
+        else:
+            cotizacion = None
+
+        # Convertir precios
+        precio_min = convertir_entre_monedas(
+            self.precio_actual,
+            self.moneda,
+            moneda_alternativa,
+            fecha_referencia
+        )
+
+        precio_max = convertir_entre_monedas(
+            self.precio_final or self.precio_actual,
+            self.moneda,
+            moneda_alternativa,
+            fecha_referencia
+        ) if self.precio_final else precio_min
+
+        precio_venta_min = convertir_entre_monedas(
+            self.precio_venta_sugerido_min,
+            self.moneda,
+            moneda_alternativa,
+            fecha_referencia
+        ) if self.precio_venta_sugerido_min else None
+
+        precio_venta_max = convertir_entre_monedas(
+            self.precio_venta_sugerido_max,
+            self.moneda,
+            moneda_alternativa,
+            fecha_referencia
+        ) if self.precio_venta_sugerido_max else None
+
+        senia_convertida = convertir_entre_monedas(
+            self.senia,
+            self.moneda,
+            moneda_alternativa,
+            fecha_referencia
+        ) if self.senia else None
+
+        return {
+            'moneda_alternativa': moneda_alternativa.codigo,
+            'precio_min': precio_min,
+            'precio_max': precio_max,
+            'precio_venta_min': precio_venta_min,
+            'precio_venta_max': precio_venta_max,
+            'senia': senia_convertida,
+            'cotizacion_aplicada': cotizacion.valor_en_guaranies if cotizacion else None,
+            'fecha_cotizacion': cotizacion.fecha_vigencia if cotizacion else None
+        }
+
+    @property
+    def precio_en_moneda_alternativa(self):
+        """Property para acceso rápido al precio en moneda alternativa"""
+        try:
+            return self.obtener_precio_en_moneda_alternativa()
+        except (ValidationError, Exception):
+            return None
+
+    # -----------------------------
     # CAMBIO DE PRECIO CON HISTORIAL
     # -----------------------------
     def change_price(self, nuevo_precio):
@@ -513,15 +679,44 @@ def create_salida_paquete(data):
     else:
         noches = 1
 
-    # Calcular precios en base a habitaciones
-    habitaciones = Habitacion.objects.filter(hotel__in=data["hoteles_ids"], activo=True)
+    # Calcular precios en base a habitaciones con conversión de moneda
+    habitaciones = Habitacion.objects.filter(
+        hotel__in=data["hoteles_ids"],
+        activo=True
+    ).select_related('moneda')
+
     if habitaciones.exists():
-        precios = [h.precio_noche * noches for h in habitaciones]
-        salida.precio_actual = min(precios)
-        salida.precio_final = max(precios) if precios else None
+        from .utils import convertir_entre_monedas
+
+        precios_convertidos = []
+
+        for habitacion in habitaciones:
+            precio_total = _to_decimal(habitacion.precio_noche) * noches
+
+            # Si la habitación tiene la misma moneda que la salida, usar directo
+            if habitacion.moneda == salida.moneda:
+                precios_convertidos.append(precio_total)
+            else:
+                # Convertir a la moneda de la salida
+                try:
+                    precio_convertido = convertir_entre_monedas(
+                        monto=precio_total,
+                        moneda_origen=habitacion.moneda,
+                        moneda_destino=salida.moneda,
+                        fecha=salida.fecha_salida
+                    )
+                    precios_convertidos.append(precio_convertido)
+                except ValidationError as e:
+                    raise ValidationError(
+                        f"Error al convertir precio de habitación '{habitacion}' "
+                        f"({habitacion.moneda.codigo} → {salida.moneda.codigo}): {str(e)}"
+                    )
+
+        salida.precio_actual = min(precios_convertidos)
+        salida.precio_final = max(precios_convertidos) if len(precios_convertidos) > 1 else None
         salida.save(update_fields=["precio_actual", "precio_final"])
     else:
-        salida.precio_actual = 0
+        salida.precio_actual = Decimal("0")
         salida.precio_final = None
         salida.save(update_fields=["precio_actual", "precio_final"])
 

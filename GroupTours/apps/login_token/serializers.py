@@ -1,6 +1,8 @@
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework.exceptions import AuthenticationFailed
 from collections import defaultdict
+from django.utils import timezone
+from apps.moneda.models import CotizacionMoneda, Moneda
 
 class LoginTokenSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
@@ -64,11 +66,29 @@ class LoginTokenSerializer(TokenObtainPairSerializer):
                         "permisos": permisos
                     })
 
-            # 5️⃣ Agregar datos al token
+            # 5️⃣ Verificar si hay cotización diaria cargada
+            cotizacion_diaria_cargada = self._verificar_cotizacion_diaria()
+
+            # 6️⃣ Agregar datos al token
             data["user"] = user_info
             data["debe_cambiar_contrasenia"] = self.user.debe_cambiar_contrasenia
+            data["cotizacion_diaria_cargada"] = cotizacion_diaria_cargada
 
             return data
 
         except AuthenticationFailed:
             raise AuthenticationFailed({'message': 'Credenciales incorrectas'})
+
+    def _verificar_cotizacion_diaria(self):
+        """
+        Verifica si existe al menos una cotización registrada para la fecha actual.
+        Retorna True si existe cotización del día, False en caso contrario.
+        """
+        fecha_hoy = timezone.now().date()
+
+        # Verificar si existe al menos una cotización para hoy
+        existe_cotizacion = CotizacionMoneda.objects.filter(
+            fecha_vigencia=fecha_hoy
+        ).exists()
+
+        return existe_cotizacion

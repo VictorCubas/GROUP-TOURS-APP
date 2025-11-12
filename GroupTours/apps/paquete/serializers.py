@@ -196,6 +196,8 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
     precio_venta_total_min = serializers.SerializerMethodField(read_only=True)
     precio_venta_total_max = serializers.SerializerMethodField(read_only=True)
 
+    # Campo para mostrar en moneda alternativa (USD si está en PYG, o PYG si está en USD)
+    precio_moneda_alternativa = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = SalidaPaquete
@@ -217,6 +219,7 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
             "precio_venta_total_max",
             "cupo",
             "senia",
+            "precio_moneda_alternativa",
             "activo",
             "hoteles",
             "hoteles_ids",
@@ -289,6 +292,35 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
         ya los incluye (calculado en SalidaPaquete.calcular_precio_venta()).
         """
         return obj.precio_venta_sugerido_max or Decimal("0")
+
+    # ========== MÉTODO PARA MOSTRAR EN MONEDA ALTERNATIVA ==========
+
+    def get_precio_moneda_alternativa(self, obj):
+        """
+        Retorna precios en la moneda alternativa para mostrar al cliente.
+        - Si salida en PYG → muestra en USD
+        - Si salida en USD → muestra en PYG
+
+        Esto permite el caso de uso:
+        Cliente: "¿Cuánto cuesta?"
+        Agente: "El paquete cuesta USD 500" (o "Gs 3,650,000")
+        Cliente: "¿Y en la otra moneda?"
+        Agente: "Al cambio de hoy, Gs 3,650,000" (o "USD 500")
+        """
+        try:
+            datos = obj.obtener_precio_en_moneda_alternativa()
+            return {
+                'moneda': datos['moneda_alternativa'],
+                'precio_actual': datos['precio_min'],
+                'precio_final': datos['precio_max'],
+                'precio_venta_min': datos['precio_venta_min'],
+                'precio_venta_max': datos['precio_venta_max'],
+                'senia': datos['senia'],
+                'cotizacion': datos['cotizacion_aplicada'],
+                'fecha_cotizacion': datos['fecha_cotizacion']
+            }
+        except Exception:
+            return None
 
 
 # ---------------------------------------------------------------------
@@ -879,6 +911,12 @@ class PaqueteSerializer(serializers.ModelSerializer):
                 # si enviaste un array vacío explícito → eliminar todos
                 instance.paquete_servicios.all().delete()
 
+            # Recalcular precios de venta de todas las salidas si el paquete es propio
+            # (los servicios afectan el precio de venta en paquetes propios)
+            if instance.propio:
+                for salida in instance.salidas.all():
+                    salida.calcular_precio_venta()
+
         # --- Actualizar salidas ---
         if salidas_data:
             # Obtener TODAS las salidas (activas e inactivas) para evitar duplicación
@@ -1107,6 +1145,9 @@ class PaqueteSerializer(serializers.ModelSerializer):
                             salida.precio_actual = min(precios_list)
                             salida.precio_final = max(precios_list)
                             salida.save(update_fields=["precio_actual", "precio_final"])
+
+                    # Recalcular precios de venta después de actualizar precios
+                    salida.calcular_precio_venta()
 
                     enviados_ids.append(salida_id)
                 else:
