@@ -292,7 +292,33 @@ class FacturaElectronica(models.Model):
         on_delete=models.PROTECT,
         null=True,
         blank=True,
-        help_text="Moneda de la factura"
+        help_text="Moneda de la factura (siempre PYG - guaraníes)"
+    )
+
+    # NUEVOS: Campos opcionales para mostrar información de conversión de moneda
+    moneda_original = models.ForeignKey(
+        'moneda.Moneda',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='facturas_moneda_original',
+        help_text="Moneda original del paquete antes de conversión (ej: USD). Null si no hubo conversión."
+    )
+
+    total_original = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Total de la factura en moneda original antes de conversión. Null si no hubo conversión."
+    )
+
+    tasa_conversion_aplicada = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Tasa de conversión aplicada (valor en guaraníes de 1 unidad de moneda original). Null si no hubo conversión."
     )
 
     # Totales calculados (se llenan automáticamente)
@@ -1176,6 +1202,109 @@ def validar_factura_individual(reserva, pasajero):
     if reserva.facturas.filter(tipo_facturacion='por_pasajero', pasajero=pasajero, activo=True).exists():
         raise ValidationError("El pasajero ya tiene una factura individual activa.")
 
+# ---------- Función auxiliar para conversión de moneda ----------
+def preparar_datos_factura_con_conversion(reserva):
+    """
+    Prepara los datos de facturación convirtiendo a guaraníes si es necesario.
+
+    Args:
+        reserva: Instancia de Reserva
+
+    Returns:
+        dict: {
+            'moneda': Moneda (siempre PYG),
+            'cotizacion': CotizacionMoneda o None,
+            'moneda_original': Moneda (USD, PYG, etc),
+            'requiere_conversion': bool,
+            'tasa_conversion': Decimal o None
+        }
+    """
+    from apps.moneda.models import Moneda, CotizacionMoneda
+
+    # Obtener moneda del paquete/salida
+    moneda_paquete = reserva.paquete.moneda
+
+    # Obtener moneda guaraníes
+    try:
+        moneda_pyg = Moneda.objects.get(codigo='PYG')
+    except Moneda.DoesNotExist:
+        raise ValidationError(
+            "No existe la moneda Guaraníes (PYG) en el sistema. "
+            "Por favor cree la moneda antes de facturar."
+        )
+
+    # Si ya está en guaraníes, no hay conversión
+    if moneda_paquete.codigo == 'PYG':
+        return {
+            'moneda': moneda_pyg,
+            'cotizacion': None,
+            'moneda_original': moneda_paquete,
+            'requiere_conversion': False,
+            'tasa_conversion': None
+        }
+
+    # Si es moneda extranjera, obtener cotización vigente
+    cotizacion = CotizacionMoneda.obtener_cotizacion_vigente(moneda_paquete)
+
+    if not cotizacion:
+        raise ValidationError(
+            f"No se puede generar factura. No existe cotización vigente para {moneda_paquete.nombre}. "
+            "Por favor registre una cotización antes de continuar."
+        )
+
+    return {
+        'moneda': moneda_pyg,
+        'cotizacion': cotizacion,
+        'moneda_original': moneda_paquete,
+        'requiere_conversion': True,
+        'tasa_conversion': cotizacion.valor_en_guaranies
+    }
+
+
+def convertir_monto_a_guaranies(monto, datos_conversion):
+    """
+    Convierte un monto a guaraníes según los datos de conversión.
+
+    Args:
+        monto: Decimal - Monto a convertir
+        datos_conversion: dict - Resultado de preparar_datos_factura_con_conversion()
+
+    Returns:
+        Decimal - Monto convertido (o el mismo si no requiere conversión)
+    """
+    if not datos_conversion['requiere_conversion']:
+        return Decimal(str(monto))
+
+    monto_decimal = Decimal(str(monto))
+    tasa = Decimal(str(datos_conversion['tasa_conversion']))
+
+    return monto_decimal * tasa
+
+
+def registrar_conversion_factura(factura, datos_conversion, monto_total_original):
+    """
+    Registra la conversión de moneda realizada en una factura.
+
+    Args:
+        factura: FacturaElectronica
+        datos_conversion: dict - Resultado de preparar_datos_factura_con_conversion()
+        monto_total_original: Decimal - Monto total en moneda original
+    """
+    if not datos_conversion['requiere_conversion']:
+        return None
+
+    monto_convertido = convertir_monto_a_guaranies(monto_total_original, datos_conversion)
+
+    return FacturaCotizacion.objects.create(
+        factura=factura,
+        cotizacion=datos_conversion['cotizacion'],
+        moneda_original=datos_conversion['moneda_original'],
+        monto_original=monto_total_original,
+        monto_convertido=monto_convertido,
+        tasa_conversion=datos_conversion['tasa_conversion']
+    )
+
+
 # ---------- Función para generar factura desde reserva (LEGACY - mantenida por compatibilidad) ----------
 @transaction.atomic
 def generar_factura_desde_reserva(reserva, subtipo_impuesto_id=None):
@@ -1244,7 +1373,10 @@ def generar_factura_desde_reserva(reserva, subtipo_impuesto_id=None):
         cliente_tipo_documento = 'Otro'
         cliente_numero_documento = 'S/N'
 
-    # Crear la factura
+    # NUEVO: Preparar datos de conversión de moneda
+    datos_conversion = preparar_datos_factura_con_conversion(reserva)
+
+    # Crear la factura (SIEMPRE en guaraníes)
     factura = FacturaElectronica.objects.create(
         empresa=configuracion.empresa,
         establecimiento=configuracion.establecimiento,
@@ -1266,7 +1398,11 @@ def generar_factura_desde_reserva(reserva, subtipo_impuesto_id=None):
 
         # Condiciones
         condicion_venta='contado',
-        moneda=reserva.paquete.moneda,
+        moneda=datos_conversion['moneda'],  # SIEMPRE PYG
+
+        # NUEVO: Campos de conversión (para mostrar en frontend)
+        moneda_original=datos_conversion['moneda_original'] if datos_conversion['requiere_conversion'] else None,
+        tasa_conversion_aplicada=datos_conversion['tasa_conversion'] if datos_conversion['requiere_conversion'] else None,
     )
 
     # El número de factura se genera automáticamente en el save()
@@ -1277,7 +1413,10 @@ def generar_factura_desde_reserva(reserva, subtipo_impuesto_id=None):
     # Detalle principal: Paquete turístico
     paquete = reserva.paquete
     cantidad_pasajeros = reserva.cantidad_pasajeros or 1
-    precio_unitario = reserva.precio_unitario or Decimal('0')
+    precio_unitario_original = reserva.precio_unitario or Decimal('0')
+
+    # NUEVO: Convertir precio unitario a guaraníes si es necesario
+    precio_unitario = convertir_monto_a_guaranies(precio_unitario_original, datos_conversion)
     subtotal_paquete = cantidad_pasajeros * precio_unitario
 
     # Calcular según el tipo de IVA
@@ -1313,7 +1452,10 @@ def generar_factura_desde_reserva(reserva, subtipo_impuesto_id=None):
     # Agregar servicios adicionales si los hay
     for servicio_adicional in reserva.servicios_adicionales.all():
         servicio = servicio_adicional.servicio
-        precio_servicio = servicio_adicional.precio or Decimal('0')
+        precio_servicio_original = servicio_adicional.precio or Decimal('0')
+
+        # NUEVO: Convertir precio del servicio a guaraníes si es necesario
+        precio_servicio = convertir_monto_a_guaranies(precio_servicio_original, datos_conversion)
 
         if porcentaje_iva == Decimal('0'):
             monto_exenta = precio_servicio
@@ -1343,6 +1485,15 @@ def generar_factura_desde_reserva(reserva, subtipo_impuesto_id=None):
 
     # Calcular totales de la factura
     factura.calcular_totales()
+
+    # NUEVO: Guardar total_original si hubo conversión
+    if datos_conversion['requiere_conversion']:
+        monto_total_original = reserva.costo_total_estimado or Decimal('0')
+        factura.total_original = monto_total_original
+        factura.save(update_fields=['total_original'])
+
+        # Registrar conversión en FacturaCotizacion para auditoría
+        registrar_conversion_factura(factura, datos_conversion, monto_total_original)
 
     return factura
 
@@ -1509,6 +1660,9 @@ def generar_factura_global(
                 f"La salida es el {reserva.salida.fecha_salida} y el vencimiento debe ser 15 días antes."
             )
 
+    # NUEVO: Preparar datos de conversión de moneda
+    datos_conversion = preparar_datos_factura_con_conversion(reserva)
+
     # --- Crear factura ---
     factura = FacturaElectronica.objects.create(
         empresa=configuracion.empresa,
@@ -1533,7 +1687,11 @@ def generar_factura_global(
 
         condicion_venta=condicion_venta,  # Usar condición de pago de la reserva
         fecha_vencimiento=fecha_vencimiento_calculada,  # Solo si es crédito (fecha_salida - 15 días)
-        moneda=reserva.paquete.moneda,
+        moneda=datos_conversion['moneda'],  # SIEMPRE PYG
+
+        # NUEVO: Campos de conversión (para mostrar en frontend)
+        moneda_original=datos_conversion['moneda_original'] if datos_conversion['requiere_conversion'] else None,
+        tasa_conversion_aplicada=datos_conversion['tasa_conversion'] if datos_conversion['requiere_conversion'] else None,
     )
 
 
@@ -1543,7 +1701,10 @@ def generar_factura_global(
     # Detalle principal: Paquete turístico
     paquete = reserva.paquete
     cantidad_pasajeros = reserva.cantidad_pasajeros or 1
-    precio_unitario = reserva.precio_unitario or Decimal('0')
+    precio_unitario_original = reserva.precio_unitario or Decimal('0')
+
+    # NUEVO: Convertir precio unitario a guaraníes si es necesario
+    precio_unitario = convertir_monto_a_guaranies(precio_unitario_original, datos_conversion)
     subtotal_paquete = cantidad_pasajeros * precio_unitario
 
     # Calcular según el tipo de IVA
@@ -1577,7 +1738,12 @@ def generar_factura_global(
 
     # Agregar servicios adicionales si los hay
     for servicio_adicional in reserva.servicios_adicionales.filter(activo=True):
-        subtotal_servicio = servicio_adicional.subtotal
+        subtotal_servicio_original = servicio_adicional.subtotal
+        precio_unitario_servicio_original = servicio_adicional.precio_unitario
+
+        # NUEVO: Convertir montos a guaraníes si es necesario
+        precio_unitario_servicio = convertir_monto_a_guaranies(precio_unitario_servicio_original, datos_conversion)
+        subtotal_servicio = convertir_monto_a_guaranies(subtotal_servicio_original, datos_conversion)
 
         if porcentaje_iva == Decimal('0'):
             monto_exenta = subtotal_servicio
@@ -1597,7 +1763,7 @@ def generar_factura_global(
             numero_item=item_numero,
             descripcion=f"Servicio Adicional: {servicio_adicional.servicio.nombre}",
             cantidad=servicio_adicional.cantidad,
-            precio_unitario=servicio_adicional.precio_unitario,
+            precio_unitario=precio_unitario_servicio,
             monto_exenta=monto_exenta,
             monto_gravada_5=monto_gravada_5,
             monto_gravada_10=monto_gravada_10,
@@ -1607,6 +1773,15 @@ def generar_factura_global(
 
     # Calcular totales de la factura
     factura.calcular_totales()
+
+    # NUEVO: Guardar total_original si hubo conversión
+    if datos_conversion['requiere_conversion']:
+        monto_total_original = reserva.costo_total_estimado or Decimal('0')
+        factura.total_original = monto_total_original
+        factura.save(update_fields=['total_original'])
+
+        # Registrar conversión en FacturaCotizacion para auditoría
+        registrar_conversion_factura(factura, datos_conversion, monto_total_original)
 
     return factura
 
@@ -1744,6 +1919,9 @@ def generar_factura_individual(
         cliente_telefono = getattr(persona, 'telefono', '')
         cliente_email = getattr(persona, 'email', '')
 
+    # NUEVO: Preparar datos de conversión de moneda
+    datos_conversion = preparar_datos_factura_con_conversion(reserva)
+
     # --- Crear factura ---
     factura = FacturaElectronica.objects.create(
         empresa=configuracion.empresa,
@@ -1767,12 +1945,19 @@ def generar_factura_individual(
         cliente_email=cliente_email,
 
         condicion_venta='contado',
-        moneda=reserva.paquete.moneda,
+        moneda=datos_conversion['moneda'],  # SIEMPRE PYG
+
+        # NUEVO: Campos de conversión (para mostrar en frontend)
+        moneda_original=datos_conversion['moneda_original'] if datos_conversion['requiere_conversion'] else None,
+        tasa_conversion_aplicada=datos_conversion['tasa_conversion'] if datos_conversion['requiere_conversion'] else None,
     )
 
     # --- 🔹 Detalle principal ---
     paquete = reserva.paquete
-    precio_unitario = reserva.precio_unitario or Decimal('0')
+    precio_unitario_original = reserva.precio_unitario or Decimal('0')
+
+    # NUEVO: Convertir precio unitario a guaraníes si es necesario
+    precio_unitario = convertir_monto_a_guaranies(precio_unitario_original, datos_conversion)
     subtotal = precio_unitario
     porcentaje_iva = subtipo_impuesto.porcentaje or Decimal('10')
 
@@ -1802,6 +1987,16 @@ def generar_factura_individual(
     )
 
     factura.calcular_totales()
+
+    # NUEVO: Guardar total_original si hubo conversión
+    if datos_conversion['requiere_conversion']:
+        monto_total_original = precio_unitario_original  # Para factura individual es solo el precio unitario
+        factura.total_original = monto_total_original
+        factura.save(update_fields=['total_original'])
+
+        # Registrar conversión en FacturaCotizacion para auditoría
+        registrar_conversion_factura(factura, datos_conversion, monto_total_original)
+
     return factura
 
 
@@ -2251,10 +2446,16 @@ class NotaCreditoElectronica(models.Model):
         elements.append(Spacer(1, 0.1*inch))
 
         # ===== TOTALES =====
+        total_gral = int(self.total_general)
+        iva_5 = int(self.total_iva_5)
+        iva_10 = int(self.total_iva_10)
+        total_iva = int(self.total_iva)
+
         totales_data = [
-            ['SUBTOTAL:', '', '', f"{int(self.total_general):,}"],
-            ['TOTAL ACREDITADO:', '', '', f"{int(self.total_general):,}"],
-            ['LIQUIDACIÓN IVA:', f"(5%) {int(self.total_iva_5):,}", f"(10%) {int(self.total_iva_10):,}", f"{int(self.total_iva):,}"]
+            ['SUBTOTAL:', '', '', f"{total_gral:,}"],
+            ['TOTAL ACREDITADO:', '', '', f"{total_gral:,}"],
+            ['TOTAL EN GUARANÍES:', '', '', f"{total_gral:,}"],
+            ['LIQUIDACIÓN IVA:', f"(5%) {iva_5:,}", f"(10%) {iva_10:,}", f"{total_iva:,}"]
         ]
 
         totales_table = Table(totales_data, colWidths=[2.5*inch, 1.5*inch, 1.5*inch, 1.0*inch])
@@ -2650,3 +2851,69 @@ def generar_nota_credito_parcial(factura_id, items_a_acreditar, motivo, observac
         print(f"Error generando PDF de NC: {e}")
 
     return nota_credito
+
+
+# ========================================
+# CONVERSIÓN DE MONEDA EN FACTURACIÓN
+# ========================================
+
+class FacturaCotizacion(models.Model):
+    """
+    Registra qué cotización se utilizó para convertir una factura de moneda extranjera a guaraníes.
+    Permite auditoría y trazabilidad de las conversiones realizadas en el momento de facturación.
+
+    Este modelo se crea automáticamente cuando se genera una factura para una salida
+    cuya moneda es diferente a guaraníes (PYG).
+    """
+    factura = models.OneToOneField(
+        FacturaElectronica,
+        on_delete=models.PROTECT,
+        related_name='conversion_moneda',
+        help_text="Factura que utilizó conversión de moneda"
+    )
+
+    cotizacion = models.ForeignKey(
+        'moneda.CotizacionMoneda',
+        on_delete=models.PROTECT,
+        related_name='facturas_convertidas',
+        help_text="Cotización utilizada para la conversión"
+    )
+
+    moneda_original = models.ForeignKey(
+        'moneda.Moneda',
+        on_delete=models.PROTECT,
+        related_name='facturas_convertidas_desde',
+        help_text="Moneda original del paquete/salida"
+    )
+
+    monto_original = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        help_text="Monto en la moneda original (ej: USD)"
+    )
+
+    monto_convertido = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        help_text="Monto convertido a guaraníes"
+    )
+
+    tasa_conversion = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        help_text="Tasa de conversión aplicada (valor en guaraníes de 1 unidad de moneda original)"
+    )
+
+    fecha_conversion = models.DateTimeField(
+        auto_now_add=True,
+        help_text="Fecha y hora en que se realizó la conversión"
+    )
+
+    class Meta:
+        db_table = 'factura_cotizacion'
+        verbose_name = "Conversión de Factura"
+        verbose_name_plural = "Conversiones de Facturas"
+        ordering = ['-fecha_conversion']
+
+    def __str__(self):
+        return f"Factura {self.factura.numero_factura}: {self.monto_original} {self.moneda_original.codigo} → {self.monto_convertido} Gs (tasa: {self.tasa_conversion})"
