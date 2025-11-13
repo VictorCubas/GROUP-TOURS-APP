@@ -106,6 +106,7 @@ INSTALLED_APPS = [
     'apps.ciudad',
     'apps.zona_geografica',
     'apps.comprobante',
+    'apps.arqueo_caja',
 ]
 
 MIDDLEWARE = [
