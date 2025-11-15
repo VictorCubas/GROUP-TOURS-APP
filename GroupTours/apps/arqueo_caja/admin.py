@@ -6,20 +6,21 @@ from .models import Caja, AperturaCaja, MovimientoCaja, CierreCaja
 @admin.register(Caja)
 class CajaAdmin(admin.ModelAdmin):
     list_display = [
-        'numero_caja', 'nombre', 'punto_expedicion', 'emite_facturas',
+        'numero_caja', 'nombre', 'punto_expedicion',
         'estado_actual', 'saldo_actual', 'activo'
     ]
-    list_filter = ['estado_actual', 'emite_facturas', 'activo']
-    search_fields = ['nombre', 'numero_caja', 'ubicacion']
+    list_filter = ['estado_actual', 'activo']
+    search_fields = ['nombre', 'numero_caja']
     ordering = ['numero_caja']
-    readonly_fields = ['estado_actual', 'saldo_actual', 'fecha_creacion', 'fecha_modificacion']
+    readonly_fields = ['numero_caja', 'estado_actual', 'saldo_actual', 'fecha_creacion', 'fecha_modificacion']
 
     fieldsets = (
         ('Información Básica', {
-            'fields': ('nombre', 'numero_caja', 'descripcion', 'ubicacion')
+            'fields': ('nombre', 'numero_caja', 'descripcion')
         }),
-        ('Facturación', {
-            'fields': ('punto_expedicion', 'emite_facturas')
+        ('Punto de Expedición (Obligatorio)', {
+            'fields': ('punto_expedicion',),
+            'description': 'Todas las cajas emiten facturas y deben tener un punto de expedición asignado (relación 1:1)'
         }),
         ('Estado', {
             'fields': ('estado_actual', 'saldo_actual', 'activo')

@@ -9,8 +9,22 @@ from apps.empleado.serializers import EmpleadoSerializer
 
 class CajaListSerializer(serializers.ModelSerializer):
     """Serializer para listar cajas (vista resumida)"""
+    punto_expedicion_codigo = serializers.CharField(
+        source='punto_expedicion.codigo',
+        read_only=True
+    )
     punto_expedicion_nombre = serializers.CharField(
         source='punto_expedicion.nombre',
+        read_only=True
+    )
+
+    # Información del establecimiento
+    establecimiento_codigo = serializers.CharField(
+        source='punto_expedicion.establecimiento.codigo',
+        read_only=True
+    )
+    establecimiento_nombre = serializers.CharField(
+        source='punto_expedicion.establecimiento.nombre',
         read_only=True
     )
 
@@ -21,9 +35,9 @@ class CajaListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Caja
         fields = [
-            'id', 'nombre', 'numero_caja', 'punto_expedicion',
-            'punto_expedicion_nombre', 'emite_facturas', 'descripcion', 'ubicacion',
-            'estado_actual', 'saldo_actual', 'saldo_actual_alternativo',
+            'id', 'nombre', 'numero_caja', 'punto_expedicion', 'punto_expedicion_codigo',
+            'punto_expedicion_nombre', 'establecimiento_codigo', 'establecimiento_nombre',
+            'descripcion', 'estado_actual', 'saldo_actual', 'saldo_actual_alternativo',
             'moneda_alternativa', 'activo'
         ]
 
@@ -85,21 +99,37 @@ class CajaCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Caja
         fields = [
-            'nombre', 'punto_expedicion',
-            'emite_facturas', 'descripcion', 'ubicacion', 'activo'
+            'nombre', 'punto_expedicion', 'descripcion', 'activo'
         ]
         # numero_caja se genera automáticamente
+        # punto_expedicion es OBLIGATORIO (todas las cajas emiten facturas)
+
+    def validate_punto_expedicion(self, value):
+        """Validar que el punto de expedición esté disponible"""
+        if value:
+            # Para creación o actualización a un PE diferente
+            if not self.instance or self.instance.punto_expedicion != value:
+                # Verificar que el PE no esté usado por otra caja
+                if hasattr(value, 'caja'):
+                    raise serializers.ValidationError(
+                        f"El punto de expedición '{value}' ya está asignado a la caja '{value.caja.nombre}'"
+                    )
+        return value
 
     def validate(self, data):
+        # Validar que punto_expedicion sea obligatorio
+        if not self.instance and 'punto_expedicion' not in data:
+            raise serializers.ValidationError({
+                'punto_expedicion': 'Este campo es obligatorio'
+            })
+
         # Para actualización (PATCH/PUT), usar la instancia existente
         if self.instance:
             # Crear una copia de los valores actuales
             temp_data = {
                 'nombre': self.instance.nombre,
                 'punto_expedicion': self.instance.punto_expedicion,
-                'emite_facturas': self.instance.emite_facturas,
                 'descripcion': self.instance.descripcion,
-                'ubicacion': self.instance.ubicacion,
                 'activo': self.instance.activo,
             }
             # Actualizar con los nuevos valores del payload
@@ -129,12 +159,25 @@ class AperturaCajaListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'codigo_apertura', 'caja', 'caja_nombre',
             'responsable', 'responsable_nombre', 'fecha_hora_apertura',
-            'monto_inicial', 'esta_abierta', 'activo'
+            'monto_inicial', 'observaciones_apertura', 'esta_abierta', 'activo'
         ]
 
     def get_responsable_nombre(self, obj):
         if obj.responsable and obj.responsable.persona:
-            return f"{obj.responsable.persona.nombre} {obj.responsable.persona.apellido}"
+            persona = obj.responsable.persona
+            try:
+                # Intentar acceder a PersonaFisica
+                persona_fisica = persona.personafisica
+                return f"{persona_fisica.nombre} {persona_fisica.apellido or ''}".strip()
+            except:
+                pass
+
+            try:
+                # Intentar acceder a PersonaJuridica
+                persona_juridica = persona.personajuridica
+                return persona_juridica.razon_social
+            except:
+                pass
         return None
 
 
@@ -162,7 +205,7 @@ class AperturaCajaDetailSerializer(serializers.ModelSerializer):
 
 
 class AperturaCajaCreateSerializer(serializers.ModelSerializer):
-    """Serializer para crear aperturas"""
+    """Serializer para crear/actualizar aperturas"""
 
     class Meta:
         model = AperturaCaja
@@ -171,9 +214,29 @@ class AperturaCajaCreateSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, data):
-        # Llamar al método clean del modelo para validaciones de negocio
-        instance = AperturaCaja(**data)
-        instance.clean()
+        # Para actualización (PATCH/PUT), usar la instancia existente
+        if self.instance:
+            # Crear una copia de los valores actuales
+            temp_data = {
+                'caja': self.instance.caja,
+                'responsable': self.instance.responsable,
+                'monto_inicial': self.instance.monto_inicial,
+                'observaciones_apertura': self.instance.observaciones_apertura,
+            }
+            # Actualizar con los nuevos valores del payload
+            temp_data.update(data)
+
+            # Crear instancia temporal con todos los datos
+            temp_instance = AperturaCaja(**temp_data)
+            temp_instance.pk = self.instance.pk  # Mantener el ID para las validaciones
+            temp_instance.esta_abierta = self.instance.esta_abierta
+            temp_instance.activo = self.instance.activo
+            temp_instance.clean()
+        else:
+            # Para creación, crear instancia temporal
+            instance = AperturaCaja(**data)
+            instance.clean()
+
         return data
 
 
@@ -216,7 +279,20 @@ class MovimientoCajaListSerializer(serializers.ModelSerializer):
 
     def get_usuario_nombre(self, obj):
         if obj.usuario_registro and obj.usuario_registro.persona:
-            return f"{obj.usuario_registro.persona.nombre} {obj.usuario_registro.persona.apellido}"
+            persona = obj.usuario_registro.persona
+            try:
+                # Intentar acceder a PersonaFisica
+                persona_fisica = persona.personafisica
+                return f"{persona_fisica.nombre} {persona_fisica.apellido or ''}".strip()
+            except:
+                pass
+
+            try:
+                # Intentar acceder a PersonaJuridica
+                persona_juridica = persona.personajuridica
+                return persona_juridica.razon_social
+            except:
+                pass
         return None
 
 
@@ -277,7 +353,19 @@ class CierreCajaListSerializer(serializers.ModelSerializer):
     def get_responsable_nombre(self, obj):
         if obj.apertura_caja.responsable and obj.apertura_caja.responsable.persona:
             persona = obj.apertura_caja.responsable.persona
-            return f"{persona.nombre} {persona.apellido}"
+            try:
+                # Intentar acceder a PersonaFisica
+                persona_fisica = persona.personafisica
+                return f"{persona_fisica.nombre} {persona_fisica.apellido or ''}".strip()
+            except:
+                pass
+
+            try:
+                # Intentar acceder a PersonaJuridica
+                persona_juridica = persona.personajuridica
+                return persona_juridica.razon_social
+            except:
+                pass
         return None
 
 

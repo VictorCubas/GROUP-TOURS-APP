@@ -18,7 +18,8 @@ def _to_decimal(value):
 class Caja(models.Model):
     """
     Representa un punto de venta físico donde se manejan transacciones.
-    Puede estar asociada a un PuntoExpedicion para emisión de facturas.
+    Cada caja tiene asignado un PuntoExpedicion exclusivo (relación 1:1) para emisión de facturas.
+    Todas las cajas emiten facturas electrónicas.
     """
 
     nombre = models.CharField(
@@ -27,39 +28,27 @@ class Caja(models.Model):
     )
 
     numero_caja = models.CharField(
-        max_length=10,
+        max_length=20,
         unique=True,
         editable=False,
-        help_text="Número único de la caja con formato 001, 002, 003..."
+        help_text="Número de la caja (formato: ESTABLECIMIENTO-PUNTO_EXPEDICION)"
     )
 
-    # Relación opcional con punto de expedición para facturación
-    punto_expedicion = models.ForeignKey(
+    # Relación 1:1 OBLIGATORIA con punto de expedición
+    punto_expedicion = models.OneToOneField(
         'facturacion.PuntoExpedicion',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='cajas',
-        help_text="Punto de expedición asociado (si emite facturas desde esta caja)"
-    )
-
-    # Indicador de si emite facturas
-    emite_facturas = models.BooleanField(
-        default=True,
-        help_text="Indica si esta caja puede emitir facturas electrónicas"
+        on_delete=models.PROTECT,
+        related_name='caja',
+        help_text="Punto de expedición exclusivo de esta caja (relación 1:1)",
+        error_messages={
+            'unique': 'Ya existe una caja con este punto de expedición.'
+        }
     )
 
     descripcion = models.TextField(
         blank=True,
         null=True,
         help_text="Descripción adicional"
-    )
-
-    ubicacion = models.CharField(
-        max_length=200,
-        blank=True,
-        null=True,
-        help_text="Ubicación física de la caja"
     )
 
     # Estado actual
@@ -96,31 +85,34 @@ class Caja(models.Model):
         return f"{self.nombre} (#{self.numero_caja})"
 
     def save(self, *args, **kwargs):
-        # Auto-generar número de caja
-        if not self.numero_caja:
-            # Obtener el último número de caja
-            ultima_caja = Caja.objects.all().order_by('-id').first()
-            if ultima_caja and ultima_caja.numero_caja:
-                try:
-                    ultimo_numero = int(ultima_caja.numero_caja)
-                    nuevo_numero = ultimo_numero + 1
-                except (ValueError, TypeError):
-                    nuevo_numero = 1
-            else:
-                nuevo_numero = 1
-
-            # Formatear con ceros a la izquierda (001, 002, 003...)
-            self.numero_caja = f"{nuevo_numero:03d}"
+        # Asignar número de caja con formato ESTABLECIMIENTO-PUNTO_EXPEDICION
+        if self.punto_expedicion and not self.numero_caja:
+            establecimiento_codigo = self.punto_expedicion.establecimiento.codigo
+            pe_codigo = self.punto_expedicion.codigo
+            self.numero_caja = f"{establecimiento_codigo}-{pe_codigo}"
 
         super().save(*args, **kwargs)
 
     def clean(self):
         """Validaciones de negocio"""
-        # Validar que si emite facturas, tenga punto de expedición
-        if self.emite_facturas and not self.punto_expedicion:
+        # Validar que el punto de expedición sea obligatorio
+        if not self.punto_expedicion:
             raise ValidationError(
-                "Una caja que emite facturas debe tener un punto de expedición asociado"
+                "Todas las cajas deben tener un punto de expedición asociado"
             )
+
+        # Validar que el punto de expedición no esté usado por otra caja (1:1)
+        # Django ya valida esto con OneToOneField, pero agregamos mensaje personalizado
+        if self.punto_expedicion:
+            caja_existente = Caja.objects.filter(
+                punto_expedicion=self.punto_expedicion
+            ).exclude(pk=self.pk).first()
+
+            if caja_existente:
+                raise ValidationError(
+                    f"El punto de expedición {self.punto_expedicion} ya está asignado "
+                    f"a la caja '{caja_existente.nombre}'"
+                )
 
     def puede_abrir(self):
         """Verifica si la caja puede ser abierta"""

@@ -25,10 +25,11 @@ class CajaViewSet(viewsets.ModelViewSet):
     Acciones personalizadas:
     - GET /cajas/{id}/estado/ - Obtener estado actual de la caja
     - GET /cajas/{id}/historial/ - Historial de aperturas y cierres
+    - GET /cajas/puntos-expedicion-disponibles/ - Lista de PEs disponibles (sin caja asignada)
     """
-    queryset = Caja.objects.all().select_related('punto_expedicion')
+    queryset = Caja.objects.all().select_related('punto_expedicion', 'punto_expedicion__establecimiento')
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ['estado_actual', 'activo', 'emite_facturas', 'punto_expedicion']
+    filterset_fields = ['estado_actual', 'activo', 'punto_expedicion']
     pagination_class = CustomPageNumberPagination
 
     def get_serializer_class(self):
@@ -140,7 +141,6 @@ class CajaViewSet(viewsets.ModelViewSet):
         inactivas = Caja.objects.filter(activo=False).count()
         abiertas = Caja.objects.filter(estado_actual='abierta', activo=True).count()
         cerradas = Caja.objects.filter(estado_actual='cerrada', activo=True).count()
-        emiten_facturas = Caja.objects.filter(emite_facturas=True, activo=True).count()
 
         # Saldo total en cajas abiertas
         saldo_total = Caja.objects.filter(
@@ -157,11 +157,35 @@ class CajaViewSet(viewsets.ModelViewSet):
             {'texto': 'Inactivas', 'valor': str(inactivas)},
             {'texto': 'Abiertas Ahora', 'valor': str(abiertas)},
             {'texto': 'Cerradas', 'valor': str(cerradas)},
-            {'texto': 'Emiten Facturas', 'valor': str(emiten_facturas)},
             {'texto': 'Saldo Total en Cajas Abiertas', 'valor': f'Gs {saldo_total:,.0f}'},
             {'texto': 'Nuevas últimos 30 días', 'valor': str(nuevas)},
         ]
         return Response(data)
+
+    @action(detail=False, methods=['get'], url_path='puntos-expedicion-disponibles', pagination_class=None)
+    def puntos_expedicion_disponibles(self, request):
+        """
+        Retorna la lista de Puntos de Expedición que NO tienen una caja asignada.
+        Útil para el selector del frontend al crear/editar cajas.
+
+        GET /api/cajas/puntos-expedicion-disponibles/
+
+        Returns:
+            Lista de PuntoExpedicion que están activos y no tienen caja asignada.
+        """
+        from apps.facturacion.models import PuntoExpedicion
+        from apps.facturacion.serializers import PuntoExpedicionSerializer
+
+        # Obtener PEs que no tienen caja asignada
+        # Con la relación OneToOneField, los PE sin caja no tienen el atributo 'caja'
+        pes_disponibles = PuntoExpedicion.objects.filter(
+            activo=True
+        ).exclude(
+            caja__isnull=False  # Excluir los que YA tienen caja
+        ).select_related('establecimiento').order_by('establecimiento', 'codigo')
+
+        serializer = PuntoExpedicionSerializer(pes_disponibles, many=True)
+        return Response(serializer.data)
 
 
 class AperturaCajaViewSet(viewsets.ModelViewSet):
