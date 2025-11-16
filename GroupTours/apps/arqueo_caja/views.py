@@ -13,7 +13,7 @@ from .serializers import (
     AperturaCajaListSerializer, AperturaCajaDetailSerializer, AperturaCajaCreateSerializer,
     MovimientoCajaListSerializer, MovimientoCajaDetailSerializer, MovimientoCajaCreateSerializer,
     CierreCajaListSerializer, CierreCajaDetailSerializer, CierreCajaCreateSerializer,
-    CierreCajaAutorizarSerializer
+    CierreCajaAutorizarSerializer, CierreCajaSimpleSerializer
 )
 from .pagination import CustomPageNumberPagination
 
@@ -290,8 +290,8 @@ class AperturaCajaViewSet(viewsets.ModelViewSet):
 
         return Response({'message': 'Apertura anulada exitosamente'})
 
-    @action(detail=False, methods=['get'], url_path='resumen', pagination_class=None)
-    def resumen(self, request):
+    @action(detail=False, methods=['get'], url_path='resumen-general', pagination_class=None)
+    def resumen_general(self, request):
         """Resumen estadístico de aperturas"""
         from decimal import Decimal
 
@@ -335,6 +335,73 @@ class AperturaCajaViewSet(viewsets.ModelViewSet):
             {'texto': 'Nuevas últimos 30 días', 'valor': str(nuevas)},
         ]
         return Response(data)
+
+    @action(detail=False, methods=['get'], url_path='tengo-caja-abierta', pagination_class=None)
+    def tengo_caja_abierta(self, request):
+        """
+        Verifica si el usuario autenticado tiene una caja abierta.
+
+        GET /api/arqueo-caja/aperturas/tengo-caja-abierta/
+
+        Returns:
+            - tiene_caja_abierta: boolean
+            - apertura_id: ID de la apertura (si existe)
+            - caja_nombre: Nombre de la caja (si existe)
+            - fecha_hora_apertura: Fecha y hora de apertura (si existe)
+            - monto_inicial: Monto inicial en guaraníes (si existe)
+            - monto_inicial_alternativo: Monto inicial en USD (si existe)
+        """
+        from .services import obtener_caja_abierta_por_usuario
+        from decimal import Decimal
+
+        try:
+            empleado = request.user.empleado
+        except AttributeError:
+            return Response({
+                'tiene_caja_abierta': False,
+                'error': 'Usuario no tiene empleado asociado'
+            })
+
+        apertura = obtener_caja_abierta_por_usuario(empleado)
+
+        if apertura:
+            # Calcular monto inicial alternativo (convertir de PYG a USD)
+            monto_inicial_alternativo = None
+            try:
+                from apps.moneda.models import Moneda, CotizacionMoneda
+
+                # Obtener la moneda USD
+                moneda_usd = Moneda.objects.get(codigo='USD', activo=True)
+
+                # Obtener cotización vigente
+                cotizacion = CotizacionMoneda.obtener_cotizacion_vigente(moneda_usd)
+
+                if cotizacion:
+                    # Convertir de PYG a USD (dividir por la cotización)
+                    monto_pyg = Decimal(str(apertura.monto_inicial))
+                    valor_cotizacion = Decimal(str(cotizacion.valor_en_guaranies))
+
+                    if valor_cotizacion != 0:
+                        monto_usd = monto_pyg / valor_cotizacion
+                        monto_inicial_alternativo = round(monto_usd, 2)
+            except Exception:
+                # Si hay error al obtener cotización, monto_inicial_alternativo será None
+                pass
+
+            return Response({
+                'tiene_caja_abierta': True,
+                'apertura_id': apertura.id,
+                'codigo_apertura': apertura.codigo_apertura,
+                'caja_id': apertura.caja.id,
+                'caja_nombre': apertura.caja.nombre,
+                'fecha_hora_apertura': apertura.fecha_hora_apertura,
+                'monto_inicial': apertura.monto_inicial,
+                'monto_inicial_alternativo': monto_inicial_alternativo
+            })
+        else:
+            return Response({
+                'tiene_caja_abierta': False
+            })
 
 
 class MovimientoCajaViewSet(viewsets.ModelViewSet):
@@ -577,6 +644,91 @@ class CierreCajaViewSet(viewsets.ModelViewSet):
 
         return Response(resumen)
 
+    @action(detail=False, methods=['post'], url_path='cerrar-simple')
+    def cerrar_simple(self, request):
+        """
+        Endpoint simplificado para cerrar caja.
+
+        POST /api/arqueo-caja/cierres/cerrar-simple/
+
+        Body:
+        {
+            "apertura_caja": integer,
+            "saldo_real_efectivo": decimal,
+            "observaciones": string (optional)
+        }
+
+        Response:
+        {
+            "codigo_cierre": string,
+            "fecha_cierre": datetime,
+            "monto_inicial": decimal,
+            "total_vendido": decimal,
+            "total_gastado": decimal,
+            "saldo_teorico": decimal,
+            "saldo_real": decimal,
+            "diferencia": decimal,
+            "diferencia_porcentaje": decimal,
+            "requiere_autorizacion": boolean,
+            "estado": string
+        }
+        """
+        from decimal import Decimal
+
+        # Validar datos de entrada
+        serializer = CierreCajaSimpleSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        # Obtener datos validados
+        apertura = serializer.validated_data['apertura_caja']
+        saldo_real_efectivo = serializer.validated_data['saldo_real_efectivo']
+        observaciones = serializer.validated_data.get('observaciones', '')
+
+        # Crear el cierre
+        cierre = CierreCaja.objects.create(
+            apertura_caja=apertura,
+            saldo_real_efectivo=saldo_real_efectivo,
+            observaciones_cierre=observaciones
+        )
+
+        # Calcular totales automáticamente
+        cierre.calcular_totales_desde_movimientos()
+
+        # Recargar para obtener los valores actualizados
+        cierre.refresh_from_db()
+
+        # Determinar estado
+        estado = "completado"
+        if cierre.requiere_autorizacion:
+            estado = "pendiente_autorizacion"
+
+        # Calcular total vendido (ingresos) y total gastado (egresos)
+        total_vendido = (
+            cierre.total_efectivo +
+            cierre.total_tarjetas +
+            cierre.total_transferencias +
+            cierre.total_cheques +
+            cierre.total_otros_ingresos
+        )
+        total_gastado = cierre.total_egresos
+
+        # Preparar respuesta
+        response_data = {
+            'codigo_cierre': cierre.codigo_cierre,
+            'fecha_cierre': cierre.fecha_hora_cierre,
+            'monto_inicial': cierre.apertura_caja.monto_inicial,
+            'total_vendido': total_vendido,
+            'total_gastado': total_gastado,
+            'saldo_teorico': cierre.saldo_teorico_efectivo,
+            'saldo_real': cierre.saldo_real_efectivo,
+            'diferencia': cierre.diferencia_efectivo,
+            'diferencia_porcentaje': cierre.diferencia_porcentaje,
+            'requiere_autorizacion': cierre.requiere_autorizacion,
+            'estado': estado
+        }
+
+        return Response(response_data, status=status.HTTP_201_CREATED)
+
     @action(detail=False, methods=['get'], url_path='resumen-general', pagination_class=None)
     def resumen_general(self, request):
         """Resumen estadístico de todos los cierres"""
@@ -639,3 +791,93 @@ class CierreCajaViewSet(viewsets.ModelViewSet):
             {'texto': 'Nuevos últimos 30 días', 'valor': str(nuevos)},
         ]
         return Response(data)
+
+    @action(detail=False, methods=['post'], url_path='cerrar-cajas-abiertas')
+    def cerrar_cajas_abiertas(self, request):
+        """
+        Endpoint administrativo para cerrar todas las cajas que quedaron abiertas.
+        Útil para resetear el sistema o corregir aperturas huérfanas.
+
+        POST /api/arqueo-caja/cierres/cerrar-cajas-abiertas/
+
+        Response:
+        {
+            "message": "Se cerraron X cajas exitosamente",
+            "cajas_cerradas": [
+                {
+                    "caja_nombre": "Caja 1",
+                    "codigo_cierre": "CIE-2025-0001",
+                    "apertura_codigo": "APR-2025-0001",
+                    "monto_inicial": 1000000.00,
+                    "saldo_teorico": 1000000.00
+                },
+                ...
+            ]
+        }
+        """
+        from decimal import Decimal
+        from django.db import transaction
+
+        # Buscar todas las aperturas que están abiertas
+        aperturas_abiertas = AperturaCaja.objects.filter(
+            esta_abierta=True,
+            activo=True
+        ).select_related('caja', 'responsable', 'responsable__persona')
+
+        if not aperturas_abiertas.exists():
+            return Response({
+                'message': 'No hay cajas abiertas para cerrar',
+                'cajas_cerradas': []
+            }, status=status.HTTP_200_OK)
+
+        cajas_cerradas = []
+        errores = []
+
+        # Procesar cada apertura
+        with transaction.atomic():
+            for apertura in aperturas_abiertas:
+                try:
+                    # Crear el cierre con saldo real = saldo teórico (asumimos que está correcto)
+                    # Ya que estamos haciendo un cierre administrativo/automático
+                    cierre = CierreCaja.objects.create(
+                        apertura_caja=apertura,
+                        saldo_real_efectivo=apertura.caja.saldo_actual,
+                        observaciones_cierre="Cierre automático - Reseteo de sistema"
+                    )
+
+                    # Calcular totales automáticamente
+                    cierre.calcular_totales_desde_movimientos()
+
+                    # Recargar para obtener los valores actualizados
+                    cierre.refresh_from_db()
+
+                    cajas_cerradas.append({
+                        'caja_id': apertura.caja.id,
+                        'caja_nombre': apertura.caja.nombre,
+                        'codigo_cierre': cierre.codigo_cierre,
+                        'apertura_codigo': apertura.codigo_apertura,
+                        'monto_inicial': str(apertura.monto_inicial),
+                        'saldo_teorico': str(cierre.saldo_teorico_efectivo) if cierre.saldo_teorico_efectivo else '0.00',
+                        'saldo_real': str(cierre.saldo_real_efectivo) if cierre.saldo_real_efectivo else '0.00',
+                        'diferencia': str(cierre.diferencia_efectivo) if cierre.diferencia_efectivo else '0.00'
+                    })
+
+                except Exception as e:
+                    errores.append({
+                        'caja_nombre': apertura.caja.nombre,
+                        'apertura_codigo': apertura.codigo_apertura,
+                        'error': str(e)
+                    })
+
+        # Preparar respuesta
+        response_data = {
+            'message': f'Se cerraron {len(cajas_cerradas)} cajas exitosamente',
+            'total_cerradas': len(cajas_cerradas),
+            'total_errores': len(errores),
+            'cajas_cerradas': cajas_cerradas
+        }
+
+        if errores:
+            response_data['errores'] = errores
+
+        return Response(response_data, status=status.HTTP_200_OK)

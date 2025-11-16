@@ -435,3 +435,32 @@ class CierreCajaAutorizarSerializer(serializers.Serializer):
             return empleado
         except Empleado.DoesNotExist:
             raise serializers.ValidationError("Empleado no encontrado o inactivo")
+
+
+class CierreCajaSimpleSerializer(serializers.Serializer):
+    """Serializer para cerrar caja de manera simple (endpoint cerrar-simple)"""
+    apertura_caja = serializers.IntegerField(
+        help_text="ID de la apertura de caja a cerrar"
+    )
+    saldo_real_efectivo = serializers.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        help_text="Saldo real contado en efectivo"
+    )
+    observaciones = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text="Observaciones del cierre"
+    )
+
+    def validate_apertura_caja(self, value):
+        """Validar que la apertura exista y esté abierta"""
+        try:
+            apertura = AperturaCaja.objects.get(pk=value, activo=True)
+            if not apertura.esta_abierta:
+                raise serializers.ValidationError(
+                    "No se puede cerrar una caja que ya está cerrada"
+                )
+            return apertura
+        except AperturaCaja.DoesNotExist:
+            raise serializers.ValidationError("Apertura no encontrada o inactiva")
