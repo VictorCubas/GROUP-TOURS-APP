@@ -212,6 +212,9 @@ class AperturaCajaCreateSerializer(serializers.ModelSerializer):
         fields = [
             'caja', 'responsable', 'monto_inicial', 'observaciones_apertura'
         ]
+        extra_kwargs = {
+            'responsable': {'required': False, 'allow_null': True}
+        }
 
     def validate(self, data):
         # Para actualización (PATCH/PUT), usar la instancia existente
@@ -233,9 +236,11 @@ class AperturaCajaCreateSerializer(serializers.ModelSerializer):
             temp_instance.activo = self.instance.activo
             temp_instance.clean()
         else:
-            # Para creación, crear instancia temporal
-            instance = AperturaCaja(**data)
-            instance.clean()
+            # Para creación, validar solo si se proporciona responsable explícitamente
+            # Si no se proporciona, se asignará en la vista
+            if 'responsable' in data and data['responsable']:
+                instance = AperturaCaja(**data)
+                instance.clean()
 
         return data
 
@@ -243,7 +248,7 @@ class AperturaCajaCreateSerializer(serializers.ModelSerializer):
 # ================== MOVIMIENTO CAJA ==================
 
 class MovimientoCajaListSerializer(serializers.ModelSerializer):
-    """Serializer para listar movimientos (vista resumida)"""
+    """Serializer para listar movimientos (vista resumida con información adicional)"""
     tipo_movimiento_display = serializers.CharField(
         source='get_tipo_movimiento_display',
         read_only=True
@@ -254,14 +259,25 @@ class MovimientoCajaListSerializer(serializers.ModelSerializer):
         read_only=True
     )
     usuario_nombre = serializers.SerializerMethodField()
+    caja_nombre = serializers.CharField(
+        source='apertura_caja.caja.nombre',
+        read_only=True
+    )
+    apertura_codigo = serializers.CharField(
+        source='apertura_caja.codigo_apertura',
+        read_only=True
+    )
+    comprobante_numero = serializers.SerializerMethodField()
+    tiene_comprobante = serializers.SerializerMethodField()
 
     class Meta:
         model = MovimientoCaja
         fields = [
-            'id', 'numero_movimiento', 'apertura_caja', 'comprobante',
+            'id', 'numero_movimiento', 'apertura_caja', 'apertura_codigo',
+            'caja_nombre', 'comprobante', 'comprobante_numero', 'tiene_comprobante',
             'tipo_movimiento', 'tipo_movimiento_display', 'concepto',
             'concepto_display', 'monto', 'metodo_pago', 'metodo_pago_display',
-            'referencia', 'fecha_hora_movimiento', 'usuario_registro',
+            'referencia', 'descripcion', 'fecha_hora_movimiento', 'usuario_registro',
             'usuario_nombre', 'activo'
         ]
 
@@ -294,6 +310,16 @@ class MovimientoCajaListSerializer(serializers.ModelSerializer):
             except:
                 pass
         return None
+
+    def get_comprobante_numero(self, obj):
+        """Retorna el número de comprobante asociado si existe"""
+        if obj.comprobante:
+            return obj.comprobante.numero_comprobante
+        return None
+
+    def get_tiene_comprobante(self, obj):
+        """Indica si el movimiento tiene un comprobante asociado"""
+        return obj.comprobante is not None
 
 
 class MovimientoCajaDetailSerializer(serializers.ModelSerializer):

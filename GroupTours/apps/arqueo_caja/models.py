@@ -404,14 +404,35 @@ class MovimientoCaja(models.Model):
                 raise ValidationError(f"Concepto '{self.concepto}' no válido para egreso")
 
     def actualizar_saldo_caja(self):
-        """Actualiza el saldo de la caja según el tipo de movimiento"""
-        caja = self.apertura_caja.caja
-        monto_decimal = _to_decimal(self.monto)
+        """
+        Recalcula el saldo de la caja desde cero basándose en todos los movimientos activos.
+        Esto asegura que el saldo sea correcto incluso después de anulaciones.
+        """
+        from django.db.models import Sum
 
-        if self.tipo_movimiento == 'ingreso':
-            caja.saldo_actual = _to_decimal(caja.saldo_actual) + monto_decimal
-        elif self.tipo_movimiento == 'egreso':
-            caja.saldo_actual = _to_decimal(caja.saldo_actual) - monto_decimal
+        caja = self.apertura_caja.caja
+
+        # Obtener el monto inicial de la apertura
+        monto_inicial = _to_decimal(self.apertura_caja.monto_inicial)
+
+        # Sumar todos los ingresos activos
+        total_ingresos = MovimientoCaja.objects.filter(
+            apertura_caja=self.apertura_caja,
+            tipo_movimiento='ingreso',
+            activo=True
+        ).aggregate(total=Sum('monto'))['total']
+        total_ingresos = _to_decimal(total_ingresos)
+
+        # Sumar todos los egresos activos
+        total_egresos = MovimientoCaja.objects.filter(
+            apertura_caja=self.apertura_caja,
+            tipo_movimiento='egreso',
+            activo=True
+        ).aggregate(total=Sum('monto'))['total']
+        total_egresos = _to_decimal(total_egresos)
+
+        # Calcular saldo actual = monto_inicial + ingresos - egresos
+        caja.saldo_actual = monto_inicial + total_ingresos - total_egresos
 
         caja.save(update_fields=['saldo_actual'])
 

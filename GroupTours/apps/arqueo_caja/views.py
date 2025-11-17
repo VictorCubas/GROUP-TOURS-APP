@@ -211,6 +211,74 @@ class AperturaCajaViewSet(viewsets.ModelViewSet):
             return AperturaCajaCreateSerializer
         return AperturaCajaDetailSerializer
 
+    def create(self, request, *args, **kwargs):
+        """
+        Crear una nueva apertura de caja.
+        El responsable se asigna automáticamente desde el usuario autenticado.
+        Validaciones:
+        - El usuario debe tener un empleado asociado
+        - El empleado no debe tener otra caja abierta
+        - La caja debe estar cerrada
+        """
+        # Obtener el empleado del usuario autenticado
+        try:
+            empleado = request.user.empleado
+        except AttributeError:
+            return Response(
+                {'error': 'El usuario no tiene un empleado asociado. Contacte al administrador.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not empleado:
+            return Response(
+                {'error': 'El usuario no tiene un empleado asociado. Contacte al administrador.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validar que el empleado no tenga otra caja abierta
+        apertura_existente = AperturaCaja.objects.filter(
+            responsable=empleado,
+            esta_abierta=True,
+            activo=True
+        ).first()
+
+        if apertura_existente:
+            return Response(
+                {
+                    'error': f'Ya tienes una caja abierta: {apertura_existente.caja.nombre} (Apertura: {apertura_existente.codigo_apertura}). Debes cerrarla antes de abrir otra.'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validar que la caja esté cerrada
+        caja_id = request.data.get('caja')
+        if caja_id:
+            try:
+                caja = Caja.objects.get(pk=caja_id)
+                if caja.estado_actual != 'cerrada':
+                    return Response(
+                        {'error': f'La caja {caja.nombre} ya está abierta. No se puede abrir nuevamente.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            except Caja.DoesNotExist:
+                return Response(
+                    {'error': 'La caja especificada no existe.'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+        # Asignar el responsable automáticamente si no se proporciona
+        data = request.data.copy()
+        if 'responsable' not in data or not data.get('responsable'):
+            data['responsable'] = empleado.id
+
+        # Crear la apertura
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
     @action(detail=False, methods=['get'])
     def activas(self, request):
         """Listar todas las aperturas activas (cajas abiertas)"""
@@ -340,6 +408,7 @@ class AperturaCajaViewSet(viewsets.ModelViewSet):
     def tengo_caja_abierta(self, request):
         """
         Verifica si el usuario autenticado tiene una caja abierta.
+        Incluye información sobre el saldo actual y movimientos.
 
         GET /api/arqueo-caja/aperturas/tengo-caja-abierta/
 
@@ -350,9 +419,15 @@ class AperturaCajaViewSet(viewsets.ModelViewSet):
             - fecha_hora_apertura: Fecha y hora de apertura (si existe)
             - monto_inicial: Monto inicial en guaraníes (si existe)
             - monto_inicial_alternativo: Monto inicial en USD (si existe)
+            - saldo_actual: Saldo actual de la caja
+            - total_ingresos: Total de ingresos registrados
+            - total_egresos: Total de egresos registrados
+            - cantidad_movimientos: Cantidad de movimientos registrados
+            - notificacion: Mensaje informativo sobre el estado de la caja
         """
         from .services import obtener_caja_abierta_por_usuario
         from decimal import Decimal
+        from django.db.models import Sum
 
         try:
             empleado = request.user.empleado
@@ -365,6 +440,22 @@ class AperturaCajaViewSet(viewsets.ModelViewSet):
         apertura = obtener_caja_abierta_por_usuario(empleado)
 
         if apertura:
+            # Calcular totales de movimientos
+            movimientos_activos = apertura.movimientos.filter(activo=True)
+
+            total_ingresos = movimientos_activos.filter(
+                tipo_movimiento='ingreso'
+            ).aggregate(total=Sum('monto'))['total'] or Decimal('0')
+
+            total_egresos = movimientos_activos.filter(
+                tipo_movimiento='egreso'
+            ).aggregate(total=Sum('monto'))['total'] or Decimal('0')
+
+            cantidad_movimientos = movimientos_activos.count()
+
+            # Obtener saldo actual de la caja
+            saldo_actual = apertura.caja.saldo_actual
+
             # Calcular monto inicial alternativo (convertir de PYG a USD)
             monto_inicial_alternativo = None
             try:
@@ -388,6 +479,13 @@ class AperturaCajaViewSet(viewsets.ModelViewSet):
                 # Si hay error al obtener cotización, monto_inicial_alternativo será None
                 pass
 
+            # Generar notificación informativa
+            notificacion = None
+            if cantidad_movimientos == 0:
+                notificacion = "Caja abierta sin movimientos. Los pagos registrados se agregarán automáticamente."
+            else:
+                notificacion = f"Caja activa con {cantidad_movimientos} movimiento(s) registrado(s)."
+
             return Response({
                 'tiene_caja_abierta': True,
                 'apertura_id': apertura.id,
@@ -396,11 +494,17 @@ class AperturaCajaViewSet(viewsets.ModelViewSet):
                 'caja_nombre': apertura.caja.nombre,
                 'fecha_hora_apertura': apertura.fecha_hora_apertura,
                 'monto_inicial': apertura.monto_inicial,
-                'monto_inicial_alternativo': monto_inicial_alternativo
+                'monto_inicial_alternativo': monto_inicial_alternativo,
+                'saldo_actual': saldo_actual,
+                'total_ingresos': total_ingresos,
+                'total_egresos': total_egresos,
+                'cantidad_movimientos': cantidad_movimientos,
+                'notificacion': notificacion
             })
         else:
             return Response({
-                'tiene_caja_abierta': False
+                'tiene_caja_abierta': False,
+                'notificacion': 'No tienes una caja abierta. Los pagos se registrarán sin movimiento de caja.'
             })
 
 
@@ -470,12 +574,19 @@ class MovimientoCajaViewSet(viewsets.ModelViewSet):
             'por_concepto': list(por_concepto)
         })
 
-    @action(detail=False, methods=['get'], url_path='resumen', pagination_class=None)
-    def resumen(self, request):
-        """Resumen estadístico de movimientos"""
+    @action(detail=False, methods=['get'], url_path='resumen-general', pagination_class=None)
+    def resumen_general(self, request):
+        """
+        Resumen estadístico general de movimientos de caja.
+        Similar al formato de resumen-general de otras vistas.
+
+        GET /api/arqueo-caja/movimientos/resumen-general/
+        """
         from decimal import Decimal
 
+        # Contadores generales
         total = MovimientoCaja.objects.filter(activo=True).count()
+        inactivos = MovimientoCaja.objects.filter(activo=False).count()
         ingresos_count = MovimientoCaja.objects.filter(
             tipo_movimiento='ingreso',
             activo=True
@@ -496,7 +607,10 @@ class MovimientoCajaViewSet(viewsets.ModelViewSet):
             activo=True
         ).aggregate(total=Sum('monto'))['total'] or Decimal('0')
 
-        # Por método de pago
+        # Balance neto
+        balance_neto = total_ingresos - total_egresos
+
+        # Por método de pago (ingresos)
         efectivo = MovimientoCaja.objects.filter(
             metodo_pago='efectivo',
             tipo_movimiento='ingreso',
@@ -509,7 +623,24 @@ class MovimientoCajaViewSet(viewsets.ModelViewSet):
             activo=True
         ).aggregate(total=Sum('monto'))['total'] or Decimal('0')
 
-        # Hoy
+        transferencias = MovimientoCaja.objects.filter(
+            metodo_pago='transferencia',
+            tipo_movimiento='ingreso',
+            activo=True
+        ).aggregate(total=Sum('monto'))['total'] or Decimal('0')
+
+        # Movimientos con comprobante asociado
+        con_comprobante = MovimientoCaja.objects.filter(
+            comprobante__isnull=False,
+            activo=True
+        ).count()
+
+        sin_comprobante = MovimientoCaja.objects.filter(
+            comprobante__isnull=True,
+            activo=True
+        ).count()
+
+        # Movimientos de hoy
         hoy = timezone.now().date()
         movimientos_hoy = MovimientoCaja.objects.filter(
             fecha_hora_movimiento__date=hoy,
@@ -522,23 +653,43 @@ class MovimientoCajaViewSet(viewsets.ModelViewSet):
             activo=True
         ).aggregate(total=Sum('monto'))['total'] or Decimal('0')
 
+        egresos_hoy = MovimientoCaja.objects.filter(
+            fecha_hora_movimiento__date=hoy,
+            tipo_movimiento='egreso',
+            activo=True
+        ).aggregate(total=Sum('monto'))['total'] or Decimal('0')
+
+        # Últimos 30 días
         ultimos_30_dias = timezone.now() - timedelta(days=30)
-        nuevos = MovimientoCaja.objects.filter(
+        nuevos_30_dias = MovimientoCaja.objects.filter(
             fecha_hora_movimiento__gte=ultimos_30_dias,
             activo=True
         ).count()
 
+        ingresos_30_dias = MovimientoCaja.objects.filter(
+            fecha_hora_movimiento__gte=ultimos_30_dias,
+            tipo_movimiento='ingreso',
+            activo=True
+        ).aggregate(total=Sum('monto'))['total'] or Decimal('0')
+
         data = [
             {'texto': 'Total Movimientos', 'valor': str(total)},
-            {'texto': 'Ingresos', 'valor': str(ingresos_count)},
-            {'texto': 'Egresos', 'valor': str(egresos_count)},
+            {'texto': 'Movimientos Inactivos/Anulados', 'valor': str(inactivos)},
+            {'texto': 'Total Ingresos (Cantidad)', 'valor': str(ingresos_count)},
+            {'texto': 'Total Egresos (Cantidad)', 'valor': str(egresos_count)},
             {'texto': 'Total Ingresos (Monto)', 'valor': f'Gs {total_ingresos:,.0f}'},
             {'texto': 'Total Egresos (Monto)', 'valor': f'Gs {total_egresos:,.0f}'},
+            {'texto': 'Balance Neto', 'valor': f'Gs {balance_neto:,.0f}'},
             {'texto': 'Ingresos en Efectivo', 'valor': f'Gs {efectivo:,.0f}'},
             {'texto': 'Ingresos con Tarjetas', 'valor': f'Gs {tarjetas:,.0f}'},
+            {'texto': 'Ingresos por Transferencia', 'valor': f'Gs {transferencias:,.0f}'},
+            {'texto': 'Con Comprobante de Pago', 'valor': str(con_comprobante)},
+            {'texto': 'Sin Comprobante (Manuales)', 'valor': str(sin_comprobante)},
             {'texto': 'Movimientos Hoy', 'valor': str(movimientos_hoy)},
-            {'texto': 'Ingresos Hoy (Monto)', 'valor': f'Gs {ingresos_hoy:,.0f}'},
-            {'texto': 'Nuevos últimos 30 días', 'valor': str(nuevos)},
+            {'texto': 'Ingresos Hoy', 'valor': f'Gs {ingresos_hoy:,.0f}'},
+            {'texto': 'Egresos Hoy', 'valor': f'Gs {egresos_hoy:,.0f}'},
+            {'texto': 'Nuevos últimos 30 días', 'valor': str(nuevos_30_dias)},
+            {'texto': 'Ingresos últimos 30 días', 'valor': f'Gs {ingresos_30_dias:,.0f}'},
         ]
         return Response(data)
 
