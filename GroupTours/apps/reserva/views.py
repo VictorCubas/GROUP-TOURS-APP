@@ -23,7 +23,7 @@ from .services import (
     obtener_comprobantes_reserva,
     obtener_servicios_reserva
 )
-from django.core.exceptions import ObjectDoesNotExist
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
 
 
 def obtener_o_crear_pasajero_pendiente(reserva, sufijo=""):
@@ -362,7 +362,13 @@ class ReservaViewSet(viewsets.ModelViewSet):
         metodo_pago = request.data.get('metodo_pago', 'transferencia')
 
         # Crear el comprobante
-        comprobante = ComprobantePago.objects.create(
+        # Obtener el empleado del usuario autenticado
+        usuario_autenticado = request.user
+        empleado_registrador = None
+        if hasattr(usuario_autenticado, 'empleado') and usuario_autenticado.empleado:
+            empleado_registrador = usuario_autenticado.empleado
+
+        comprobante = ComprobantePago(
             reserva=reserva,
             tipo=tipo,
             monto=reserva.monto_pagado,
@@ -370,6 +376,8 @@ class ReservaViewSet(viewsets.ModelViewSet):
             observaciones='Comprobante generado para presentación',
             empleado=empleado
         )
+        # Guardar con el usuario_registro
+        comprobante.save(usuario_registro=empleado_registrador)
 
         # Obtener o crear pasajero titular
         pasajero_titular = reserva.pasajeros.filter(es_titular=True).first()
@@ -941,7 +949,13 @@ class ReservaViewSet(viewsets.ModelViewSet):
 
         # Crear el comprobante
         try:
-            comprobante = ComprobantePago.objects.create(
+            # Obtener el empleado del usuario autenticado
+            usuario_autenticado = request.user
+            empleado_registrador = None
+            if hasattr(usuario_autenticado, 'empleado') and usuario_autenticado.empleado:
+                empleado_registrador = usuario_autenticado.empleado
+
+            comprobante = ComprobantePago(
                 reserva=reserva,
                 tipo='sena',
                 monto=monto_total,
@@ -950,6 +964,8 @@ class ReservaViewSet(viewsets.ModelViewSet):
                 observaciones=request.data.get('observaciones', ''),
                 empleado=empleado
             )
+            # Guardar con el usuario_registro
+            comprobante.save(usuario_registro=empleado_registrador)
 
             # Crear las distribuciones
             for dist_data in pasajeros_validados:
@@ -1083,6 +1099,25 @@ class ReservaViewSet(viewsets.ModelViewSet):
                 'titular': titular_data
             }, status=status.HTTP_201_CREATED)
 
+        except ValidationError as e:
+            # Error de validación (por ejemplo, no tiene caja abierta)
+            error_msg = str(e.message) if hasattr(e, 'message') else str(e)
+            # Limpiar el mensaje si viene como lista
+            if error_msg.startswith('[') and error_msg.endswith(']'):
+                error_msg = error_msg.strip("[]'\"")
+            return Response(
+                {'error': error_msg},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except DjangoValidationError as e:
+            # Error de validación de Django
+            error_msg = str(e.message) if hasattr(e, 'message') else str(e)
+            if error_msg.startswith('[') and error_msg.endswith(']'):
+                error_msg = error_msg.strip("[]'\"")
+            return Response(
+                {'error': error_msg},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         except Exception as e:
             return Response(
                 {'error': f'Error al crear el comprobante: {str(e)}'},
@@ -1330,8 +1365,14 @@ class ReservaViewSet(viewsets.ModelViewSet):
             )
 
         # Crear el comprobante
+        # Obtener el empleado del usuario autenticado
+        usuario_autenticado = request.user
+        empleado_registrador = None
+        if hasattr(usuario_autenticado, 'empleado') and usuario_autenticado.empleado:
+            empleado_registrador = usuario_autenticado.empleado
+
         try:
-            comprobante = ComprobantePago.objects.create(
+            comprobante = ComprobantePago(
                 reserva=reserva,
                 tipo=request.data['tipo'],
                 monto=monto_total,
@@ -1340,6 +1381,8 @@ class ReservaViewSet(viewsets.ModelViewSet):
                 observaciones=request.data.get('observaciones', ''),
                 empleado=empleado
             )
+            # Guardar con el usuario_registro (puede lanzar ValidationError si no hay caja abierta)
+            comprobante.save(usuario_registro=empleado_registrador)
 
             # Crear las distribuciones
             for dist_data in pasajeros_validados:
@@ -1493,6 +1536,25 @@ class ReservaViewSet(viewsets.ModelViewSet):
                 'titular': titular_data
             }, status=status.HTTP_201_CREATED)
 
+        except ValidationError as e:
+            # Error de validación (por ejemplo, no tiene caja abierta)
+            error_msg = str(e.message) if hasattr(e, 'message') else str(e)
+            # Limpiar el mensaje si viene como lista
+            if error_msg.startswith('[') and error_msg.endswith(']'):
+                error_msg = error_msg.strip("[]'\"")
+            return Response(
+                {'error': error_msg},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except DjangoValidationError as e:
+            # Error de validación de Django
+            error_msg = str(e.message) if hasattr(e, 'message') else str(e)
+            if error_msg.startswith('[') and error_msg.endswith(']'):
+                error_msg = error_msg.strip("[]'\"")
+            return Response(
+                {'error': error_msg},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         except Exception as e:
             return Response(
                 {'error': f'Error al crear el comprobante: {str(e)}'},
