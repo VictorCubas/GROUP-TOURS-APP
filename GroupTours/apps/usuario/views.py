@@ -33,6 +33,7 @@ class UsuarioPagination(PageNumberPagination):
 class UsuarioViewSet(viewsets.ModelViewSet):
     queryset = (
         Usuario.objects
+        .filter(is_superuser=False)  # Excluir superusuarios del listado
         .select_related('empleado', 'empleado__persona')
         .prefetch_related('roles', 'roles__permisos')
         .order_by('-fecha_creacion')
@@ -81,13 +82,16 @@ class UsuarioViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='resumen', pagination_class=None)
     def resumen(self, request):
-        total = Usuario.objects.count()
-        activos = Usuario.objects.filter(activo=True).count()
-        inactivos = Usuario.objects.filter(activo=False).count()
-        
+        # Usar queryset base que excluye superusuarios
+        base_queryset = Usuario.objects.filter(is_superuser=False)
+
+        total = base_queryset.count()
+        activos = base_queryset.filter(activo=True).count()
+        inactivos = base_queryset.filter(activo=False).count()
+
         ultimos_30_dias = timezone.now() - timedelta(days=30)
-        nuevos = Usuario.objects.filter(fecha_creacion__gte=ultimos_30_dias).count()
-        
+        nuevos = base_queryset.filter(fecha_creacion__gte=ultimos_30_dias).count()
+
         data = [
             {'texto': 'Total', 'valor': str(total)},
             {'texto': 'Activos', 'valor': str(activos)},
@@ -108,3 +112,87 @@ class UsuarioViewSet(viewsets.ModelViewSet):
         usuario.save()
 
         return Response({'message': 'Contraseña actualizada correctamente'})
+
+    @action(detail=False, methods=['get'], url_path='responsables', pagination_class=None)
+    def responsables(self, request):
+        """
+        Endpoint para obtener empleados con roles específicos (cajero/admin)
+        que pueden ser asignados como responsables de aperturas de caja.
+
+        Query params:
+        - roles: lista de roles separados por coma (ej: ?roles=cajero,admin)
+        - activo: filtrar solo usuarios activos (default: true)
+        - busqueda: término de búsqueda para filtrar por nombre, email, puesto o teléfono
+
+        Retorna lista de empleados con formato:
+        [
+            {
+                "empleado_id": 5,
+                "nombre_completo": "Juan Pérez",
+                "puesto": "Cajero",
+                "email": "juan@example.com",
+                "roles": ["cajero"]
+            }
+        ]
+        """
+        # Obtener parámetros
+        roles_param = request.query_params.get('roles', 'cajero,admin')
+        solo_activos = request.query_params.get('activo', 'true').lower() == 'true'
+        busqueda = request.query_params.get('busqueda', '').strip()
+
+        # Convertir roles a lista
+        roles_buscados = [r.strip() for r in roles_param.split(',')]
+
+        # Filtrar usuarios
+        queryset = self.get_queryset()
+
+        if solo_activos:
+            queryset = queryset.filter(activo=True)
+
+        # Filtrar por roles (case-insensitive)
+        from django.db.models import Q
+        q_filters = Q()
+        for rol in roles_buscados:
+            q_filters |= Q(roles__nombre__iexact=rol)
+        queryset = queryset.filter(q_filters).distinct()
+
+        # Solo usuarios con empleado asignado
+        queryset = queryset.filter(empleado__isnull=False)
+
+        # Filtrar por búsqueda si se proporciona
+        if busqueda:
+            busqueda_filters = Q()
+            busqueda_filters |= Q(empleado__persona__personafisica__nombre__icontains=busqueda)
+            busqueda_filters |= Q(empleado__persona__personafisica__apellido__icontains=busqueda)
+            busqueda_filters |= Q(empleado__persona__personajuridica__razon_social__icontains=busqueda)
+            busqueda_filters |= Q(empleado__persona__email__icontains=busqueda)
+            busqueda_filters |= Q(empleado__persona__telefono__icontains=busqueda)
+            busqueda_filters |= Q(empleado__puesto__nombre__icontains=busqueda)
+            busqueda_filters |= Q(username__icontains=busqueda)
+            queryset = queryset.filter(busqueda_filters).distinct()
+
+        # Construir respuesta
+        resultado = []
+        for usuario in queryset:
+            if usuario.empleado and usuario.empleado.persona:
+                persona = usuario.empleado.persona
+
+                # Obtener nombre completo
+                if hasattr(persona, 'personafisica'):
+                    nombre_completo = f"{persona.personafisica.nombre} {persona.personafisica.apellido}".strip()
+                elif hasattr(persona, 'personajuridica'):
+                    nombre_completo = persona.personajuridica.razon_social
+                else:
+                    nombre_completo = usuario.username
+
+                resultado.append({
+                    'empleado_id': usuario.empleado.id,
+                    'usuario_id': usuario.id,
+                    'nombre_completo': nombre_completo,
+                    'puesto': usuario.empleado.puesto.nombre if usuario.empleado.puesto else None,
+                    'email': persona.email if hasattr(persona, 'email') else None,
+                    'telefono': persona.telefono if hasattr(persona, 'telefono') else None,
+                    'roles': [rol.nombre for rol in usuario.roles.all()]
+                })
+
+        return Response(resultado)
