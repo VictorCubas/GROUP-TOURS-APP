@@ -110,6 +110,8 @@ class ComprobantePago(models.Model):
         return f"{self.numero_comprobante} - {self.reserva.codigo} - ${self.monto}"
 
     def save(self, *args, **kwargs):
+        es_nuevo = self._state.adding  # True si es un nuevo comprobante
+
         # Generar número único de comprobante
         if not self.numero_comprobante:
             year = now().year
@@ -118,7 +120,14 @@ class ComprobantePago(models.Model):
             ).count() + 1
             self.numero_comprobante = f"CPG-{year}-{last_id:04d}"
 
+        # Extraer usuario_registro si fue pasado como kwarg
+        usuario_registro = kwargs.pop('usuario_registro', None)
+
         super().save(*args, **kwargs)
+
+        # Generar movimiento de caja automáticamente si es un nuevo comprobante activo
+        if es_nuevo and self.activo:
+            self._generar_movimiento_caja(usuario_registro=usuario_registro)
 
     def validar_distribuciones(self):
         """
@@ -170,15 +179,208 @@ class ComprobantePago(models.Model):
             condicion_pago=condicion_pago
         )
 
+    def _obtener_apertura_activa_empleado(self, empleado=None):
+        """
+        Obtiene la apertura de caja activa de un empleado.
+
+        Args:
+            empleado: Empleado del cual buscar la apertura.
+                     Si no se proporciona, usa self.empleado
+
+        Returns:
+            AperturaCaja o None si no hay apertura activa para el empleado
+        """
+        from apps.arqueo_caja.models import AperturaCaja
+
+        empleado_buscar = empleado if empleado else self.empleado
+
+        return AperturaCaja.objects.filter(
+            responsable=empleado_buscar,
+            esta_abierta=True,
+            activo=True
+        ).first()
+
+    def _mapear_metodo_pago_a_concepto(self):
+        """
+        Mapea el método de pago del comprobante al concepto de MovimientoCaja.
+
+        Returns:
+            str: Concepto para MovimientoCaja
+        """
+        # Mapeo de métodos de pago a conceptos de ingreso/egreso
+        mapeo_ingreso = {
+            'efectivo': 'venta_efectivo',
+            'tarjeta_debito': 'venta_tarjeta',
+            'tarjeta_credito': 'venta_tarjeta',
+            'transferencia': 'transferencia_recibida',
+            'cheque': 'otro_ingreso',
+            'qr': 'otro_ingreso',
+            'otro': 'otro_ingreso',
+        }
+
+        mapeo_egreso = {
+            'efectivo': 'devolucion',
+            'tarjeta_debito': 'devolucion',
+            'tarjeta_credito': 'devolucion',
+            'transferencia': 'devolucion',
+            'cheque': 'devolucion',
+            'qr': 'devolucion',
+            'otro': 'devolucion',
+        }
+
+        # Si es devolución, usar mapeo de egresos
+        if self.tipo == 'devolucion':
+            return mapeo_egreso.get(self.metodo_pago, 'otro_egreso')
+
+        # Para pagos normales, usar mapeo de ingresos
+        return mapeo_ingreso.get(self.metodo_pago, 'otro_ingreso')
+
+    def _generar_movimiento_caja(self, usuario_registro=None):
+        """
+        Genera automáticamente un MovimientoCaja cuando se registra un pago.
+        REQUIERE que el empleado tenga una caja abierta.
+
+        Args:
+            usuario_registro: Empleado que registra el movimiento (usuario autenticado).
+                            Si no se proporciona, usa self.empleado como fallback.
+
+        Lógica:
+        - Busca la apertura activa del empleado que registra el pago
+        - Si existe, crea un MovimientoCaja asociado
+        - Si NO existe, lanza ValidationError (NO se permite registrar pago sin caja abierta)
+
+        Returns:
+            MovimientoCaja si se crea exitosamente
+
+        Raises:
+            ValidationError: Si el empleado no tiene caja abierta
+        """
+        from apps.arqueo_caja.models import MovimientoCaja
+
+        # Determinar el empleado que registra el movimiento
+        # Prioridad: usuario_registro pasado como parámetro > self.empleado (fallback)
+        empleado_registrador = usuario_registro if usuario_registro else self.empleado
+
+        # Obtener nombre del empleado para el mensaje de error
+        empleado_nombre = "el empleado"
+        if empleado_registrador and empleado_registrador.persona:
+            persona = empleado_registrador.persona
+            try:
+                persona_fisica = persona.personafisica
+                empleado_nombre = f"{persona_fisica.nombre} {persona_fisica.apellido or ''}".strip()
+            except:
+                try:
+                    persona_juridica = persona.personajuridica
+                    empleado_nombre = persona_juridica.razon_social
+                except:
+                    pass
+
+        # Obtener apertura activa del empleado registrador (usuario autenticado)
+        apertura = self._obtener_apertura_activa_empleado(empleado=empleado_registrador)
+
+        if not apertura:
+            # VALIDACIÓN CRÍTICA: No se permite registrar pagos sin caja abierta
+            raise ValidationError(
+                f"No se puede registrar el pago. {empleado_nombre} no tiene una caja abierta. "
+                f"Por favor, abra una caja antes de registrar pagos."
+            )
+
+        # VALIDACIÓN CRÍTICA: Verificar que exista cotización del día EXACTO para USD
+        # NO se permite usar cotizaciones de días anteriores
+        from apps.moneda.models import Moneda, CotizacionMoneda
+        from django.utils import timezone
+        import pytz
+
+        try:
+            moneda_usd = Moneda.objects.get(codigo='USD')
+
+            # Obtener fecha actual en zona horaria de Paraguay
+            tz_paraguay = pytz.timezone('America/Asuncion')
+            fecha_actual = timezone.now().astimezone(tz_paraguay).date()
+
+            # Buscar cotización específica del día (NO usar obtener_cotizacion_vigente)
+            cotizacion_hoy = CotizacionMoneda.objects.filter(
+                moneda=moneda_usd,
+                fecha_vigencia=fecha_actual
+            ).first()
+
+            if not cotizacion_hoy:
+                raise ValidationError(
+                    f"No se puede registrar el pago. No existe cotización de USD para el día {fecha_actual.strftime('%d/%m/%Y')}. "
+                    f"Por favor, registre la cotización del día antes de registrar pagos."
+                )
+        except Moneda.DoesNotExist:
+            # Si no existe la moneda USD, continuamos (caso excepcional)
+            pass
+
+        # Determinar tipo de movimiento
+        tipo_movimiento = 'egreso' if self.tipo == 'devolucion' else 'ingreso'
+
+        # Obtener concepto según método de pago
+        concepto = self._mapear_metodo_pago_a_concepto()
+
+        # Crear descripción detallada
+        descripcion = f"Pago de reserva {self.reserva.codigo} - Comprobante {self.numero_comprobante}"
+        if self.observaciones:
+            descripcion += f"\nObs: {self.observaciones}"
+
+        # Crear el movimiento de caja
+        movimiento = MovimientoCaja.objects.create(
+            apertura_caja=apertura,
+            comprobante=self,
+            tipo_movimiento=tipo_movimiento,
+            concepto=concepto,
+            monto=self.monto,
+            metodo_pago=self.metodo_pago,
+            referencia=self.numero_comprobante,
+            descripcion=descripcion,
+            usuario_registro=empleado_registrador
+        )
+
+        return movimiento
+
     def anular(self, motivo=None):
         """
         Anula el comprobante y actualiza el monto de la reserva.
+        También anula el movimiento de caja asociado si existe.
         """
         self.activo = False
         if motivo:
             self.observaciones = f"ANULADO: {motivo}\n{self.observaciones or ''}"
         self.save()
+
+        # Anular movimiento de caja asociado si existe
+        self._anular_movimiento_caja(motivo)
+
         self.actualizar_monto_reserva()
+
+    def _anular_movimiento_caja(self, motivo=None):
+        """
+        Anula el movimiento de caja asociado a este comprobante.
+
+        Args:
+            motivo: Motivo de la anulación
+        """
+        from apps.arqueo_caja.models import MovimientoCaja
+
+        # Buscar movimiento asociado
+        movimiento = MovimientoCaja.objects.filter(
+            comprobante=self,
+            activo=True
+        ).first()
+
+        if movimiento:
+            movimiento.activo = False
+            if motivo:
+                descripcion_anulacion = f"ANULADO: {motivo}"
+                if movimiento.descripcion:
+                    movimiento.descripcion = f"{descripcion_anulacion}\n{movimiento.descripcion}"
+                else:
+                    movimiento.descripcion = descripcion_anulacion
+            movimiento.save()
+
+            # Recalcular saldo de la caja
+            # El método actualizar_saldo_caja se ejecuta en el save del MovimientoCaja
 
     def generar_pdf(self):
         """

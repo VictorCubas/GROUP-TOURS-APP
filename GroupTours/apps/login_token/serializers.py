@@ -84,7 +84,10 @@ class LoginTokenSerializer(TokenObtainPairSerializer):
         Verifica si existe al menos una cotización registrada para la fecha actual.
         Retorna True si existe cotización del día, False en caso contrario.
         """
-        fecha_hoy = timezone.now().date()
+        import pytz
+        # Obtener la fecha actual en la zona horaria de Paraguay (America/Asuncion)
+        tz_asuncion = pytz.timezone('America/Asuncion')
+        fecha_hoy = timezone.now().astimezone(tz_asuncion).date()
 
         # Verificar si existe al menos una cotización para hoy
         existe_cotizacion = CotizacionMoneda.objects.filter(
