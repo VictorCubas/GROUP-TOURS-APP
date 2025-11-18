@@ -88,3 +88,89 @@ def log_eliminacion_comprobante(sender, instance, **kwargs):
         **kwargs: Argumentos adicionales
     """
     print(f"⚠️ ComprobantePago eliminado: {instance.numero_comprobante}")
+
+
+# =============================================================================
+# INTEGRACIÓN: NOTAS DE CRÉDITO → MOVIMIENTOS DE CAJA
+# =============================================================================
+
+@receiver(post_save, sender='facturacion.NotaCreditoElectronica')
+def crear_movimiento_caja_desde_nota_credito(sender, instance, created, **kwargs):
+    """
+    Registra automáticamente un egreso de caja cuando se emite una Nota de Crédito.
+
+    Flujo:
+    1. Usuario emite NC (total o parcial)
+    2. Se valida que hay caja abierta (en generar_nota_credito_*)
+    3. Se crea NotaCreditoElectronica
+    4. Esta señal detecta la creación
+    5. Se crea MovimientoCaja de tipo "egreso" con concepto "devolucion"
+
+    Solo se ejecuta si:
+    - Es una NC nueva (created=True)
+    - La NC está activa
+
+    NOTA: Dado que ahora generar_nota_credito_total/parcial validan que hay caja abierta,
+    esta señal SIEMPRE encontrará una caja abierta.
+
+    Args:
+        sender: Clase NotaCreditoElectronica
+        instance: Instancia de la NC creada
+        created: True si es nueva, False si se actualizó
+        **kwargs: Argumentos adicionales
+
+    Notas:
+    - El método de pago se registra como 'efectivo' por defecto
+    - El movimiento se asocia al responsable de la apertura
+    - La referencia incluye el número de NC y factura afectada
+    """
+    # Solo procesar NCs nuevas y activas
+    if not created or not instance.activo:
+        return
+
+    # Importar aquí para evitar imports circulares
+    from apps.arqueo_caja.models import AperturaCaja, MovimientoCaja
+
+    # Buscar caja abierta del punto de expedición de la NC
+    # NOTA: SIEMPRE debe existir porque generar_nota_credito_* lo valida
+    apertura = AperturaCaja.objects.filter(
+        caja__punto_expedicion=instance.punto_expedicion,
+        esta_abierta=True,
+        activo=True
+    ).first()
+
+    if not apertura:
+        # Esto NO debería ocurrir nunca gracias a la validación previa
+        print(f"⚠️ ADVERTENCIA: NC {instance.numero_nota_credito} creada sin caja abierta.")
+        print(f"   Esto indica que se creó la NC sin usar generar_nota_credito_total/parcial.")
+        return
+
+    try:
+        # Crear movimiento de egreso
+        movimiento = MovimientoCaja.objects.create(
+            apertura_caja=apertura,
+            tipo_movimiento='egreso',
+            concepto='devolucion',
+            monto=instance.total_general,
+            metodo_pago='efectivo',  # Por defecto efectivo - TODO: mejorar inferencia
+            referencia=f"NC: {instance.numero_nota_credito}",
+            descripcion=(
+                f"Devolución por Nota de Crédito {instance.tipo_nota}\n"
+                f"Factura afectada: {instance.factura_afectada.numero_factura}\n"
+                f"Motivo: {instance.get_motivo_display()}"
+            ),
+            usuario_registro=apertura.responsable,
+            fecha_hora_movimiento=instance.fecha_emision
+        )
+
+        print(f"✅ Movimiento de caja creado desde NC:")
+        print(f"   📄 NC: {instance.numero_nota_credito}")
+        print(f"   💰 Monto: Gs. {instance.total_general:,.0f}")
+        print(f"   🧾 Movimiento: {movimiento.numero_movimiento}")
+        print(f"   📦 Caja: {apertura.caja.nombre}")
+
+    except Exception as e:
+        # No fallar si hay error al crear movimiento (la NC ya fue creada)
+        print(f"❌ Error al crear movimiento de caja para NC {instance.numero_nota_credito}:")
+        print(f"   {str(e)}")
+        print(f"   💡 El movimiento deberá registrarse manualmente.")

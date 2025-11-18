@@ -958,6 +958,95 @@ class DetalleFactura(models.Model):
 
 
 # ---------- Funciones auxiliares para facturación ----------
+
+def obtener_punto_expedicion_caja_abierta(punto_expedicion_id=None, usuario=None):
+    """
+    Obtiene el punto de expedición a usar para la facturación.
+
+    Lógica:
+    1. Si se proporciona punto_expedicion_id explícitamente, lo usa (para casos especiales)
+    2. Si se proporciona usuario, busca su caja abierta y usa el PE de esa caja
+    3. Si no hay punto_expedicion_id ni usuario, busca cualquier caja abierta (modo legacy)
+    4. Si no hay caja abierta, lanza error
+
+    Args:
+        punto_expedicion_id: ID del punto de expedición (opcional)
+        usuario: Instancia de Usuario o Empleado (opcional)
+
+    Returns:
+        PuntoExpedicion: El punto de expedición a usar
+
+    Raises:
+        ValidationError: Si no hay caja abierta o el PE no existe
+    """
+    from apps.arqueo_caja.models import AperturaCaja
+
+    # Caso 1: Si se proporciona punto_expedicion_id explícitamente
+    if punto_expedicion_id:
+        try:
+            punto_expedicion = PuntoExpedicion.objects.get(id=punto_expedicion_id, activo=True)
+
+            # Validar que exista una caja abierta para ese PE
+            apertura = AperturaCaja.objects.filter(
+                caja__punto_expedicion=punto_expedicion,
+                esta_abierta=True,
+                activo=True
+            ).first()
+
+            if not apertura:
+                raise ValidationError(
+                    f"No se puede facturar: No hay caja abierta en el punto de expedición "
+                    f"{punto_expedicion.codigo}. Debe abrir la caja antes de facturar."
+                )
+
+            return punto_expedicion
+
+        except PuntoExpedicion.DoesNotExist:
+            raise ValidationError(f"El punto de expedición con ID {punto_expedicion_id} no existe o no está activo")
+
+    # Caso 2: Si se proporciona usuario, buscar su caja abierta
+    if usuario:
+        # Obtener el empleado del usuario
+        from apps.empleado.models import Empleado
+
+        empleado = None
+        if hasattr(usuario, 'empleado'):
+            empleado = usuario.empleado
+        elif isinstance(usuario, Empleado):
+            empleado = usuario
+
+        if empleado:
+            # Buscar caja abierta del empleado
+            apertura = AperturaCaja.objects.filter(
+                responsable=empleado,
+                esta_abierta=True,
+                activo=True
+            ).first()
+
+            if apertura:
+                return apertura.caja.punto_expedicion
+
+            raise ValidationError(
+                f"No se puede facturar: El usuario no tiene ninguna caja abierta. "
+                f"Debe abrir una caja antes de facturar."
+            )
+
+    # Caso 3: Modo legacy - buscar cualquier caja abierta (no recomendado)
+    apertura = AperturaCaja.objects.filter(
+        esta_abierta=True,
+        activo=True
+    ).first()
+
+    if apertura:
+        return apertura.caja.punto_expedicion
+
+    # Caso 4: No hay ninguna caja abierta
+    raise ValidationError(
+        "No se puede facturar: No hay ninguna caja abierta en el sistema. "
+        "Debe abrir una caja antes de facturar."
+    )
+
+
 def obtener_o_crear_cliente_facturacion(
     cliente_facturacion_id=None,
     tercero_nombre=None,
@@ -1307,13 +1396,14 @@ def registrar_conversion_factura(factura, datos_conversion, monto_total_original
 
 # ---------- Función para generar factura desde reserva (LEGACY - mantenida por compatibilidad) ----------
 @transaction.atomic
-def generar_factura_desde_reserva(reserva, subtipo_impuesto_id=None):
+def generar_factura_desde_reserva(reserva, subtipo_impuesto_id=None, punto_expedicion_id=None):
     """
     Genera una factura electrónica a partir de una reserva.
 
     Args:
         reserva: Instancia de Reserva
         subtipo_impuesto_id: ID del subtipo de impuesto a aplicar (ej: IVA 10%)
+        punto_expedicion_id: ID del punto de expedición (opcional, si no se pasa usa el primero activo)
 
     Returns:
         FacturaElectronica: La factura generada
@@ -1351,14 +1441,11 @@ def generar_factura_desde_reserva(reserva, subtipo_impuesto_id=None):
     if not subtipo_impuesto:
         raise ValidationError("Debe especificar un subtipo de impuesto")
 
-    # Obtener punto de expedición activo
-    punto_expedicion = PuntoExpedicion.objects.filter(
-        establecimiento=configuracion.establecimiento,
-        activo=True
-    ).first()
-
-    if not punto_expedicion:
-        raise ValidationError("No hay punto de expedición activo configurado")
+    # Obtener punto de expedición validando que haya caja abierta
+    punto_expedicion = obtener_punto_expedicion_caja_abierta(
+        punto_expedicion_id=punto_expedicion_id,
+        usuario=None  # Por ahora None, se puede pasar el usuario desde la view
+    )
 
     # Obtener datos del titular
     titular = reserva.titular
@@ -1509,7 +1596,8 @@ def generar_factura_global(
     tercero_numero_documento=None,
     tercero_direccion=None,
     tercero_telefono=None,
-    tercero_email=None
+    tercero_email=None,
+    punto_expedicion_id=None
 ):
     """
     Genera una factura global para toda la reserva.
@@ -1552,14 +1640,11 @@ def generar_factura_global(
     if not subtipo_impuesto:
         raise ValidationError("Debe especificar un subtipo de impuesto")
 
-    # Obtener punto de expedición activo
-    punto_expedicion = PuntoExpedicion.objects.filter(
-        establecimiento=configuracion.establecimiento,
-        activo=True
-    ).first()
-
-    if not punto_expedicion:
-        raise ValidationError("No hay punto de expedición activo configurado")
+    # Obtener punto de expedición validando que haya caja abierta
+    punto_expedicion = obtener_punto_expedicion_caja_abierta(
+        punto_expedicion_id=punto_expedicion_id,
+        usuario=None  # Por ahora None, se puede pasar el usuario desde la view
+    )
 
     # --- 🔹 Determinar cliente de facturación (tercero o titular) ---
     cliente_facturacion = None
@@ -1796,7 +1881,8 @@ def generar_factura_individual(
     tercero_numero_documento=None,
     tercero_direccion=None,
     tercero_telefono=None,
-    tercero_email=None
+    tercero_email=None,
+    punto_expedicion_id=None
 ):
     """
     Genera una factura electrónica para un pasajero específico dentro de una reserva.
@@ -1840,13 +1926,11 @@ def generar_factura_individual(
     if not subtipo_impuesto:
         raise ValidationError("Debe especificar un subtipo de impuesto")
 
-    punto_expedicion = PuntoExpedicion.objects.filter(
-        establecimiento=configuracion.establecimiento,
-        activo=True
-    ).first()
-
-    if not punto_expedicion:
-        raise ValidationError("No hay punto de expedición activo configurado")
+    # Obtener punto de expedición validando que haya caja abierta
+    punto_expedicion = obtener_punto_expedicion_caja_abierta(
+        punto_expedicion_id=punto_expedicion_id,
+        usuario=None  # Por ahora None, se puede pasar el usuario desde la view
+    )
 
     # --- 🔹 Determinar cliente de facturación (tercero o pasajero) ---
     cliente_facturacion = None
@@ -2642,6 +2726,8 @@ def generar_nota_credito_total(factura_id, motivo, observaciones=''):
     """
     Anula completamente una factura (o su saldo restante si hay NC previas).
 
+    IMPORTANTE: Requiere que haya una caja abierta en el punto de expedición.
+
     Args:
         factura_id: ID de la factura a acreditar
         motivo: Motivo de la nota de crédito (de MOTIVO_CHOICES)
@@ -2651,7 +2737,7 @@ def generar_nota_credito_total(factura_id, motivo, observaciones=''):
         NotaCreditoElectronica: La nota de crédito generada
 
     Raises:
-        ValidationError: Si la factura no se puede acreditar
+        ValidationError: Si la factura no se puede acreditar o no hay caja abierta
     """
     factura = FacturaElectronica.objects.get(id=factura_id)
 
@@ -2659,6 +2745,21 @@ def generar_nota_credito_total(factura_id, motivo, observaciones=''):
     puede_nc, mensaje = factura.puede_generar_nota_credito()
     if not puede_nc:
         raise ValidationError(mensaje)
+
+    # VALIDACIÓN OBLIGATORIA: Verificar que hay caja abierta
+    from apps.arqueo_caja.models import AperturaCaja
+
+    apertura = AperturaCaja.objects.filter(
+        caja__punto_expedicion=factura.punto_expedicion,
+        esta_abierta=True,
+        activo=True
+    ).first()
+
+    if not apertura:
+        raise ValidationError(
+            f"No se puede emitir Nota de Crédito: No hay caja abierta en el punto de expedición "
+            f"{factura.punto_expedicion.codigo}. Debe abrir la caja antes de procesar devoluciones."
+        )
 
     # Calcular saldo a acreditar (puede ser menor que total si hay NC previas)
     saldo_a_acreditar = factura.saldo_neto
@@ -2734,6 +2835,8 @@ def generar_nota_credito_parcial(factura_id, items_a_acreditar, motivo, observac
     """
     Anula parcialmente una factura acreditando items específicos.
 
+    IMPORTANTE: Requiere que haya una caja abierta en el punto de expedición.
+
     Args:
         factura_id: ID de la factura a acreditar
         items_a_acreditar: Lista de dicts con estructura:
@@ -2753,7 +2856,7 @@ def generar_nota_credito_parcial(factura_id, items_a_acreditar, motivo, observac
         NotaCreditoElectronica: La nota de crédito generada
 
     Raises:
-        ValidationError: Si los datos son inválidos
+        ValidationError: Si los datos son inválidos o no hay caja abierta
     """
     factura = FacturaElectronica.objects.get(id=factura_id)
 
@@ -2761,6 +2864,21 @@ def generar_nota_credito_parcial(factura_id, items_a_acreditar, motivo, observac
     puede_nc, mensaje = factura.puede_generar_nota_credito()
     if not puede_nc:
         raise ValidationError(mensaje)
+
+    # VALIDACIÓN OBLIGATORIA: Verificar que hay caja abierta
+    from apps.arqueo_caja.models import AperturaCaja
+
+    apertura = AperturaCaja.objects.filter(
+        caja__punto_expedicion=factura.punto_expedicion,
+        esta_abierta=True,
+        activo=True
+    ).first()
+
+    if not apertura:
+        raise ValidationError(
+            f"No se puede emitir Nota de Crédito: No hay caja abierta en el punto de expedición "
+            f"{factura.punto_expedicion.codigo}. Debe abrir la caja antes de procesar devoluciones."
+        )
 
     # Calcular totales de items a acreditar
     detalles_calculados = []

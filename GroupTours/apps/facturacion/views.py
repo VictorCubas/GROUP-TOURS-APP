@@ -146,14 +146,16 @@ def generar_factura_reserva(request, reserva_id):
 
     Body (opcional):
         - subtipo_impuesto_id: ID del subtipo de impuesto a aplicar (si no se especifica, usa la configuración)
+        - punto_expedicion_id: ID del punto de expedición (si no se especifica, usa el primero activo)
     """
     try:
         reserva = get_object_or_404(Reserva, id=reserva_id)
 
         subtipo_impuesto_id = request.data.get('subtipo_impuesto_id', None)
+        punto_expedicion_id = request.data.get('punto_expedicion_id', None)
 
         # Generar la factura
-        factura = generar_factura_desde_reserva(reserva, subtipo_impuesto_id)
+        factura = generar_factura_desde_reserva(reserva, subtipo_impuesto_id, punto_expedicion_id)
 
         # Retornar la factura con todos los detalles
         serializer = FacturaElectronicaDetalladaSerializer(factura)
@@ -245,13 +247,15 @@ def generar_factura_total(request, reserva_id):
 
     Body (opcional):
         - subtipo_impuesto_id: ID del subtipo de impuesto a aplicar
+        - punto_expedicion_id: ID del punto de expedición (de la caja abierta)
     """
     try:
         reserva = get_object_or_404(Reserva, id=reserva_id, activo=True)
         subtipo_impuesto_id = request.data.get('subtipo_impuesto_id', None)
+        punto_expedicion_id = request.data.get('punto_expedicion_id', None)
 
         # Generar la factura global
-        factura = generar_factura_global(reserva, subtipo_impuesto_id)
+        factura = generar_factura_global(reserva, subtipo_impuesto_id, punto_expedicion_id=punto_expedicion_id)
 
         # Retornar la factura con todos los detalles
         serializer = FacturaElectronicaDetalladaSerializer(factura)
@@ -281,13 +285,20 @@ def generar_factura_pasajero(request, pasajero_id):
 
     Body (opcional):
         - subtipo_impuesto_id: ID del subtipo de impuesto a aplicar
+        - punto_expedicion_id: ID del punto de expedición (de la caja abierta)
     """
     try:
         pasajero = get_object_or_404(Pasajero, id=pasajero_id)
         subtipo_impuesto_id = request.data.get('subtipo_impuesto_id', None)
+        punto_expedicion_id = request.data.get('punto_expedicion_id', None)
 
         # Generar la factura individual
-        factura = generar_factura_individual(pasajero, subtipo_impuesto_id)
+        factura = generar_factura_individual(
+            pasajero.reserva,
+            pasajero,
+            subtipo_impuesto_id,
+            punto_expedicion_id=punto_expedicion_id
+        )
 
         # Retornar la factura con todos los detalles
         serializer = FacturaElectronicaDetalladaSerializer(factura)
