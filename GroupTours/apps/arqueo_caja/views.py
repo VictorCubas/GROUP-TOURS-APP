@@ -219,6 +219,21 @@ class AperturaCajaViewSet(viewsets.ModelViewSet):
         - El usuario debe tener un empleado asociado
         - El empleado no debe tener otra caja abierta
         - La caja debe estar cerrada
+
+        Returns:
+        {
+            "id": 1,
+            "codigo_apertura": "APR-2025-0001",
+            "caja": 1,
+            "caja_nombre": "Caja Principal",
+            "responsable": 1,
+            "responsable_nombre": "Juan Pérez",
+            "fecha_hora_apertura": "2025-11-17T15:42:00.000Z",
+            "monto_inicial": "1000000.00",
+            "observaciones_apertura": "",
+            "esta_abierta": true,
+            "activo": true
+        }
         """
         # Obtener el empleado del usuario autenticado
         try:
@@ -276,8 +291,12 @@ class AperturaCajaViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
 
-        headers = self.get_success_headers(serializer.data)
-        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        # Retornar usando AperturaCajaListSerializer para incluir todos los datos
+        apertura = AperturaCaja.objects.get(pk=serializer.instance.id)
+        response_serializer = AperturaCajaListSerializer(apertura)
+
+        headers = self.get_success_headers(response_serializer.data)
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     @action(detail=False, methods=['get'])
     def activas(self, request):
@@ -507,6 +526,29 @@ class AperturaCajaViewSet(viewsets.ModelViewSet):
                 'notificacion': 'No tienes una caja abierta. Los pagos se registrarán sin movimiento de caja.'
             })
 
+    @action(detail=True, methods=['get'], url_path='pdf')
+    def descargar_pdf(self, request, pk=None):
+        """
+        Genera y descarga el PDF de la apertura de caja.
+
+        GET /api/arqueo-caja/aperturas/{id}/pdf/
+
+        Returns:
+            PDF file con los datos de la apertura de caja
+        """
+        from django.http import HttpResponse
+
+        apertura = self.get_object()
+
+        # Generar PDF
+        pdf_buffer = apertura.generar_pdf()
+
+        # Crear respuesta HTTP con el PDF
+        response = HttpResponse(pdf_buffer.read(), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="apertura_{apertura.codigo_apertura}.pdf"'
+
+        return response
+
 
 class MovimientoCajaViewSet(viewsets.ModelViewSet):
     """
@@ -514,6 +556,9 @@ class MovimientoCajaViewSet(viewsets.ModelViewSet):
 
     Acciones personalizadas:
     - GET /movimientos/estadisticas/ - Estadísticas por tipo y método de pago
+
+    Filtros personalizados:
+    - usuario_id: Filtra por ID del usuario (convierte a empleado automáticamente)
     """
     queryset = MovimientoCaja.objects.all().select_related(
         'apertura_caja', 'apertura_caja__caja', 'usuario_registro',
@@ -525,6 +570,25 @@ class MovimientoCajaViewSet(viewsets.ModelViewSet):
         'usuario_registro', 'comprobante', 'activo'
     ]
     pagination_class = CustomPageNumberPagination
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+
+        # Filtro personalizado por usuario_id
+        usuario_id = self.request.query_params.get('usuario_id')
+        if usuario_id:
+            try:
+                from apps.usuario.models import Usuario
+                usuario = Usuario.objects.get(id=usuario_id)
+                if usuario.empleado:
+                    queryset = queryset.filter(usuario_registro=usuario.empleado)
+                else:
+                    # Si el usuario no tiene empleado asociado, no devolver resultados
+                    queryset = queryset.none()
+            except Usuario.DoesNotExist:
+                queryset = queryset.none()
+
+        return queryset
 
     def get_serializer_class(self):
         if self.action == 'list':
@@ -865,6 +929,7 @@ class CierreCajaViewSet(viewsets.ModelViewSet):
 
         # Preparar respuesta
         response_data = {
+            'id': cierre.id,  # ID del cierre para poder descargar el PDF
             'codigo_cierre': cierre.codigo_cierre,
             'fecha_cierre': cierre.fecha_hora_cierre,
             'monto_inicial': cierre.apertura_caja.monto_inicial,
@@ -875,7 +940,8 @@ class CierreCajaViewSet(viewsets.ModelViewSet):
             'diferencia': cierre.diferencia_efectivo,
             'diferencia_porcentaje': cierre.diferencia_porcentaje,
             'requiere_autorizacion': cierre.requiere_autorizacion,
-            'estado': estado
+            'estado': estado,
+            'pdf_url': f'/api/arqueo-caja/cierres/{cierre.id}/pdf/'  # URL para descargar el PDF
         }
 
         return Response(response_data, status=status.HTTP_201_CREATED)
@@ -942,6 +1008,30 @@ class CierreCajaViewSet(viewsets.ModelViewSet):
             {'texto': 'Nuevos últimos 30 días', 'valor': str(nuevos)},
         ]
         return Response(data)
+
+    @action(detail=True, methods=['get'], url_path='pdf')
+    def descargar_pdf(self, request, pk=None):
+        """
+        Genera y descarga el PDF del cierre de caja.
+        Incluye todos los datos del cierre y movimientos del responsable.
+
+        GET /api/arqueo-caja/cierres/{id}/pdf/
+
+        Returns:
+            PDF file con los datos completos del cierre de caja
+        """
+        from django.http import HttpResponse
+
+        cierre = self.get_object()
+
+        # Generar PDF
+        pdf_buffer = cierre.generar_pdf()
+
+        # Crear respuesta HTTP con el PDF
+        response = HttpResponse(pdf_buffer.read(), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="cierre_{cierre.codigo_cierre}.pdf"'
+
+        return response
 
     @action(detail=False, methods=['post'], url_path='cerrar-cajas-abiertas')
     def cerrar_cajas_abiertas(self, request):
