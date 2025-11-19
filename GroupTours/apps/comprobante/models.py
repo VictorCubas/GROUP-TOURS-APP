@@ -168,8 +168,16 @@ class ComprobantePago(models.Model):
             tipo='devolucion'
         ).aggregate(total=Sum('monto'))['total'] or Decimal('0')
 
-        self.reserva.monto_pagado = total_pagado - total_devoluciones
-        self.reserva.save(update_fields=['monto_pagado'])
+        # NOTA: reserva.monto_pagado ahora es una propiedad calculada automáticamente
+        # desde los pasajeros, por lo que ya NO necesitamos actualizarlo manualmente.
+        # Las líneas comentadas a continuación ya NO son necesarias:
+        # self.reserva.monto_pagado = total_pagado - total_devoluciones
+        # self.reserva.save(update_fields=['monto_pagado'])
+
+        # IMPORTANTE: Recargar la reserva antes de actualizar el estado
+        # Esto es necesario para que las queries de monto_pagado (que es una propiedad calculada)
+        # vean las distribuciones recién creadas y no usen caché de Django
+        self.reserva.refresh_from_db()
 
         # Actualizar estado de la reserva
         # Si la reserva está en estado pendiente, se requiere modalidad_facturacion Y condicion_pago

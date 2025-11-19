@@ -1090,6 +1090,8 @@ class ReservaViewSet(viewsets.ModelViewSet):
                     'moneda': moneda_data,
                     'modalidad_facturacion': reserva.modalidad_facturacion,
                     'modalidad_facturacion_display': reserva.get_modalidad_facturacion_display() if reserva.modalidad_facturacion else None,
+                    'condicion_pago': reserva.condicion_pago,
+                    'condicion_pago_display': reserva.get_condicion_pago_display() if reserva.condicion_pago else None,
                     'costo_total_estimado': float(reserva.costo_total_estimado),
                     'monto_pagado': float(reserva.monto_pagado),
                     'saldo_pendiente': float(reserva.costo_total_estimado - reserva.monto_pagado),
