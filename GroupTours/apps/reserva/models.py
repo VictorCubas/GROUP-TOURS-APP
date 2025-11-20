@@ -249,8 +249,18 @@ class Reserva(models.Model):
 
         # Si todos los pasajeros reales están cargados, validar individualmente
         # Excluir pasajeros pendientes de la validación individual
-        pasajeros_reales = self.pasajeros.exclude(persona__documento__contains='_PEND')
-        return pasajeros_reales.exists() and all(pasajero.esta_totalmente_pagado for pasajero in pasajeros_reales)
+        # IMPORTANTE: Usar .all() en lugar de acceder directamente para evitar caché
+        pasajeros_reales = self.pasajeros.all().exclude(persona__documento__contains='_PEND')
+
+        if not pasajeros_reales.exists():
+            return False
+
+        # Verificar que TODOS los pasajeros reales estén totalmente pagados
+        for pasajero in pasajeros_reales:
+            if not pasajero.esta_totalmente_pagado:
+                return False
+
+        return True
 
     def actualizar_estado(self, modalidad_facturacion=None, condicion_pago=None):
         """
@@ -357,11 +367,21 @@ class Reserva(models.Model):
                 return
 
             # AVANCE: Transición a 'finalizada'
-            if self.esta_totalmente_pagada() and self.datos_completos:
+            # DEBUG: Agregar logging para diagnóstico
+            esta_pagada = self.esta_totalmente_pagada()
+            datos_ok = self.datos_completos
+
+            print(f"[DEBUG] Reserva {self.id}: estado={self.estado}, esta_totalmente_pagada={esta_pagada}, datos_completos={datos_ok}")
+
+            if esta_pagada and datos_ok:
                 # Pago total completo (100%) + todos los pasajeros cargados
+                print(f"[DEBUG] Reserva {self.id}: Cambiando estado a FINALIZADA")
                 self.estado = "finalizada"
                 self.save(update_fields=["estado", "datos_completos"])
+                print(f"[DEBUG] Reserva {self.id}: Estado guardado como {self.estado}")
                 return
+            else:
+                print(f"[DEBUG] Reserva {self.id}: NO cumple condiciones para finalizar")
 
         # Estado actual: finalizada
         elif self.estado == "finalizada":

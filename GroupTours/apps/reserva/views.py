@@ -947,14 +947,47 @@ class ReservaViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # VALIDACIÓN TEMPRANA: Verificar que el usuario autenticado tenga caja abierta
+        # ANTES de crear el comprobante y los pasajeros pendientes
+        from apps.arqueo_caja.models import AperturaCaja
+
+        usuario_autenticado = request.user
+        empleado_registrador = None
+        if hasattr(usuario_autenticado, 'empleado') and usuario_autenticado.empleado:
+            empleado_registrador = usuario_autenticado.empleado
+
+        # Si no hay empleado_registrador, usar el empleado asignado como fallback
+        empleado_para_validar = empleado_registrador if empleado_registrador else empleado
+
+        # Verificar que tenga caja abierta
+        apertura_activa = AperturaCaja.objects.filter(
+            responsable=empleado_para_validar,
+            esta_abierta=True,
+            activo=True
+        ).first()
+
+        if not apertura_activa:
+            # Obtener nombre del empleado para mensaje de error
+            empleado_nombre = "El empleado"
+            if empleado_para_validar and empleado_para_validar.persona:
+                persona = empleado_para_validar.persona
+                try:
+                    persona_fisica = persona.personafisica
+                    empleado_nombre = f"{persona_fisica.nombre} {persona_fisica.apellido or ''}".strip()
+                except:
+                    try:
+                        persona_juridica = persona.personajuridica
+                        empleado_nombre = persona_juridica.razon_social
+                    except:
+                        pass
+
+            return Response(
+                {'error': f'No se puede registrar el pago. {empleado_nombre} no tiene una caja abierta. Por favor, abra una caja antes de registrar pagos.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         # Crear el comprobante
         try:
-            # Obtener el empleado del usuario autenticado
-            usuario_autenticado = request.user
-            empleado_registrador = None
-            if hasattr(usuario_autenticado, 'empleado') and usuario_autenticado.empleado:
-                empleado_registrador = usuario_autenticado.empleado
-
             comprobante = ComprobantePago(
                 reserva=reserva,
                 tipo='sena',
@@ -1366,13 +1399,46 @@ class ReservaViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Crear el comprobante
-        # Obtener el empleado del usuario autenticado
+        # VALIDACIÓN TEMPRANA: Verificar que el usuario autenticado tenga caja abierta
+        # ANTES de crear el comprobante y los pasajeros pendientes
+        from apps.arqueo_caja.models import AperturaCaja
+
         usuario_autenticado = request.user
         empleado_registrador = None
         if hasattr(usuario_autenticado, 'empleado') and usuario_autenticado.empleado:
             empleado_registrador = usuario_autenticado.empleado
 
+        # Si no hay empleado_registrador, usar el empleado asignado como fallback
+        empleado_para_validar = empleado_registrador if empleado_registrador else empleado
+
+        # Verificar que tenga caja abierta
+        apertura_activa = AperturaCaja.objects.filter(
+            responsable=empleado_para_validar,
+            esta_abierta=True,
+            activo=True
+        ).first()
+
+        if not apertura_activa:
+            # Obtener nombre del empleado para mensaje de error
+            empleado_nombre = "El empleado"
+            if empleado_para_validar and empleado_para_validar.persona:
+                persona = empleado_para_validar.persona
+                try:
+                    persona_fisica = persona.personafisica
+                    empleado_nombre = f"{persona_fisica.nombre} {persona_fisica.apellido or ''}".strip()
+                except:
+                    try:
+                        persona_juridica = persona.personajuridica
+                        empleado_nombre = persona_juridica.razon_social
+                    except:
+                        pass
+
+            return Response(
+                {'error': f'No se puede registrar el pago. {empleado_nombre} no tiene una caja abierta. Por favor, abra una caja antes de registrar pagos.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Crear el comprobante
         try:
             comprobante = ComprobantePago(
                 reserva=reserva,
@@ -1397,10 +1463,12 @@ class ReservaViewSet(viewsets.ModelViewSet):
             # Actualizar monto pagado en la reserva y establecer modalidad y condición de pago si corresponde
             from django.core.exceptions import ValidationError as DjangoValidationError
             try:
+                print(f"[DEBUG VIEW] Antes de actualizar_monto_reserva - Reserva {reserva.id}, Estado: {reserva.estado}")
                 comprobante.actualizar_monto_reserva(
                     modalidad_facturacion=modalidad_facturacion,
                     condicion_pago=condicion_pago
                 )
+                print(f"[DEBUG VIEW] Después de actualizar_monto_reserva - Reserva {reserva.id}, Estado: {reserva.estado}")
             except DjangoValidationError as e:
                 # Si hay un error de validación, eliminamos el comprobante (rollback manual)
                 comprobante.delete()
@@ -1789,6 +1857,138 @@ class ReservaViewSet(viewsets.ModelViewSet):
                 {'error': f'Error al obtener servicios: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+    @action(detail=True, methods=['post'], url_path='forzar-actualizacion-estado')
+    def forzar_actualizacion_estado(self, request, pk=None):
+        """
+        Fuerza la actualización del estado de una reserva.
+        Útil cuando el estado no se actualizó correctamente después de un pago.
+
+        POST /api/reservas/{id}/forzar-actualizacion-estado/
+        """
+        reserva = self.get_object()
+
+        estado_anterior = reserva.estado
+
+        # Refrescar la reserva desde la base de datos
+        reserva.refresh_from_db()
+
+        # Forzar la actualización del estado
+        reserva.actualizar_estado()
+
+        # Refrescar nuevamente para obtener el estado actualizado
+        reserva.refresh_from_db()
+
+        return Response({
+            'message': 'Estado actualizado exitosamente',
+            'estado_anterior': estado_anterior,
+            'estado_actual': reserva.estado,
+            'estado_display': reserva.estado_display,
+            'datos_completos': reserva.datos_completos,
+            'esta_totalmente_pagada': reserva.esta_totalmente_pagada(),
+            'puede_descargar_factura_global': self._calcular_puede_descargar_factura_global(reserva),
+        }, status=status.HTTP_200_OK)
+
+    def _calcular_puede_descargar_factura_global(self, reserva):
+        """Helper para calcular puede_descargar_factura_global"""
+        if reserva.modalidad_facturacion != 'global' or not reserva.condicion_pago:
+            return False
+
+        if reserva.condicion_pago == 'contado':
+            return reserva.estado == 'finalizada' and reserva.esta_totalmente_pagada()
+        elif reserva.condicion_pago == 'credito':
+            return reserva.estado in ['confirmada', 'finalizada']
+
+        return False
+
+    @action(detail=True, methods=['get'], url_path='diagnostico-estado')
+    def diagnostico_estado(self, request, pk=None):
+        """
+        Endpoint temporal de diagnóstico para verificar por qué una reserva
+        no pasa al estado 'finalizada'.
+
+        GET /api/reservas/{id}/diagnostico-estado/
+        """
+        reserva = self.get_object()
+
+        # Recopilar información de diagnóstico
+        pasajeros_info = []
+        pasajeros_reales = reserva.pasajeros.exclude(persona__documento__contains='_PEND')
+
+        for p in reserva.pasajeros.all():
+            pasajeros_info.append({
+                'id': p.id,
+                'nombre': f"{p.persona.nombre} {p.persona.apellido}",
+                'documento': p.persona.documento,
+                'es_pendiente': '_PEND' in p.persona.documento,
+                'precio_asignado': float(p.precio_asignado or 0),
+                'monto_pagado': float(p.monto_pagado),
+                'saldo_pendiente': float(p.saldo_pendiente),
+                'esta_totalmente_pagado': p.esta_totalmente_pagado,
+                'tiene_sena_pagada': p.tiene_sena_pagada,
+            })
+
+        # Validaciones
+        validaciones = {
+            'cantidad_pasajeros': reserva.cantidad_pasajeros,
+            'pasajeros_cargados_reales': reserva.pasajeros_cargados,
+            'pasajeros_total': reserva.pasajeros.count(),
+            'faltan_datos_pasajeros': reserva.faltan_datos_pasajeros,
+            'datos_completos': reserva.datos_completos,
+            'puede_confirmarse': reserva.puede_confirmarse(),
+            'esta_totalmente_pagada': reserva.esta_totalmente_pagada(),
+            'todos_pasajeros_reales_pagados': pasajeros_reales.exists() and all(p.esta_totalmente_pagado for p in pasajeros_reales),
+        }
+
+        # Determinar por qué no está en finalizada
+        razones_no_finalizada = []
+        if reserva.estado == 'confirmada':
+            if not reserva.esta_totalmente_pagada():
+                razones_no_finalizada.append("No está totalmente pagada")
+                if not reserva.faltan_datos_pasajeros:
+                    # Verificar cuáles pasajeros no están totalmente pagados
+                    for p in pasajeros_reales:
+                        if not p.esta_totalmente_pagado:
+                            razones_no_finalizada.append(
+                                f"Pasajero {p.id} ({p.persona.nombre}) tiene saldo pendiente: {p.saldo_pendiente}"
+                            )
+            if not reserva.datos_completos:
+                razones_no_finalizada.append("Datos no completos (faltan pasajeros por cargar)")
+
+        # Calcular puede_descargar_factura_global
+        puede_descargar_factura_global = False
+        if reserva.modalidad_facturacion == 'global' and reserva.condicion_pago:
+            if reserva.condicion_pago == 'contado':
+                puede_descargar_factura_global = (
+                    reserva.estado == 'finalizada' and
+                    reserva.esta_totalmente_pagada()
+                )
+            elif reserva.condicion_pago == 'credito':
+                puede_descargar_factura_global = reserva.estado in ['confirmada', 'finalizada']
+
+        return Response({
+            'reserva_id': reserva.id,
+            'codigo': reserva.codigo,
+            'estado_actual': reserva.estado,
+            'estado_display': reserva.estado_display,
+            'modalidad_facturacion': reserva.modalidad_facturacion,
+            'condicion_pago': reserva.condicion_pago,
+            'costo_total_estimado': float(reserva.costo_total_estimado),
+            'monto_pagado_reserva': float(reserva.monto_pagado),
+            'saldo_pendiente_reserva': float(reserva.costo_total_estimado - reserva.monto_pagado),
+            'validaciones': validaciones,
+            'pasajeros': pasajeros_info,
+            'razones_no_finalizada': razones_no_finalizada if razones_no_finalizada else ['Cumple todas las condiciones para estar finalizada'],
+            'puede_descargar_factura_global': puede_descargar_factura_global,
+            'requisitos_factura_global': {
+                'modalidad': reserva.modalidad_facturacion == 'global',
+                'condicion_pago': reserva.condicion_pago,
+                'estado_requerido': 'finalizada' if reserva.condicion_pago == 'contado' else 'confirmada o finalizada',
+                'estado_actual': reserva.estado,
+                'cumple_estado': reserva.estado == 'finalizada' if reserva.condicion_pago == 'contado' else reserva.estado in ['confirmada', 'finalizada'],
+                'totalmente_pagada': reserva.esta_totalmente_pagada(),
+            }
+        })
 
 
 class ReservaServiciosAdicionalesViewSet(viewsets.ModelViewSet):
