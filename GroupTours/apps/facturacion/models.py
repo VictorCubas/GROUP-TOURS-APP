@@ -178,6 +178,14 @@ class FacturaElectronica(models.Model):
         ('por_pasajero', 'Factura por Pasajero Individual'),
     ]
 
+    MOTIVO_ANULACION_CHOICES = [
+        ('1', 'Error en datos de emisor'),
+        ('2', 'Error en datos del receptor'),
+        ('3', 'Error en datos de la operación'),
+        ('4', 'Operación no realizada'),
+        ('5', 'Por acuerdo entre las partes'),
+    ]
+
     # Relaciones básicas
     empresa = models.ForeignKey(Empresa, on_delete=models.PROTECT, related_name="facturas")
     establecimiento = models.ForeignKey(Establecimiento, on_delete=models.PROTECT)
@@ -373,6 +381,28 @@ class FacturaElectronica(models.Model):
         help_text="PDF de la factura"
     )
 
+    # Campos de anulación
+    fecha_anulacion = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Fecha y hora en que se anuló la factura"
+    )
+    motivo_anulacion = models.CharField(
+        max_length=1,
+        choices=MOTIVO_ANULACION_CHOICES,
+        null=True,
+        blank=True,
+        help_text="Motivo de la anulación de la factura (código dMotEmi según normativa SET)"
+    )
+    usuario_anulacion = models.ForeignKey(
+        'usuario.Usuario',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='facturas_anuladas',
+        help_text="Usuario que anuló la factura"
+    )
+
     class Meta:
         unique_together = ("establecimiento", "punto_expedicion", "numero_factura")
 
@@ -437,6 +467,62 @@ class FacturaElectronica(models.Model):
             return False, "No hay saldo disponible para acreditar"
 
         return True, "OK"
+
+    def anular(self, motivo, usuario):
+        """
+        Anula la factura si cumple las condiciones.
+
+        IMPORTANTE: La anulación NO afecta cajas ni reservas.
+        Solo marca la factura como anulada para efectos fiscales/contables.
+
+        Validaciones:
+        - Solo se puede anular el mismo día de emisión
+        - Solo administradores pueden anular
+        - La factura no debe estar ya anulada
+        - No debe ser una factura de configuración
+        - No debe tener notas de crédito emitidas
+
+        Args:
+            motivo (str): Motivo de la anulación
+            usuario (User): Usuario que anula (debe ser administrador)
+
+        Returns:
+            tuple: (bool, str) - (éxito, mensaje)
+        """
+        from django.utils import timezone
+
+        # Validar que no esté ya anulada
+        if not self.activo:
+            return False, "La factura ya está anulada"
+
+        # Validar que no sea configuración
+        if self.es_configuracion:
+            return False, "No se puede anular una factura de configuración"
+
+        # Validar que no tenga notas de crédito emitidas
+        if self.notas_credito.filter(activo=True).exists():
+            return False, "No se puede anular una factura que tiene notas de crédito emitidas"
+
+        # Validar que el usuario sea administrador
+        if not usuario or not usuario.is_staff:
+            return False, "Solo los administradores pueden anular facturas"
+
+        # Validar que sea el mismo día de emisión
+        if self.fecha_emision:
+            fecha_emision_local = timezone.localtime(self.fecha_emision).date()
+            fecha_actual = timezone.localtime(timezone.now()).date()
+
+            if fecha_emision_local != fecha_actual:
+                return False, "Solo se puede anular una factura el mismo día de su emisión"
+
+        # Marcar como anulada
+        self.activo = False
+        self.fecha_anulacion = timezone.now()
+        self.motivo_anulacion = motivo
+        self.usuario_anulacion = usuario
+        self.save()
+
+        return True, "Factura anulada exitosamente"
 
     def save(self, *args, **kwargs):
         # Validar si es configuración
@@ -867,8 +953,21 @@ class FacturaElectronica(models.Model):
             )
             elements.append(reserva_text)
 
-        # Construir PDF
-        doc.build(elements)
+        # Función para agregar marca de agua "ANULADO" si la factura está inactiva
+        def add_watermark(canvas, doc):
+            """Agrega marca de agua ANULADO en cada página si la factura está anulada"""
+            if not self.activo:
+                from reportlab.lib.colors import HexColor
+                canvas.saveState()
+                canvas.setFont('Helvetica-Bold', 100)
+                canvas.setFillColor(HexColor('#FF0000'), alpha=0.2)
+                canvas.translate(letter[0]/2, letter[1]/2)
+                canvas.rotate(45)
+                canvas.drawCentredString(0, 0, "ANULADO")
+                canvas.restoreState()
+
+        # Construir PDF con marca de agua si está anulada
+        doc.build(elements, onFirstPage=add_watermark, onLaterPages=add_watermark)
 
         # Guardar el PDF
         buffer.seek(0)
