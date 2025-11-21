@@ -93,12 +93,6 @@ class Reserva(models.Model):
         blank=True,
         help_text="Precio acordado por pasajero al momento de la reserva (incluye habitación + ganancia/comisión + servicios base del paquete)"
     )
-    monto_pagado = models.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        default=0,
-        help_text="Monto abonado hasta el momento"
-    )
     estado = models.CharField(
         max_length=20,
         choices=ESTADOS,
@@ -255,27 +249,51 @@ class Reserva(models.Model):
 
         # Si todos los pasajeros reales están cargados, validar individualmente
         # Excluir pasajeros pendientes de la validación individual
-        pasajeros_reales = self.pasajeros.exclude(persona__documento__contains='_PEND')
-        return pasajeros_reales.exists() and all(pasajero.esta_totalmente_pagado for pasajero in pasajeros_reales)
+        # IMPORTANTE: Usar .all() en lugar de acceder directamente para evitar caché
+        pasajeros_reales = self.pasajeros.all().exclude(persona__documento__contains='_PEND')
+
+        if not pasajeros_reales.exists():
+            return False
+
+        # Verificar que TODOS los pasajeros reales estén totalmente pagados
+        for pasajero in pasajeros_reales:
+            if not pasajero.esta_totalmente_pagado:
+                return False
+
+        return True
 
     def actualizar_estado(self, modalidad_facturacion=None, condicion_pago=None):
         """
         Actualiza el estado de la reserva según pago y carga de pasajeros.
+        Soporta tanto transiciones hacia adelante como hacia atrás (retroceso).
 
         Args:
             modalidad_facturacion: 'global' o 'individual' (requerido al confirmar desde pendiente)
             condicion_pago: 'contado' o 'credito' (requerido al confirmar desde pendiente)
 
-        Lógica de estados:
+        Lógica de estados (con soporte de retroceso):
+
         - Pendiente: Sin pago o pago insuficiente para la seña
+          → AVANCE a confirmada: si puede_confirmarse() (seña completa)
+
         - Confirmada: Seña pagada (o más, pero < 100%), cupo asegurado
           - datos_completos=True si todos los pasajeros están cargados
           - datos_completos=False si faltan datos de pasajeros
-          - NUEVO: Al pasar a confirmada desde pendiente, se debe definir modalidad_facturacion Y condicion_pago
+          - Al pasar a confirmada desde pendiente, se debe definir modalidad_facturacion Y condicion_pago
+          → AVANCE a finalizada: si esta_totalmente_pagada() Y datos_completos
+          → RETROCESO a pendiente: si ya NO puede_confirmarse() (ej: NC redujo pago < seña)
+
         - Finalizada: Pago total completo (100%) Y todos los pasajeros reales cargados
-        - Cancelada: Reserva cancelada
+          → RETROCESO a confirmada: si ya NO esta_totalmente_pagada() PERO puede_confirmarse()
+          → RETROCESO a pendiente: si ya NO esta_totalmente_pagada() Y NO puede_confirmarse()
+          (Retroceso ocurre típicamente por Notas de Crédito que reducen monto_pagado)
+
+        - Cancelada: Reserva cancelada (estado manual, NO cambia automáticamente)
 
         El campo 'datos_completos' indica si todos los pasajeros están cargados.
+
+        IMPORTANTE: Una Nota de Crédito del 100% NO pasa la reserva a "cancelada" automáticamente.
+        El estado "cancelada" es una decisión de negocio que se establece manualmente.
         """
         if self.estado == "cancelada":
             return
@@ -342,10 +360,40 @@ class Reserva(models.Model):
                     f"Ya está definida como '{self.condicion_pago}'"
                 )
 
-            # Continuar con lógica normal de transición a 'finalizada'
-            if self.esta_totalmente_pagada() and self.datos_completos:
+            # RETROCESO: Si ya NO puede confirmarse (ej: NC redujo el pago debajo de la seña)
+            if not self.puede_confirmarse():
+                self.estado = "pendiente"
+                self.save(update_fields=["estado", "datos_completos"])
+                return
+
+            # AVANCE: Transición a 'finalizada'
+            # DEBUG: Agregar logging para diagnóstico
+            esta_pagada = self.esta_totalmente_pagada()
+            datos_ok = self.datos_completos
+
+            print(f"[DEBUG] Reserva {self.id}: estado={self.estado}, esta_totalmente_pagada={esta_pagada}, datos_completos={datos_ok}")
+
+            if esta_pagada and datos_ok:
                 # Pago total completo (100%) + todos los pasajeros cargados
+                print(f"[DEBUG] Reserva {self.id}: Cambiando estado a FINALIZADA")
                 self.estado = "finalizada"
+                self.save(update_fields=["estado", "datos_completos"])
+                print(f"[DEBUG] Reserva {self.id}: Estado guardado como {self.estado}")
+                return
+            else:
+                print(f"[DEBUG] Reserva {self.id}: NO cumple condiciones para finalizar")
+
+        # Estado actual: finalizada
+        elif self.estado == "finalizada":
+            # RETROCESO: Si ya NO está totalmente pagada (ej: NC redujo el monto_pagado)
+            if not self.esta_totalmente_pagada():
+                # Determinar a qué estado retroceder
+                if self.puede_confirmarse():
+                    # Aún tiene seña completa -> retroceder a CONFIRMADA
+                    self.estado = "confirmada"
+                else:
+                    # No tiene seña completa -> retroceder a PENDIENTE
+                    self.estado = "pendiente"
                 self.save(update_fields=["estado", "datos_completos"])
                 return
 
@@ -529,6 +577,29 @@ class Reserva(models.Model):
         costo_paquete = self.precio_base_paquete * self.cantidad_pasajeros
         return costo_paquete + self.costo_servicios_adicionales
 
+    @property
+    def monto_pagado(self):
+        """
+        Monto total pagado en la reserva, calculado sumando el monto_pagado de todos los pasajeros.
+
+        IMPORTANTE: Esta propiedad sobrescribe el campo monto_pagado del modelo.
+        El campo en la BD se mantiene por compatibilidad pero ya NO se actualiza.
+        El valor real siempre se calcula dinámicamente desde los pasajeros.
+
+        Esto garantiza que las Notas de Crédito se reflejen automáticamente,
+        ya que Pasajero.monto_pagado ya las considera.
+        """
+        from decimal import Decimal
+        return sum(
+            pasajero.monto_pagado
+            for pasajero in self.pasajeros.all()
+        ) or Decimal("0")
+
+    @property
+    def saldo_pendiente(self):
+        """Saldo pendiente de la reserva"""
+        return self.costo_total_estimado - self.monto_pagado
+
     def listar_todos_servicios(self):
         """
         Retorna un diccionario con servicios base (del paquete) y adicionales
@@ -614,15 +685,56 @@ class Pasajero(models.Model):
     @property
     def monto_pagado(self):
         """
-        Suma de todas las distribuciones de pago asociadas a este pasajero.
-        Solo cuenta comprobantes activos (no anulados).
+        Suma de todas las distribuciones de pago asociadas a este pasajero,
+        menos las notas de crédito que NO tienen distribución de devolución.
+
+        ENFOQUE HÍBRIDO:
+        1. Suma todas las distribuciones (incluyendo devoluciones con monto negativo)
+        2. Resta las NC que NO tienen un comprobante de devolución asociado
+           (esto cubre casos donde el signal no se ejecutó)
+
+        Solo cuenta comprobantes activos (no anulados) y NC activas.
+
+        NOTA: Las NC reducen el monto efectivamente pagado por el pasajero,
+        ya que representan devoluciones o acreditaciones de dinero.
+
+        PROTECCIÓN: El monto pagado nunca será menor a 0, para evitar errores
+        cuando hay facturas mal generadas con NC incorrectas.
         """
         from decimal import Decimal
-        total = sum(
+        from apps.comprobante.models import ComprobantePago
+
+        # 1. Suma de TODAS las distribuciones (incluyendo devoluciones con monto negativo)
+        total_pagos = sum(
             d.monto
             for d in self.distribuciones_pago.filter(comprobante__activo=True)
         )
-        return total if total else Decimal("0")
+
+        # 2. Restar las NC que NO tienen comprobante de devolución asociado
+        from apps.facturacion.models import NotaCreditoElectronica
+        total_nc_sin_distribucion = Decimal("0")
+
+        for factura in self.facturas.filter(activo=True):
+            for nc in factura.notas_credito.filter(activo=True):
+                # Verificar si esta NC ya tiene un comprobante de devolución
+                tiene_comprobante_devolucion = ComprobantePago.objects.filter(
+                    reserva=self.reserva,
+                    tipo='devolucion',
+                    referencia=f"NC: {nc.numero_nota_credito}",
+                    activo=True
+                ).exists()
+
+                # Si NO tiene comprobante de devolución, restar la NC manualmente
+                if not tiene_comprobante_devolucion:
+                    total_nc_sin_distribucion += nc.total_general
+
+        # Monto pagado efectivo = distribuciones (con devoluciones negativas) - NC sin distribución
+        total_pagos_decimal = total_pagos if total_pagos else Decimal("0")
+        monto_final = total_pagos_decimal - total_nc_sin_distribucion
+
+        # PROTECCIÓN: El monto pagado no puede ser negativo
+        # Esto previene errores cuando hay facturas mal generadas con NC incorrectas
+        return max(monto_final, Decimal("0"))
 
     @property
     def saldo_pendiente(self):

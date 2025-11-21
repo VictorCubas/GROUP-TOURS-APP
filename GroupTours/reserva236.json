@@ -1,0 +1,342 @@
+{
+    "id": 236,
+    "codigo": "RSV-2025-0236",
+    "fecha_reserva": "2025-11-18T06:41:44-0300",
+    "fecha_modificacion": "2025-11-18T06:41:44-0300",
+    "observacion": null,
+    "activo": true,
+    "titular": {
+        "id": 15,
+        "nombre": "KENZO",
+        "apellido": "Escurra",
+        "documento": "778341234",
+        "tipo_documento": 1,
+        "tipo_documento_nombre": "CI",
+        "email": "kenzo@gmail.com",
+        "telefono": "09875436788",
+        "fecha_nacimiento": "2005-01-01",
+        "sexo": "M",
+        "sexo_display": "Masculino",
+        "nacionalidad": 1,
+        "nacionalidad_nombre": "Paraguay"
+    },
+    "paquete": {
+        "id": 141,
+        "nombre": "Rio de Janeiro Octubre/Noviembre 2025",
+        "tipo_paquete": {
+            "id": 1,
+            "nombre": "Terrestre"
+        },
+        "destino": {
+            "id": 4,
+            "ciudad": "Rio de Janeiro",
+            "pais": "Brasil"
+        },
+        "moneda": {
+            "id": 1,
+            "nombre": "Guaran\u00c3\u00ad",
+            "simbolo": "\u00e2\u201a\u00b2",
+            "codigo": "PYG"
+        },
+        "modalidad": "flexible",
+        "propio": false,
+        "personalizado": false,
+        "cantidad_pasajeros": null,
+        "distribuidora": {
+            "id": 2,
+            "nombre": "MVN Traveles"
+        },
+        "imagen": null
+    },
+    "salida": {
+        "id": 251,
+        "fecha_salida": "2025-12-06",
+        "fecha_regreso": "2025-12-13",
+        "precio_actual": 3500000.0,
+        "precio_final": 3750000.0,
+        "precio_venta_sugerido_min": 4550000.0,
+        "precio_venta_sugerido_max": 4875000.0,
+        "senia": 350000.0,
+        "cupo": null,
+        "ganancia": null,
+        "comision": 30.0,
+        "temporada": null,
+        "moneda": {
+            "id": 1,
+            "nombre": "Guaran\u00c3\u00ad",
+            "simbolo": "\u00e2\u201a\u00b2",
+            "codigo": "PYG"
+        }
+    },
+    "hotel": {
+        "id": 14,
+        "nombre": "Hard Rock Rio",
+        "direccion": null,
+        "descripcion": "Hotel moderno y confortable, ideal para viajes de ocio o negocios. Ofrece habitaciones equipadas, excelente ubicaci\u00c3\u00b3n y servicios que garantizan una estancia agradable",
+        "estrellas": 4,
+        "cadena": {
+            "id": 1,
+            "nombre": "Hard Rock Hotels"
+        },
+        "ciudad": {
+            "id": 9,
+            "nombre": "Rio de Janeiro"
+        }
+    },
+    "habitacion": {
+        "id": 3,
+        "numero": "102",
+        "tipo": "triple",
+        "tipo_display": "Triple",
+        "capacidad": 3,
+        "precio_noche": 1800.0,
+        "moneda": {
+            "id": 2,
+            "nombre": "Dolar",
+            "simbolo": "$",
+            "codigo": "USD"
+        }
+    },
+    "cantidad_pasajeros": 3,
+    "pasajeros": [
+        {
+            "id": 447,
+            "persona": {
+                "id": 15,
+                "nombre": "KENZO",
+                "apellido": "Escurra",
+                "documento": "778341234",
+                "tipo_documento": 1,
+                "tipo_documento_nombre": "CI",
+                "email": "kenzo@gmail.com",
+                "telefono": "09875436788",
+                "fecha_nacimiento": "2005-01-01",
+                "sexo": "M",
+                "sexo_display": "Masculino",
+                "nacionalidad": 1,
+                "nacionalidad_nombre": "Paraguay"
+            },
+            "es_titular": true,
+            "por_asignar": false,
+            "precio_asignado": 4875000.0,
+            "monto_pagado": 4875000.0,
+            "saldo_pendiente": 0.0,
+            "porcentaje_pagado": 100.0,
+            "se\u00c3\u00b1a_requerida": 350000.0,
+            "tiene_sena_pagada": true,
+            "esta_totalmente_pagado": true,
+            "ticket_numero": null,
+            "voucher_codigo": "RSV-2025-0236-PAX-447-VOUCHER",
+            "voucher_id": 250,
+            "fecha_registro": "2025-11-18T06:41:44-0300",
+            "puede_descargar_factura": true,
+            "factura_id": 50,
+            "factura_individual_generada": true,
+            "nota_credito_individual_ya_generada": true,
+            "nota_credito_individual_id": 9
+        },
+        {
+            "id": 448,
+            "persona": {
+                "id": 10,
+                "nombre": "Victor",
+                "apellido": "Cubas",
+                "documento": "4028760",
+                "tipo_documento": 1,
+                "tipo_documento_nombre": "CI",
+                "email": "vhcubas@gmail.com",
+                "telefono": "0971991960",
+                "fecha_nacimiento": "1991-07-10",
+                "sexo": "M",
+                "sexo_display": "Masculino",
+                "nacionalidad": 1,
+                "nacionalidad_nombre": "Paraguay"
+            },
+            "es_titular": false,
+            "por_asignar": false,
+            "precio_asignado": 4875000.0,
+            "monto_pagado": 4875000.0,
+            "saldo_pendiente": 0.0,
+            "porcentaje_pagado": 100.0,
+            "se\u00c3\u00b1a_requerida": 350000.0,
+            "tiene_sena_pagada": true,
+            "esta_totalmente_pagado": true,
+            "ticket_numero": null,
+            "voucher_codigo": "RSV-2025-0236-PAX-448-VOUCHER",
+            "voucher_id": 254,
+            "fecha_registro": "2025-11-18T06:41:56-0300",
+            "puede_descargar_factura": true,
+            "factura_id": 52,
+            "factura_individual_generada": true,
+            "nota_credito_individual_ya_generada": true,
+            "nota_credito_individual_id": 11
+        },
+        {
+            "id": 449,
+            "persona": {
+                "id": 18,
+                "nombre": "Andrea Army",
+                "apellido": "Escurra",
+                "documento": "4504883",
+                "tipo_documento": 1,
+                "tipo_documento_nombre": "CI",
+                "email": "escurracaceres.andy@gmail.com",
+                "telefono": "0985871579",
+                "fecha_nacimiento": "2005-01-01",
+                "sexo": "F",
+                "sexo_display": "Femenino",
+                "nacionalidad": 11,
+                "nacionalidad_nombre": "Corea del Sur"
+            },
+            "es_titular": false,
+            "por_asignar": false,
+            "precio_asignado": 4875000.0,
+            "monto_pagado": 4875000.0,
+            "saldo_pendiente": 0.0,
+            "porcentaje_pagado": 100.0,
+            "se\u00c3\u00b1a_requerida": 350000.0,
+            "tiene_sena_pagada": true,
+            "esta_totalmente_pagado": true,
+            "ticket_numero": null,
+            "voucher_codigo": "RSV-2025-0236-PAX-449-VOUCHER",
+            "voucher_id": 255,
+            "fecha_registro": "2025-11-18T06:41:56-0300",
+            "puede_descargar_factura": true,
+            "factura_id": 53,
+            "factura_individual_generada": true,
+            "nota_credito_individual_ya_generada": true,
+            "nota_credito_individual_id": 12
+        }
+    ],
+    "datos_completos": true,
+    "precio_unitario": 4875000.0,
+    "precio_base_paquete": 4875000.0,
+    "costo_servicios_adicionales": 0.0,
+    "costo_total_estimado": 14625000.0,
+    "se\u00c3\u00b1a_total": 1050000.0,
+    "monto_pagado": 15675000.0,
+    "saldo_pendiente": -1050000.0,
+    "precio_unitario_en_guaranies": 4875000.0,
+    "precio_base_paquete_en_guaranies": 4875000.0,
+    "costo_servicios_adicionales_en_guaranies": null,
+    "costo_total_estimado_en_guaranies": 14625000.0,
+    "senia_total_en_guaranies": 1050000.0,
+    "monto_pagado_en_guaranies": 15675000.0,
+    "saldo_pendiente_en_guaranies": -1050000.0,
+    "estado": "finalizada",
+    "estado_display": "Finalizado",
+    "puede_confirmarse": true,
+    "esta_totalmente_pagada": true,
+    "modalidad_facturacion": "individual",
+    "modalidad_facturacion_display": "Facturaci\u00c3\u00b3n Individual (Por pasajero)",
+    "condicion_pago": "contado",
+    "condicion_pago_display": "Contado",
+    "puede_descargar_factura_global": false,
+    "factura_global_id": null,
+    "factura_global_generada": false,
+    "nota_credito_global_ya_generada": false,
+    "nota_credito_global_id": null,
+    "servicios_base": [
+        {
+            "id": 141,
+            "servicio": {
+                "id": 9,
+                "nombre": "Actividades Recreativas",
+                "descripcion": "",
+                "tipo": "paquete"
+            },
+            "precio": 0.0
+        },
+        {
+            "id": 142,
+            "servicio": {
+                "id": 8,
+                "nombre": "Seguro de Viaje",
+                "descripcion": "",
+                "tipo": "paquete"
+            },
+            "precio": 0.0
+        }
+    ],
+    "servicios_adicionales": [],
+    "comprobantes": [
+        {
+            "id": 269,
+            "numero_comprobante": "CPG-2025-0258",
+            "fecha_pago": "2025-11-19T00:22:30.035622Z",
+            "fecha_creacion": "2025-11-19T00:22:30.036179Z",
+            "tipo": "pago_total",
+            "tipo_display": "Pago Total",
+            "metodo_pago": "efectivo",
+            "metodo_pago_display": "Efectivo",
+            "monto": 4525000.0,
+            "referencia": "",
+            "observaciones": "",
+            "distribuciones": [
+                {
+                    "pasajero_id": 449,
+                    "pasajero_nombre": "Andrea Army Escurra",
+                    "monto": 4525000.0,
+                    "observaciones": null
+                }
+            ],
+            "empleado": {
+                "id": 1,
+                "nombre": "KENZO Escurra"
+            },
+            "pdf_url": null
+        },
+        {
+            "id": 268,
+            "numero_comprobante": "CPG-2025-0257",
+            "fecha_pago": "2025-11-19T00:09:43.128173Z",
+            "fecha_creacion": "2025-11-19T00:09:43.128173Z",
+            "tipo": "pago_total",
+            "tipo_display": "Pago Total",
+            "metodo_pago": "efectivo",
+            "metodo_pago_display": "Efectivo",
+            "monto": 4525000.0,
+            "referencia": "",
+            "observaciones": "",
+            "distribuciones": [
+                {
+                    "pasajero_id": 448,
+                    "pasajero_nombre": "Victor Cubas",
+                    "monto": 4525000.0,
+                    "observaciones": null
+                }
+            ],
+            "empleado": {
+                "id": 1,
+                "nombre": "KENZO Escurra"
+            },
+            "pdf_url": null
+        },
+        {
+            "id": 265,
+            "numero_comprobante": "CPG-2025-0254",
+            "fecha_pago": "2025-11-18T09:46:31.181638Z",
+            "fecha_creacion": "2025-11-18T09:46:31.181638Z",
+            "tipo": "pago_total",
+            "tipo_display": "Pago Total",
+            "metodo_pago": "efectivo",
+            "metodo_pago_display": "Efectivo",
+            "monto": 4525000.0,
+            "referencia": "",
+            "observaciones": "",
+            "distribuciones": [
+                {
+                    "pasajero_id": 447,
+                    "pasajero_nombre": "KENZO Escurra",
+                    "monto": 4525000.0,
+                    "observaciones": null
+                }
+            ],
+            "empleado": {
+                "id": 1,
+                "nombre": "KENZO Escurra"
+            },
+            "pdf_url": null
+        }
+    ]
+}

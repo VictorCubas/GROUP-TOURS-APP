@@ -965,11 +965,81 @@ El sistema genera automáticamente PDFs profesionales de las facturas utilizando
 
 ---
 
+### ✅ Anulación de Facturas
+**Estado: IMPLEMENTADO**
+
+El sistema permite la anulación de facturas electrónicas cumpliendo con las normativas de la SET (Subsecretaría de Estado de Tributación).
+
+**Características:**
+- Anulación solo el mismo día de emisión
+- Requiere permisos de administrador
+- Registro de motivo, fecha y usuario que anula
+- Validación de notas de crédito previas
+- Motivos estandarizados según normativa SET (código dMotEmi)
+
+**Endpoint:** `POST /api/facturacion/facturas/<factura_id>/anular/`
+
+**Request Body:**
+```json
+{
+  "motivo": "1"
+}
+```
+
+**Motivos de Anulación (código dMotEmi):**
+| Código | Descripción                        |
+|--------|-----------------------------------|
+| 1      | Error en datos de emisor          |
+| 2      | Error en datos del receptor       |
+| 3      | Error en datos de la operación    |
+| 4      | Operación no realizada            |
+| 5      | Por acuerdo entre las partes      |
+
+**Validaciones:**
+- ✅ Solo se puede anular el mismo día de emisión
+- ✅ Solo usuarios administradores pueden anular
+- ✅ La factura no debe estar ya anulada
+- ✅ No debe ser una factura de configuración
+- ✅ No debe tener notas de crédito emitidas
+- ✅ El motivo debe ser uno de los códigos válidos (1-5)
+
+**Response (200 OK):**
+```json
+{
+  "mensaje": "Factura anulada exitosamente",
+  "factura": {
+    "id": 1,
+    "numero_factura": "001-001-0000001",
+    "activo": false,
+    "fecha_anulacion": "2025-11-20T18:30:00Z",
+    "motivo_anulacion": "1",
+    "usuario_anulacion": {
+      "id": 1,
+      "username": "admin"
+    }
+  }
+}
+```
+
+**Errores posibles:**
+- `400` - La factura ya está anulada
+- `400` - No se puede anular una factura que tiene notas de crédito emitidas
+- `400` - Solo los administradores pueden anular facturas
+- `400` - Solo se puede anular una factura el mismo día de su emisión
+- `400` - El motivo de anulación es requerido
+- `404` - Factura no encontrada
+
+**Ubicación del código:**
+- Método: `FacturaElectronica.anular()` en `apps/facturacion/models.py:460`
+- Vista: `anular_factura()` en `apps/facturacion/views.py:286`
+
+---
+
 ## Próximos Pasos Sugeridos
 
 1. ~~**Generación de PDF**~~: ✅ **COMPLETADO** - Implementado con ReportLab
-2. **Envío por email**: Enviar la factura automáticamente al cliente
-3. **Anulación de facturas**: Implementar funcionalidad de anulación
+2. ~~**Anulación de facturas**~~: ✅ **COMPLETADO** - Implementado con motivos estandarizados según normativa SET
+3. **Envío por email**: Enviar la factura automáticamente al cliente
 4. **Notas de crédito**: Implementar emisión de notas de crédito
 5. **Reportes**: Agregar reportes de facturación por período
 6. **Integración SET**: Conectar con el sistema de la SET para facturación electrónica oficial

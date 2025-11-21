@@ -96,6 +96,12 @@ class PasajeroSerializer(serializers.ModelSerializer):
     factura_individual_generada = serializers.SerializerMethodField(
         help_text="Indica si ya existe una factura individual generada para este pasajero"
     )
+    nota_credito_individual_ya_generada = serializers.SerializerMethodField(
+        help_text="Indica si la factura individual del pasajero ya tiene nota de crédito generada"
+    )
+    nota_credito_individual_id = serializers.SerializerMethodField(
+        help_text="ID de la nota de crédito individual del pasajero (si existe)"
+    )
 
     class Meta:
         model = Pasajero
@@ -119,6 +125,8 @@ class PasajeroSerializer(serializers.ModelSerializer):
             "puede_descargar_factura",
             "factura_id",
             "factura_individual_generada",
+            "nota_credito_individual_ya_generada",
+            "nota_credito_individual_id",
         ]
         read_only_fields = [
             "monto_pagado",
@@ -208,6 +216,64 @@ class PasajeroSerializer(serializers.ModelSerializer):
             tipo_facturacion='por_pasajero',
             activo=True
         ).exists()
+
+    def get_nota_credito_individual_ya_generada(self, obj):
+        """
+        Indica si la factura individual del pasajero ya tiene nota de crédito generada.
+        Retorna True si existe al menos una NC activa, False en caso contrario.
+        """
+        from apps.facturacion.models import NotaCreditoElectronica
+
+        reserva = obj.reserva
+
+        # Solo aplica si es modalidad individual
+        if reserva.modalidad_facturacion != 'individual':
+            return False
+
+        # Buscar factura individual activa del pasajero
+        factura = obj.facturas.filter(
+            tipo_facturacion='por_pasajero',
+            activo=True
+        ).first()
+
+        if not factura:
+            return False
+
+        # Verificar si la factura tiene al menos una nota de crédito activa
+        return NotaCreditoElectronica.objects.filter(
+            factura_afectada=factura,
+            activo=True
+        ).exists()
+
+    def get_nota_credito_individual_id(self, obj):
+        """
+        Obtiene el ID de la primera nota de crédito activa de la factura individual del pasajero.
+        Retorna None si no existe NC o no aplica.
+        """
+        from apps.facturacion.models import NotaCreditoElectronica
+
+        reserva = obj.reserva
+
+        # Solo aplica si es modalidad individual
+        if reserva.modalidad_facturacion != 'individual':
+            return None
+
+        # Buscar factura individual activa del pasajero
+        factura = obj.facturas.filter(
+            tipo_facturacion='por_pasajero',
+            activo=True
+        ).first()
+
+        if not factura:
+            return None
+
+        # Obtener la primera nota de crédito activa (ordenada por fecha de emisión desc)
+        nota_credito = NotaCreditoElectronica.objects.filter(
+            factura_afectada=factura,
+            activo=True
+        ).order_by('-fecha_emision').first()
+
+        return nota_credito.id if nota_credito else None
 
 
 class PasajeroCreateSerializer(serializers.Serializer):
@@ -914,6 +980,12 @@ class ReservaDetalleSerializer(serializers.ModelSerializer):
     factura_global_generada = serializers.SerializerMethodField(
         help_text="Indica si ya existe una factura global generada para esta reserva"
     )
+    nota_credito_global_ya_generada = serializers.SerializerMethodField(
+        help_text="Indica si la factura global ya tiene nota de crédito generada"
+    )
+    nota_credito_global_id = serializers.SerializerMethodField(
+        help_text="ID de la nota de crédito global (si existe)"
+    )
 
     # Campos de conversión a guaraníes
     precio_unitario_en_guaranies = serializers.SerializerMethodField()
@@ -974,6 +1046,8 @@ class ReservaDetalleSerializer(serializers.ModelSerializer):
             'puede_descargar_factura_global',
             'factura_global_id',
             'factura_global_generada',
+            'nota_credito_global_ya_generada',
+            'nota_credito_global_id',
             # Servicios
             'servicios_base',
             'servicios_adicionales',
@@ -1269,6 +1343,60 @@ class ReservaDetalleSerializer(serializers.ModelSerializer):
             tipo_facturacion='total',
             activo=True
         ).exists()
+
+    def get_nota_credito_global_ya_generada(self, obj):
+        """
+        Indica si la factura global ya tiene nota de crédito generada.
+        Retorna True si existe al menos una NC activa, False en caso contrario.
+        """
+        from apps.facturacion.models import NotaCreditoElectronica
+
+        # Solo aplica si es modalidad global
+        if obj.modalidad_facturacion != 'global':
+            return False
+
+        # Buscar factura global activa
+        factura = obj.facturas.filter(
+            tipo_facturacion='total',
+            activo=True
+        ).first()
+
+        if not factura:
+            return False
+
+        # Verificar si la factura tiene al menos una nota de crédito activa
+        return NotaCreditoElectronica.objects.filter(
+            factura_afectada=factura,
+            activo=True
+        ).exists()
+
+    def get_nota_credito_global_id(self, obj):
+        """
+        Obtiene el ID de la primera nota de crédito activa de la factura global.
+        Retorna None si no existe NC o no aplica.
+        """
+        from apps.facturacion.models import NotaCreditoElectronica
+
+        # Solo aplica si es modalidad global
+        if obj.modalidad_facturacion != 'global':
+            return None
+
+        # Buscar factura global activa
+        factura = obj.facturas.filter(
+            tipo_facturacion='total',
+            activo=True
+        ).first()
+
+        if not factura:
+            return None
+
+        # Obtener la primera nota de crédito activa (ordenada por fecha de emisión desc)
+        nota_credito = NotaCreditoElectronica.objects.filter(
+            factura_afectada=factura,
+            activo=True
+        ).order_by('-fecha_emision').first()
+
+        return nota_credito.id if nota_credito else None
 
     # ========== MÉTODOS DE CONVERSIÓN A GUARANÍES ==========
 

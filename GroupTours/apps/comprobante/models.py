@@ -168,16 +168,45 @@ class ComprobantePago(models.Model):
             tipo='devolucion'
         ).aggregate(total=Sum('monto'))['total'] or Decimal('0')
 
-        self.reserva.monto_pagado = total_pagado - total_devoluciones
-        self.reserva.save(update_fields=['monto_pagado'])
+        # NOTA: reserva.monto_pagado ahora es una propiedad calculada automáticamente
+        # desde los pasajeros, por lo que ya NO necesitamos actualizarlo manualmente.
+        # Las líneas comentadas a continuación ya NO son necesarias:
+        # self.reserva.monto_pagado = total_pagado - total_devoluciones
+        # self.reserva.save(update_fields=['monto_pagado'])
 
-        # Actualizar estado de la reserva
-        # Si la reserva está en estado pendiente, se requiere modalidad_facturacion Y condicion_pago
-        # para poder confirmarla
-        self.reserva.actualizar_estado(
+        # CRITICAL: Recargar completamente la reserva desde DB sin caché
+        # Problema: El ViewSet usa prefetch_related("pasajeros"), lo que cachea los pasajeros
+        # Solución: Obtener una instancia FRESCA de la reserva sin prefetch
+        from apps.reserva.models import Reserva
+        reserva_id = self.reserva.id
+
+        print(f"[DEBUG COMPROBANTE] Antes de obtener reserva fresca - ID: {reserva_id}, Estado actual: {self.reserva.estado}")
+
+        # Obtener instancia fresca SIN prefetch_related para evitar caché
+        reserva_fresca = Reserva.objects.get(id=reserva_id)
+
+        print(f"[DEBUG COMPROBANTE] Reserva fresca obtenida - Estado: {reserva_fresca.estado}")
+        print(f"[DEBUG COMPROBANTE] Llamando a actualizar_estado con modalidad={modalidad_facturacion}, condicion={condicion_pago}")
+
+        # PRIMERA actualización: Puede pasar de pendiente a confirmada
+        reserva_fresca.actualizar_estado(
             modalidad_facturacion=modalidad_facturacion,
             condicion_pago=condicion_pago
         )
+
+        print(f"[DEBUG COMPROBANTE] Después de 1ra actualización - Estado: {reserva_fresca.estado}")
+
+        # SEGUNDA actualización: Si ya está totalmente pagada y completa, pasar a finalizada
+        # Esto maneja el caso donde se hizo un pago total desde pendiente
+        if reserva_fresca.estado == 'confirmada':
+            print(f"[DEBUG COMPROBANTE] Reevaluando estado (puede pasar a finalizada)")
+            reserva_fresca.actualizar_estado()
+            print(f"[DEBUG COMPROBANTE] Después de 2da actualización - Estado: {reserva_fresca.estado}")
+
+        # Refrescar la instancia original para que tenga el nuevo estado
+        self.reserva.refresh_from_db()
+
+        print(f"[DEBUG COMPROBANTE] Después de refresh_from_db - Estado: {self.reserva.estado}")
 
     def _obtener_apertura_activa_empleado(self, empleado=None):
         """

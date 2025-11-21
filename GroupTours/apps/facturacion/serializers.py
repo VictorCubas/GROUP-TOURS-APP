@@ -79,11 +79,40 @@ class FacturaElectronicaSerializer(serializers.ModelSerializer):
     esta_totalmente_acreditada = serializers.BooleanField(read_only=True)
     esta_parcialmente_acreditada = serializers.BooleanField(read_only=True)
 
+    # Campos de anulación
+    usuario_anulacion_nombre = serializers.SerializerMethodField(read_only=True)
+
+    def get_usuario_anulacion_nombre(self, obj):
+        """Obtiene el nombre del usuario que anuló la factura"""
+        if obj.usuario_anulacion:
+            empleado = obj.usuario_anulacion.empleado
+            if empleado and empleado.persona:
+                persona = empleado.persona
+                try:
+                    persona_fisica = persona.personafisica
+                    return f"{persona_fisica.nombre} {persona_fisica.apellido or ''}".strip()
+                except:
+                    try:
+                        persona_juridica = persona.personajuridica
+                        return persona_juridica.razon_social
+                    except:
+                        pass
+            return obj.usuario_anulacion.username
+        return None
+
     def get_pasajero_nombre(self, obj):
         """Obtiene el nombre del pasajero si es factura individual"""
         if obj.pasajero:
             persona = obj.pasajero.persona
-            return f"{persona.nombre} {persona.apellido}"
+            try:
+                persona_fisica = persona.personafisica
+                return f"{persona_fisica.nombre} {persona_fisica.apellido or ''}".strip()
+            except:
+                try:
+                    persona_juridica = persona.personajuridica
+                    return persona_juridica.razon_social
+                except:
+                    return str(persona)
         return None
 
     class Meta:
