@@ -323,24 +323,67 @@ class AperturaCajaViewSet(viewsets.ModelViewSet):
         from decimal import Decimal
         from django.db.models import Sum
 
-        total_ingresos = movimientos.filter(
-            tipo_movimiento='ingreso'
+        # Ingresos por método de pago
+        ingresos = movimientos.filter(tipo_movimiento='ingreso')
+
+        total_efectivo = ingresos.filter(
+            metodo_pago='efectivo'
         ).aggregate(total=Sum('monto'))['total'] or Decimal('0')
 
+        total_tarjetas = ingresos.filter(
+            metodo_pago__in=['tarjeta_debito', 'tarjeta_credito']
+        ).aggregate(total=Sum('monto'))['total'] or Decimal('0')
+
+        total_transferencias = ingresos.filter(
+            metodo_pago='transferencia'
+        ).aggregate(total=Sum('monto'))['total'] or Decimal('0')
+
+        total_cheques = ingresos.filter(
+            metodo_pago='cheque'
+        ).aggregate(total=Sum('monto'))['total'] or Decimal('0')
+
+        total_otros = ingresos.filter(
+            metodo_pago__in=['qr', 'otro']
+        ).aggregate(total=Sum('monto'))['total'] or Decimal('0')
+
+        # Total de todos los ingresos (para información)
+        total_ingresos = total_efectivo + total_tarjetas + total_transferencias + total_cheques + total_otros
+
+        # Egresos
         total_egresos = movimientos.filter(
             tipo_movimiento='egreso'
         ).aggregate(total=Sum('monto'))['total'] or Decimal('0')
 
-        saldo_calculado = apertura.monto_inicial + total_ingresos - total_egresos
+        # Saldo esperado en EFECTIVO (para arqueo de caja)
+        saldo_esperado_efectivo = apertura.monto_inicial + total_efectivo - total_egresos
+
+        # Saldo total (incluyendo todos los métodos de pago - solo informativo)
+        saldo_total = apertura.monto_inicial + total_ingresos - total_egresos
 
         data = {
             'apertura': AperturaCajaDetailSerializer(apertura).data,
             'movimientos': MovimientoCajaListSerializer(movimientos[:50], many=True).data,
             'totales': {
                 'monto_inicial': apertura.monto_inicial,
-                'total_ingresos': total_ingresos,
+
+                # Desglose de ingresos por método
+                'ingresos_por_metodo': {
+                    'efectivo': total_efectivo,
+                    'tarjetas': total_tarjetas,
+                    'transferencias': total_transferencias,
+                    'cheques': total_cheques,
+                    'otros': total_otros,
+                    'total': total_ingresos
+                },
+
                 'total_egresos': total_egresos,
-                'saldo_calculado': saldo_calculado,
+
+                # Saldo esperado en EFECTIVO (lo que se debe contar físicamente)
+                'saldo_esperado_efectivo': saldo_esperado_efectivo,
+
+                # Saldo total (incluyendo todos los métodos - solo informativo)
+                'saldo_total': saldo_total,
+
                 'cantidad_movimientos': movimientos.count()
             }
         }

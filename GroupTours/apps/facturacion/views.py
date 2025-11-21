@@ -4,7 +4,10 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.pagination import PageNumberPagination
+from django_filters.rest_framework import DjangoFilterBackend
 from django.shortcuts import get_object_or_404
+from django.db.models import Sum, Count, Q
 from .models import (
     Empresa, Establecimiento, PuntoExpedicion,
     TipoImpuesto, Timbrado, FacturaElectronica,
@@ -18,6 +21,7 @@ from .serializers import (
     NotaCreditoElectronicaSerializer,
     NotaCreditoElectronicaDetalladaSerializer
 )
+from .filters import FacturaElectronicaFilter, NotaCreditoElectronicaFilter
 from .models import (
     generar_factura_desde_reserva,
     generar_factura_global,
@@ -28,6 +32,28 @@ from .models import (
 )
 from apps.reserva.models import Reserva, Pasajero
 from django.core.exceptions import ValidationError as DjangoValidationError
+
+
+# ---------- Paginación ----------
+class FacturacionPagination(PageNumberPagination):
+    """
+    Paginación personalizada para el módulo de facturación.
+    """
+    page_size = 10
+    page_size_query_param = "page_size"
+    max_page_size = 100
+
+    def get_paginated_response(self, data):
+        return Response({
+            "totalItems": self.page.paginator.count,
+            "pageSize": self.get_page_size(self.request),
+            "totalPages": self.page.paginator.num_pages,
+            "currentPage": self.page.number,
+            "next": self.get_next_link(),
+            "previous": self.get_previous_link(),
+            "results": data,
+        })
+
 
 # ---------- ViewSets ----------
 class EmpresaViewSet(viewsets.ModelViewSet):
@@ -81,6 +107,395 @@ class TimbradoViewSet(viewsets.ModelViewSet):
     def todos(self, request):
         timbrados = self.get_queryset().filter(activo=True)
         return Response(self.serializer_class(timbrados, many=True).data)
+
+
+# ---------- ViewSets para Facturación ----------
+class FacturaElectronicaViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet para FacturaElectronica (facturas reales, no configuración).
+
+    Soporta:
+    - Filtrado completo por múltiples campos (activo, tipo_facturacion, fechas, cliente, etc.)
+    - Paginación personalizada
+    - Búsqueda general
+    - Endpoint de resumen general
+    - Endpoint para descargar PDF
+    - Endpoint para anular factura
+    """
+
+    queryset = FacturaElectronica.objects.select_related(
+        'empresa',
+        'establecimiento',
+        'punto_expedicion',
+        'timbrado',
+        'tipo_impuesto',
+        'subtipo_impuesto',
+        'reserva',
+        'pasajero',
+        'moneda'
+    ).filter(
+        es_configuracion=False  # Solo facturas reales, no configuraciones
+    ).order_by('-fecha_emision')
+
+    serializer_class = FacturaElectronicaSerializer
+    pagination_class = FacturacionPagination
+    permission_classes = [AllowAny]
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = FacturaElectronicaFilter
+
+    def get_serializer_class(self):
+        """
+        Usa el serializer detallado para retrieve, el básico para list
+        """
+        if self.action == 'retrieve':
+            return FacturaElectronicaDetalladaSerializer
+        return FacturaElectronicaSerializer
+
+    @action(detail=False, methods=['get'], url_path='resumen')
+    def resumen(self, request):
+        """
+        Endpoint para obtener resumen general de facturación.
+
+        GET /api/facturacion/facturas/resumen/
+
+        Retorna:
+        - Total de facturas
+        - Facturas activas
+        - Facturas anuladas
+        - Total facturado (activas)
+        - Total por tipo de facturación
+        - Total por condición de venta
+        """
+        from decimal import Decimal
+
+        # Aplicar los mismos filtros que tiene el queryset
+        queryset = self.filter_queryset(self.get_queryset())
+
+        # Estadísticas básicas
+        total_facturas = queryset.count()
+        facturas_activas = queryset.filter(activo=True).count()
+        facturas_anuladas = queryset.filter(activo=False).count()
+
+        # Total facturado (solo activas)
+        total_facturado = queryset.filter(activo=True).aggregate(
+            total=Sum('total_general')
+        )['total'] or Decimal('0')
+
+        # Por tipo de facturación
+        por_tipo = queryset.filter(activo=True).values('tipo_facturacion').annotate(
+            cantidad=Count('id'),
+            total=Sum('total_general')
+        )
+
+        # Por condición de venta
+        por_condicion = queryset.filter(activo=True).values('condicion_venta').annotate(
+            cantidad=Count('id'),
+            total=Sum('total_general')
+        )
+
+        # Formatear respuesta
+        data = {
+            "resumen_general": [
+                {"texto": "Total Facturas", "valor": str(total_facturas)},
+                {"texto": "Facturas Activas", "valor": str(facturas_activas)},
+                {"texto": "Facturas Anuladas", "valor": str(facturas_anuladas)},
+                {"texto": "Total Facturado", "valor": str(total_facturado)},
+            ],
+            "por_tipo_facturacion": [
+                {
+                    "tipo": item['tipo_facturacion'] or 'N/A',
+                    "cantidad": item['cantidad'],
+                    "total": str(item['total'] or Decimal('0'))
+                }
+                for item in por_tipo
+            ],
+            "por_condicion_venta": [
+                {
+                    "condicion": item['condicion_venta'] or 'N/A',
+                    "cantidad": item['cantidad'],
+                    "total": str(item['total'] or Decimal('0'))
+                }
+                for item in por_condicion
+            ]
+        }
+
+        return Response(data)
+
+    @action(detail=True, methods=['get'], url_path='descargar-pdf')
+    def descargar_pdf(self, request, pk=None):
+        """
+        Descarga el PDF de una factura.
+        Si no existe, lo genera automáticamente.
+
+        GET /api/facturacion/facturas/{id}/descargar-pdf/
+
+        Query params:
+            - regenerar: true/false (default: false) - Fuerza la regeneración del PDF
+        """
+        from django.http import FileResponse
+        import os
+
+        try:
+            factura = self.get_object()
+
+            regenerar = request.query_params.get('regenerar', 'false').lower() == 'true'
+
+            # Si no existe PDF o se solicita regenerar
+            if not factura.pdf_generado or regenerar:
+                try:
+                    print(f"Generando PDF para factura {factura.numero_factura}...")
+                    factura.generar_pdf()
+                    print(f"PDF generado exitosamente: {factura.pdf_generado.path}")
+                except Exception as e:
+                    return Response({
+                        "error": f"Error al generar PDF: {str(e)}"
+                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            # Verificar que el archivo físico existe
+            if not factura.pdf_generado:
+                return Response({
+                    "error": "No se pudo generar el PDF"
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            pdf_path = factura.pdf_generado.path
+            if not os.path.exists(pdf_path):
+                return Response({
+                    "error": "El archivo PDF no existe en el sistema de archivos"
+                }, status=status.HTTP_404_NOT_FOUND)
+
+            # Retornar el archivo PDF
+            try:
+                response = FileResponse(
+                    open(pdf_path, 'rb'),
+                    content_type='application/pdf'
+                )
+                filename = f'factura_{factura.numero_factura}.pdf'
+                response['Content-Disposition'] = f'attachment; filename="{filename}"'
+                return response
+            except Exception as e:
+                return Response({
+                    "error": f"Error al leer el archivo PDF: {str(e)}"
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        except Exception as e:
+            return Response({
+                "error": f"Error al descargar PDF: {str(e)}"
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['post'], url_path='anular')
+    def anular_factura(self, request, pk=None):
+        """
+        Anula una factura electrónica.
+
+        POST /api/facturacion/facturas/{id}/anular/
+
+        Body:
+            - motivo: Motivo de la anulación (requerido)
+
+        IMPORTANTE: Solo se puede anular el mismo día de emisión.
+        La factura no debe tener notas de crédito emitidas.
+        """
+        try:
+            factura = self.get_object()
+
+            # Obtener el motivo del body
+            motivo = request.data.get('motivo')
+
+            if not motivo:
+                return Response({
+                    "error": "El motivo de anulación es requerido"
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Intentar anular la factura
+            exito, mensaje = factura.anular(
+                motivo=motivo,
+                usuario=request.user
+            )
+
+            if exito:
+                # Retornar la factura anulada
+                serializer = FacturaElectronicaDetalladaSerializer(factura)
+                return Response({
+                    "mensaje": mensaje,
+                    "factura": serializer.data
+                }, status=status.HTTP_200_OK)
+            else:
+                # Error de validación
+                return Response({
+                    "error": mensaje
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+        except Exception as e:
+            return Response({
+                "error": f"Error al anular factura: {str(e)}"
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class NotaCreditoElectronicaViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet para NotaCreditoElectronica.
+
+    Soporta:
+    - Filtrado completo por múltiples campos (activo, tipo_nota, motivo, factura, fechas)
+    - Paginación personalizada
+    - Búsqueda general
+    - Endpoint de resumen
+    - Endpoint para descargar PDF
+    """
+
+    queryset = NotaCreditoElectronica.objects.select_related(
+        'factura_afectada',
+        'factura_afectada__empresa',
+        'factura_afectada__establecimiento',
+        'factura_afectada__punto_expedicion',
+        'factura_afectada__timbrado'
+    ).order_by('-fecha_emision')
+
+    serializer_class = NotaCreditoElectronicaSerializer
+    pagination_class = FacturacionPagination
+    permission_classes = [AllowAny]
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = NotaCreditoElectronicaFilter
+
+    def get_serializer_class(self):
+        """
+        Usa el serializer detallado para retrieve, el básico para list
+        """
+        if self.action == 'retrieve':
+            return NotaCreditoElectronicaDetalladaSerializer
+        return NotaCreditoElectronicaSerializer
+
+    @action(detail=False, methods=['get'], url_path='resumen')
+    def resumen(self, request):
+        """
+        Endpoint para obtener resumen general de notas de crédito.
+
+        GET /api/facturacion/notas-credito/resumen/
+
+        Retorna:
+        - Total de notas de crédito
+        - Notas activas
+        - Notas anuladas
+        - Total acreditado
+        - Total por tipo de nota
+        - Total por motivo
+        """
+        from decimal import Decimal
+
+        # Aplicar los mismos filtros que tiene el queryset
+        queryset = self.filter_queryset(self.get_queryset())
+
+        # Estadísticas básicas
+        total_notas = queryset.count()
+        notas_activas = queryset.filter(activo=True).count()
+        notas_anuladas = queryset.filter(activo=False).count()
+
+        # Total acreditado (solo activas)
+        total_acreditado = queryset.filter(activo=True).aggregate(
+            total=Sum('total_general')
+        )['total'] or Decimal('0')
+
+        # Por tipo de nota
+        por_tipo = queryset.filter(activo=True).values('tipo_nota').annotate(
+            cantidad=Count('id'),
+            total=Sum('total_general')
+        )
+
+        # Por motivo
+        por_motivo = queryset.filter(activo=True).values('motivo').annotate(
+            cantidad=Count('id'),
+            total=Sum('total_general')
+        )
+
+        # Formatear respuesta
+        data = {
+            "resumen_general": [
+                {"texto": "Total Notas de Crédito", "valor": str(total_notas)},
+                {"texto": "Notas Activas", "valor": str(notas_activas)},
+                {"texto": "Notas Anuladas", "valor": str(notas_anuladas)},
+                {"texto": "Total Acreditado", "valor": str(total_acreditado)},
+            ],
+            "por_tipo_nota": [
+                {
+                    "tipo": item['tipo_nota'] or 'N/A',
+                    "cantidad": item['cantidad'],
+                    "total": str(item['total'] or Decimal('0'))
+                }
+                for item in por_tipo
+            ],
+            "por_motivo": [
+                {
+                    "motivo": item['motivo'] or 'N/A',
+                    "cantidad": item['cantidad'],
+                    "total": str(item['total'] or Decimal('0'))
+                }
+                for item in por_motivo
+            ]
+        }
+
+        return Response(data)
+
+    @action(detail=True, methods=['get'], url_path='descargar-pdf')
+    def descargar_pdf(self, request, pk=None):
+        """
+        Descarga el PDF de una nota de crédito.
+        Si no existe, lo genera automáticamente.
+
+        GET /api/facturacion/notas-credito/{id}/descargar-pdf/
+
+        Query params:
+            - regenerar: true/false (default: false) - Fuerza la regeneración del PDF
+        """
+        from django.http import FileResponse
+        import os
+
+        try:
+            nota_credito = self.get_object()
+
+            regenerar = request.query_params.get('regenerar', 'false').lower() == 'true'
+
+            # Si no existe PDF o se solicita regenerar
+            if not nota_credito.pdf_generado or regenerar:
+                try:
+                    print(f"Generando PDF para nota de crédito {nota_credito.numero_nota_credito}...")
+                    nota_credito.generar_pdf()
+                    print(f"PDF generado exitosamente: {nota_credito.pdf_generado.path}")
+                except Exception as e:
+                    return Response({
+                        "error": f"Error al generar PDF: {str(e)}"
+                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            # Verificar que el archivo físico existe
+            if not nota_credito.pdf_generado:
+                return Response({
+                    "error": "No se pudo generar el PDF"
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            pdf_path = nota_credito.pdf_generado.path
+            if not os.path.exists(pdf_path):
+                return Response({
+                    "error": "El archivo PDF no existe en el sistema de archivos"
+                }, status=status.HTTP_404_NOT_FOUND)
+
+            # Retornar el archivo PDF
+            try:
+                response = FileResponse(
+                    open(pdf_path, 'rb'),
+                    content_type='application/pdf'
+                )
+                filename = f'nota_credito_{nota_credito.numero_nota_credito}.pdf'
+                response['Content-Disposition'] = f'attachment; filename="{filename}"'
+                return response
+            except Exception as e:
+                return Response({
+                    "error": f"Error al leer el archivo PDF: {str(e)}"
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        except Exception as e:
+            return Response({
+                "error": f"Error al descargar PDF: {str(e)}"
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 # ---------- API Endpoints ----------
 @api_view(['POST'])
@@ -146,14 +561,16 @@ def generar_factura_reserva(request, reserva_id):
 
     Body (opcional):
         - subtipo_impuesto_id: ID del subtipo de impuesto a aplicar (si no se especifica, usa la configuración)
+        - punto_expedicion_id: ID del punto de expedición (si no se especifica, usa el primero activo)
     """
     try:
         reserva = get_object_or_404(Reserva, id=reserva_id)
 
         subtipo_impuesto_id = request.data.get('subtipo_impuesto_id', None)
+        punto_expedicion_id = request.data.get('punto_expedicion_id', None)
 
         # Generar la factura
-        factura = generar_factura_desde_reserva(reserva, subtipo_impuesto_id)
+        factura = generar_factura_desde_reserva(reserva, subtipo_impuesto_id, punto_expedicion_id)
 
         # Retornar la factura con todos los detalles
         serializer = FacturaElectronicaDetalladaSerializer(factura)
@@ -245,13 +662,15 @@ def generar_factura_total(request, reserva_id):
 
     Body (opcional):
         - subtipo_impuesto_id: ID del subtipo de impuesto a aplicar
+        - punto_expedicion_id: ID del punto de expedición (de la caja abierta)
     """
     try:
         reserva = get_object_or_404(Reserva, id=reserva_id, activo=True)
         subtipo_impuesto_id = request.data.get('subtipo_impuesto_id', None)
+        punto_expedicion_id = request.data.get('punto_expedicion_id', None)
 
         # Generar la factura global
-        factura = generar_factura_global(reserva, subtipo_impuesto_id)
+        factura = generar_factura_global(reserva, subtipo_impuesto_id, punto_expedicion_id=punto_expedicion_id)
 
         # Retornar la factura con todos los detalles
         serializer = FacturaElectronicaDetalladaSerializer(factura)
@@ -281,13 +700,20 @@ def generar_factura_pasajero(request, pasajero_id):
 
     Body (opcional):
         - subtipo_impuesto_id: ID del subtipo de impuesto a aplicar
+        - punto_expedicion_id: ID del punto de expedición (de la caja abierta)
     """
     try:
         pasajero = get_object_or_404(Pasajero, id=pasajero_id)
         subtipo_impuesto_id = request.data.get('subtipo_impuesto_id', None)
+        punto_expedicion_id = request.data.get('punto_expedicion_id', None)
 
         # Generar la factura individual
-        factura = generar_factura_individual(pasajero, subtipo_impuesto_id)
+        factura = generar_factura_individual(
+            pasajero.reserva,
+            pasajero,
+            subtipo_impuesto_id,
+            punto_expedicion_id=punto_expedicion_id
+        )
 
         # Retornar la factura con todos los detalles
         serializer = FacturaElectronicaDetalladaSerializer(factura)
@@ -451,7 +877,7 @@ def descargar_pdf_factura(request, factura_id):
     import os
 
     try:
-        factura = get_object_or_404(FacturaElectronica, id=factura_id, es_configuracion=False, activo=True)
+        factura = get_object_or_404(FacturaElectronica, id=factura_id, es_configuracion=False)
 
         regenerar = request.query_params.get('regenerar', 'false').lower() == 'true'
 
@@ -785,4 +1211,58 @@ def descargar_pdf_nota_credito(request, nota_credito_id):
     except Exception as e:
         return Response({
             "error": f"Error al descargar PDF: {str(e)}"
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def anular_factura(request, factura_id):
+    """
+    Anula una factura electrónica.
+
+    IMPORTANTE: Solo se puede anular el mismo día de emisión.
+    La factura no debe tener notas de crédito emitidas.
+
+    Body:
+        - motivo: Motivo de la anulación (requerido)
+
+    Returns:
+        - 200: Factura anulada exitosamente
+        - 400: Error de validación
+        - 404: Factura no encontrada
+        - 500: Error interno
+    """
+    try:
+        factura = get_object_or_404(FacturaElectronica, id=factura_id)
+
+        # Obtener el motivo del body
+        motivo = request.data.get('motivo')
+
+        if not motivo:
+            return Response({
+                "error": "El motivo de anulación es requerido"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Intentar anular la factura
+        exito, mensaje = factura.anular(
+            motivo=motivo,
+            usuario=request.user
+        )
+
+        if exito:
+            # Retornar la factura anulada
+            serializer = FacturaElectronicaDetalladaSerializer(factura)
+            return Response({
+                "mensaje": mensaje,
+                "factura": serializer.data
+            }, status=status.HTTP_200_OK)
+        else:
+            # Error de validación
+            return Response({
+                "error": mensaje
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    except Exception as e:
+        return Response({
+            "error": f"Error al anular factura: {str(e)}"
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
