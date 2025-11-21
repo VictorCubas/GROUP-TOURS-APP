@@ -477,14 +477,13 @@ class FacturaElectronica(models.Model):
 
         Validaciones:
         - Solo se puede anular el mismo día de emisión
-        - Solo administradores pueden anular
         - La factura no debe estar ya anulada
         - No debe ser una factura de configuración
         - No debe tener notas de crédito emitidas
 
         Args:
             motivo (str): Motivo de la anulación
-            usuario (User): Usuario que anula (debe ser administrador)
+            usuario (User): Usuario que anula
 
         Returns:
             tuple: (bool, str) - (éxito, mensaje)
@@ -503,10 +502,6 @@ class FacturaElectronica(models.Model):
         if self.notas_credito.filter(activo=True).exists():
             return False, "No se puede anular una factura que tiene notas de crédito emitidas"
 
-        # Validar que el usuario sea administrador
-        if not usuario or not usuario.is_staff:
-            return False, "Solo los administradores pueden anular facturas"
-
         # Validar que sea el mismo día de emisión
         if self.fecha_emision:
             fecha_emision_local = timezone.localtime(self.fecha_emision).date()
@@ -521,6 +516,17 @@ class FacturaElectronica(models.Model):
         self.motivo_anulacion = motivo
         self.usuario_anulacion = usuario
         self.save()
+
+        # Regenerar PDF con marca de agua "ANULADO" si existe un PDF previo
+        if self.pdf_generado:
+            try:
+                self.generar_pdf()  # Regenera el PDF con la marca de agua "ANULADO"
+            except Exception as e:
+                # Si falla la regeneración, no bloqueamos la anulación
+                # Solo registramos el error para debugging
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"No se pudo regenerar PDF al anular factura {self.id}: {str(e)}")
 
         return True, "Factura anulada exitosamente"
 

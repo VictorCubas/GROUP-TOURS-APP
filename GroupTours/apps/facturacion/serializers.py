@@ -87,7 +87,16 @@ class FacturaElectronicaSerializer(serializers.ModelSerializer):
         if obj.usuario_anulacion:
             empleado = obj.usuario_anulacion.empleado
             if empleado and empleado.persona:
-                return f"{empleado.persona.nombre} {empleado.persona.apellido}"
+                persona = empleado.persona
+                try:
+                    persona_fisica = persona.personafisica
+                    return f"{persona_fisica.nombre} {persona_fisica.apellido or ''}".strip()
+                except:
+                    try:
+                        persona_juridica = persona.personajuridica
+                        return persona_juridica.razon_social
+                    except:
+                        pass
             return obj.usuario_anulacion.username
         return None
 
@@ -95,7 +104,15 @@ class FacturaElectronicaSerializer(serializers.ModelSerializer):
         """Obtiene el nombre del pasajero si es factura individual"""
         if obj.pasajero:
             persona = obj.pasajero.persona
-            return f"{persona.nombre} {persona.apellido}"
+            try:
+                persona_fisica = persona.personafisica
+                return f"{persona_fisica.nombre} {persona_fisica.apellido or ''}".strip()
+            except:
+                try:
+                    persona_juridica = persona.personajuridica
+                    return persona_juridica.razon_social
+                except:
+                    return str(persona)
         return None
 
     class Meta:

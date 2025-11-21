@@ -877,7 +877,7 @@ def descargar_pdf_factura(request, factura_id):
     import os
 
     try:
-        factura = get_object_or_404(FacturaElectronica, id=factura_id, es_configuracion=False, activo=True)
+        factura = get_object_or_404(FacturaElectronica, id=factura_id, es_configuracion=False)
 
         regenerar = request.query_params.get('regenerar', 'false').lower() == 'true'
 
