@@ -79,3 +79,6 @@ ENV/
 
 # IPython Notebook
 .ipynb_checkpoints
+
+
+*.md

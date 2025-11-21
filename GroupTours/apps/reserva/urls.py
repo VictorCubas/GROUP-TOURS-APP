@@ -41,6 +41,10 @@ urlpatterns = [
     path('<int:pk>/detalle-comprobantes/', ReservaViewSet.as_view({'get': 'detalle_comprobantes'}), name='reserva-detalle-comprobantes'),
     path('<int:pk>/detalle-servicios/', ReservaViewSet.as_view({'get': 'detalle_servicios'}), name='reserva-detalle-servicios'),
 
+    # Endpoint de diagnóstico y corrección
+    path('<int:pk>/diagnostico-estado/', ReservaViewSet.as_view({'get': 'diagnostico_estado'}), name='reserva-diagnostico-estado'),
+    path('<int:pk>/forzar-actualizacion-estado/', ReservaViewSet.as_view({'post': 'forzar_actualizacion_estado'}), name='reserva-forzar-actualizacion-estado'),
+
     # Endpoints de comprobantes y vouchers por reserva
     path('<int:reserva_pk>/comprobantes/', ReservaComprobantesViewSet.as_view({'get': 'list', 'post': 'create'}), name='reserva-comprobantes'),
     path('<int:reserva_pk>/comprobantes/<int:pk>/', ReservaComprobantesViewSet.as_view({'get': 'retrieve', 'put': 'update', 'patch': 'partial_update'}), name='reserva-comprobante-detail'),
