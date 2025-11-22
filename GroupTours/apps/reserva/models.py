@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.db import models
 from django.core.exceptions import ValidationError
 from django.utils.timezone import now
@@ -28,6 +30,17 @@ class Reserva(models.Model):
     CONDICIONES_PAGO = [
         ("contado", "Contado"),
         ("credito", "Crédito"),
+    ]
+
+    MOTIVOS_CANCELACION = [
+        ('1', 'Cancelación voluntaria del cliente'),
+        ('2', 'Cambio de planes del cliente'),
+        ('3', 'Problemas de salud'),
+        ('4', 'Problemas con documentación'),
+        ('5', 'Cancelación automática por falta de pago'),
+        ('6', 'Fuerza mayor / Caso fortuito'),
+        ('7', 'Error en la reserva'),
+        ('8', 'Otro motivo'),
     ]
 
     codigo = models.CharField(
@@ -117,6 +130,27 @@ class Reserva(models.Model):
         blank=True,
         help_text="Condición de pago elegida al confirmar la reserva (contado o crédito). NULL mientras esté pendiente."
     )
+    fecha_cancelacion = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Fecha y hora en la que la reserva fue cancelada"
+    )
+    motivo_cancelacion_id = models.CharField(
+        max_length=2,
+        choices=MOTIVOS_CANCELACION,
+        null=True,
+        blank=True,
+        help_text="ID del motivo de cancelación"
+    )
+    motivo_cancelacion = models.TextField(
+        null=True,
+        blank=True,
+        help_text="Observaciones adicionales sobre la cancelación"
+    )
+    cupos_liberados = models.BooleanField(
+        default=False,
+        help_text="Indica si los cupos asociados a la reserva ya fueron liberados"
+    )
 
     class Meta:
         verbose_name = "Reserva"
@@ -190,6 +224,16 @@ class Reserva(models.Model):
         return self.habitacion.hotel if self.habitacion else None
 
     @property
+    def dias_hasta_salida(self):
+        """
+        Retorna la cantidad de días que faltan para la fecha de salida.
+        Si no hay salida asociada, retorna None.
+        """
+        if not self.salida or not self.salida.fecha_salida:
+            return None
+        return (self.salida.fecha_salida - now().date()).days
+
+    @property
     def pasajeros_cargados(self):
         """
         Cantidad de pasajeros REALES registrados en esta reserva.
@@ -259,6 +303,101 @@ class Reserva(models.Model):
         for pasajero in pasajeros_reales:
             if not pasajero.esta_totalmente_pagado:
                 return False
+
+        return True
+
+    def calcular_montos_cancelacion(self):
+        """
+        Calcula los montos involucrados al cancelar una reserva.
+        Returns:
+            dict con monto_sena, monto_pagos_adicionales y monto_reembolsable.
+        """
+        from django.db.models import Sum
+
+        comprobantes_activos = self.comprobantes.filter(activo=True)
+
+        monto_sena = comprobantes_activos.filter(tipo='sena').aggregate(
+            total=Sum('monto')
+        )['total'] or Decimal('0')
+
+        monto_pagos_adicionales = comprobantes_activos.filter(
+            tipo__in=['pago_parcial', 'pago_total']
+        ).aggregate(total=Sum('monto'))['total'] or Decimal('0')
+
+        monto_devoluciones = comprobantes_activos.filter(
+            tipo='devolucion'
+        ).aggregate(total=Sum('monto'))['total'] or Decimal('0')
+
+        monto_reembolsable = max(monto_pagos_adicionales - monto_devoluciones, Decimal('0'))
+
+        return {
+            'monto_sena': monto_sena,
+            'monto_pagos_adicionales': monto_pagos_adicionales,
+            'monto_reembolsable': monto_reembolsable,
+        }
+
+    def liberar_cupo(self, forzar=False):
+        """
+        Libera el cupo asociado a la reserva solo para paquetes propios.
+        """
+        if self.cupos_liberados and not forzar:
+            return
+
+        if not self.paquete or not self.paquete.propio:
+            return
+
+        if not self.salida:
+            return
+
+        cupo_actualizado = False
+
+        if self.habitacion:
+            cupo_hab_salida = CupoHabitacionSalida.objects.filter(
+                salida=self.salida,
+                habitacion=self.habitacion
+            ).first()
+
+            if cupo_hab_salida:
+                cupo_hab_salida.cupo += 1
+                cupo_hab_salida.save(update_fields=['cupo'])
+                cupo_actualizado = True
+
+            if self.salida.cupo is not None:
+                capacidad = self.habitacion.capacidad or self.cantidad_pasajeros or 0
+                if capacidad > 0:
+                    self.salida.cupo += capacidad
+                    self.salida.save(update_fields=['cupo'])
+                    cupo_actualizado = True
+
+        if cupo_actualizado:
+            self.cupos_liberados = True
+            self.save(update_fields=['cupos_liberados'])
+
+    def marcar_cancelada(self, motivo_cancelacion_id=None, motivo_observaciones=None, liberar_cupo=True):
+        """
+        Cambia el estado de la reserva a cancelada, registra motivo/fecha
+        y libera cupos si corresponde.
+        
+        Args:
+            motivo_cancelacion_id: ID del motivo (choice definido en MOTIVOS_CANCELACION)
+            motivo_observaciones: Observaciones adicionales sobre la cancelación
+            liberar_cupo: Si debe liberar los cupos (True por defecto)
+        """
+        if self.estado == "cancelada":
+            return False
+
+        self.estado = "cancelada"
+        self.motivo_cancelacion_id = motivo_cancelacion_id or '8'  # '8' = Otro motivo
+        self.motivo_cancelacion = motivo_observaciones or ""
+        self.fecha_cancelacion = now()
+        self.datos_completos = False
+        self.save(update_fields=[
+            'estado', 'motivo_cancelacion_id', 'motivo_cancelacion', 
+            'fecha_cancelacion', 'datos_completos'
+        ])
+
+        if liberar_cupo:
+            self.liberar_cupo()
 
         return True
 

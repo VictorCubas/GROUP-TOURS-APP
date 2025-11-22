@@ -378,6 +378,15 @@ class ReservaSerializer(serializers.ModelSerializer):
     costo_total_estimado_en_guaranies = serializers.SerializerMethodField()
     senia_total_en_guaranies = serializers.SerializerMethodField()
     monto_pagado_en_guaranies = serializers.SerializerMethodField()
+    dias_hasta_salida = serializers.SerializerMethodField(read_only=True)
+    monto_reembolsable = serializers.SerializerMethodField(read_only=True)
+    puede_cancelar = serializers.SerializerMethodField(read_only=True)
+    info_cancelacion = serializers.SerializerMethodField(read_only=True)
+    motivo_cancelacion_display = serializers.CharField(
+        source='get_motivo_cancelacion_id_display',
+        read_only=True,
+        help_text="Descripción legible del motivo de cancelación"
+    )
 
     class Meta:
         model = Reserva
@@ -395,6 +404,10 @@ class ReservaSerializer(serializers.ModelSerializer):
             "habitacion",
             "habitacion_id",
             "fecha_reserva",
+            "fecha_cancelacion",
+            "motivo_cancelacion_id",
+            "motivo_cancelacion_display",
+            "motivo_cancelacion",
             "cantidad_pasajeros",
             "precio_unitario",
             "precio_base_paquete",
@@ -408,6 +421,10 @@ class ReservaSerializer(serializers.ModelSerializer):
             "modalidad_facturacion_display",  # NUEVO
             "condicion_pago",  # NUEVO
             "condicion_pago_display",  # NUEVO
+            "dias_hasta_salida",
+            "monto_reembolsable",
+            "puede_cancelar",
+            "info_cancelacion",
             # Campos de conversión a guaraníes
             "precio_unitario_en_guaranies",
             "precio_base_paquete_en_guaranies",
@@ -427,12 +444,80 @@ class ReservaSerializer(serializers.ModelSerializer):
             "fecha_modificacion",
             "cantidad_pasajeros",
             "hotel",
+            "fecha_cancelacion",
+            "motivo_cancelacion_id",
+            "motivo_cancelacion_display",
+            "motivo_cancelacion",
             "precio_base_paquete",
             "costo_total_estimado",
             "seña_total",
             "datos_completos",
             "estado_display"
         ]
+
+    def get_dias_hasta_salida(self, obj):
+        return obj.dias_hasta_salida
+
+    def get_monto_reembolsable(self, obj):
+        return obj.calcular_montos_cancelacion()['monto_reembolsable']
+
+    def get_puede_cancelar(self, obj):
+        """Indica si la reserva puede ser cancelada"""
+        if obj.estado == 'cancelada':
+            return False
+        if obj.estado == 'pendiente':
+            return True
+        # Confirmada o finalizada también pueden cancelarse
+        return obj.estado in ['confirmada', 'finalizada']
+
+    def get_info_cancelacion(self, obj):
+        """Información útil sobre lo que implica cancelar esta reserva"""
+        if obj.estado == 'cancelada':
+            return {
+                'puede_cancelar': False,
+                'razon': 'La reserva ya está cancelada',
+                'fecha_cancelacion': obj.fecha_cancelacion.isoformat() if obj.fecha_cancelacion else None,
+                'motivo': obj.get_motivo_cancelacion_id_display() if obj.motivo_cancelacion_id else None
+            }
+        
+        # Contar TODOS los pasajeros (incluidos los pendientes) - para cancelación total
+        pasajeros_count = obj.pasajeros.count()
+        
+        # Contar facturas activas
+        from apps.facturacion.models import FacturaElectronica
+        facturas_count = FacturaElectronica.objects.filter(reserva=obj, activo=True).count()
+        
+        # Calcular información de reembolso
+        dias_restantes = obj.dias_hasta_salida
+        montos = obj.calcular_montos_cancelacion()
+        aplica_reembolso = dias_restantes and dias_restantes > 20 and montos['monto_reembolsable'] > 0
+        
+        # Determinar tipo de devolución según la política
+        if dias_restantes is None:
+            tipo_devolucion = 'No se puede determinar (sin fecha de salida)'
+        elif dias_restantes > 20:
+            if montos['monto_reembolsable'] > 0:
+                tipo_devolucion = f"Reembolso de Gs. {montos['monto_reembolsable']:,.0f} (sin seña)"
+            else:
+                tipo_devolucion = 'Sin reembolso (solo seña pagada, no reembolsable)'
+        else:
+            tipo_devolucion = 'Sin reembolso (cancelación tardía: 20 días o menos)'
+        
+        return {
+            'puede_cancelar': True,
+            'tipo_cancelacion': 'total',
+            'modalidad_facturacion': obj.modalidad_facturacion,
+            'pasajeros_afectados': pasajeros_count,
+            'facturas_activas': facturas_count,
+            'dias_hasta_salida': dias_restantes,
+            'aplica_reembolso': aplica_reembolso,
+            'monto_sena': float(montos['monto_sena']),
+            'monto_pagos_adicionales': float(montos['monto_pagos_adicionales']),
+            'monto_reembolsable': float(montos['monto_reembolsable']),
+            'tipo_devolucion': tipo_devolucion,
+            'politica': '> 20 días: se devuelve el monto (sin seña). ≤ 20 días: sin devolución.',
+            'advertencia': 'Se cancelarán TODOS los pasajeros de esta reserva.' if obj.modalidad_facturacion == 'individual' else None
+        }
 
     def create(self, validated_data):
         # Validar que el titular esté presente
@@ -784,6 +869,8 @@ class ReservaListadoSerializer(serializers.ModelSerializer):
     # Campos de conversión a guaraníes
     precio_unitario_en_guaranies = serializers.SerializerMethodField()
     costo_total_estimado_en_guaranies = serializers.SerializerMethodField()
+    dias_hasta_salida = serializers.SerializerMethodField()
+    monto_reembolsable = serializers.SerializerMethodField()
 
     class Meta:
         model = Reserva
@@ -794,6 +881,7 @@ class ReservaListadoSerializer(serializers.ModelSerializer):
             'estado_display',
             'activo',
             'fecha_reserva',
+             'fecha_cancelacion',
             'cantidad_pasajeros',
             'titular_nombre',
             'titular_documento',
@@ -808,6 +896,9 @@ class ReservaListadoSerializer(serializers.ModelSerializer):
             'costo_total_estimado_en_guaranies',
             'condicion_pago',
             'condicion_pago_display',
+            'dias_hasta_salida',
+            'motivo_cancelacion',
+            'monto_reembolsable',
         ]
 
     def get_titular_nombre(self, obj):
@@ -906,6 +997,12 @@ class ReservaListadoSerializer(serializers.ModelSerializer):
             # No hay cotización vigente para esta moneda
             return None
 
+    def get_dias_hasta_salida(self, obj):
+        return obj.dias_hasta_salida
+
+    def get_monto_reembolsable(self, obj):
+        return obj.calcular_montos_cancelacion()['monto_reembolsable']
+
 
 class ReservaDetalleSerializer(serializers.ModelSerializer):
     """
@@ -951,6 +1048,10 @@ class ReservaDetalleSerializer(serializers.ModelSerializer):
         max_digits=12, decimal_places=2, read_only=True
     )
     saldo_pendiente = serializers.SerializerMethodField()
+    dias_hasta_salida = serializers.SerializerMethodField()
+    monto_reembolsable = serializers.SerializerMethodField()
+    puede_cancelar = serializers.SerializerMethodField()
+    info_cancelacion = serializers.SerializerMethodField()
 
     # Estado
     estado_display = serializers.CharField(read_only=True)
@@ -995,6 +1096,13 @@ class ReservaDetalleSerializer(serializers.ModelSerializer):
     senia_total_en_guaranies = serializers.SerializerMethodField()
     monto_pagado_en_guaranies = serializers.SerializerMethodField()
     saldo_pendiente_en_guaranies = serializers.SerializerMethodField()
+    
+    # Campos de cancelación
+    motivo_cancelacion_display = serializers.CharField(
+        source='get_motivo_cancelacion_id_display',
+        read_only=True,
+        help_text="Descripción legible del motivo de cancelación"
+    )
 
     class Meta:
         model = Reserva
@@ -1003,6 +1111,7 @@ class ReservaDetalleSerializer(serializers.ModelSerializer):
             'codigo',
             'fecha_reserva',
             'fecha_modificacion',
+            'fecha_cancelacion',
             'observacion',
             'activo',
             # Titular
@@ -1025,6 +1134,7 @@ class ReservaDetalleSerializer(serializers.ModelSerializer):
             'seña_total',
             'monto_pagado',
             'saldo_pendiente',
+            'monto_reembolsable',
             # Costos en guaraníes
             'precio_unitario_en_guaranies',
             'precio_base_paquete_en_guaranies',
@@ -1036,6 +1146,13 @@ class ReservaDetalleSerializer(serializers.ModelSerializer):
             # Estado
             'estado',
             'estado_display',
+            'motivo_cancelacion_id',
+            'motivo_cancelacion_display',
+            'motivo_cancelacion',
+            'dias_hasta_salida',
+            'monto_reembolsable',
+            'puede_cancelar',
+            'info_cancelacion',
             'puede_confirmarse',
             'esta_totalmente_pagada',
             # Modalidad de facturación
@@ -1259,6 +1376,70 @@ class ReservaDetalleSerializer(serializers.ModelSerializer):
     def get_saldo_pendiente(self, obj):
         """Saldo pendiente de pago"""
         return obj.costo_total_estimado - obj.monto_pagado
+
+    def get_dias_hasta_salida(self, obj):
+        return obj.dias_hasta_salida
+
+    def get_monto_reembolsable(self, obj):
+        return obj.calcular_montos_cancelacion()['monto_reembolsable']
+
+    def get_puede_cancelar(self, obj):
+        """Indica si la reserva puede ser cancelada"""
+        if obj.estado == 'cancelada':
+            return False
+        if obj.estado == 'pendiente':
+            return True
+        # Confirmada o finalizada también pueden cancelarse
+        return obj.estado in ['confirmada', 'finalizada']
+
+    def get_info_cancelacion(self, obj):
+        """Información útil sobre lo que implica cancelar esta reserva"""
+        if obj.estado == 'cancelada':
+            return {
+                'puede_cancelar': False,
+                'razon': 'La reserva ya está cancelada',
+                'fecha_cancelacion': obj.fecha_cancelacion.isoformat() if obj.fecha_cancelacion else None,
+                'motivo': obj.get_motivo_cancelacion_id_display() if obj.motivo_cancelacion_id else None
+            }
+        
+        # Contar TODOS los pasajeros (incluidos los pendientes) - para cancelación total
+        pasajeros_count = obj.pasajeros.count()
+        
+        # Contar facturas activas
+        from apps.facturacion.models import FacturaElectronica
+        facturas_count = FacturaElectronica.objects.filter(reserva=obj, activo=True).count()
+        
+        # Calcular información de reembolso
+        dias_restantes = obj.dias_hasta_salida
+        montos = obj.calcular_montos_cancelacion()
+        aplica_reembolso = dias_restantes and dias_restantes > 20 and montos['monto_reembolsable'] > 0
+        
+        # Determinar tipo de devolución según la política
+        if dias_restantes is None:
+            tipo_devolucion = 'No se puede determinar (sin fecha de salida)'
+        elif dias_restantes > 20:
+            if montos['monto_reembolsable'] > 0:
+                tipo_devolucion = f"Reembolso de Gs. {montos['monto_reembolsable']:,.0f} (sin seña)"
+            else:
+                tipo_devolucion = 'Sin reembolso (solo seña pagada, no reembolsable)'
+        else:
+            tipo_devolucion = 'Sin reembolso (cancelación tardía: 20 días o menos)'
+        
+        return {
+            'puede_cancelar': True,
+            'tipo_cancelacion': 'total',
+            'modalidad_facturacion': obj.modalidad_facturacion,
+            'pasajeros_afectados': pasajeros_count,
+            'facturas_activas': facturas_count,
+            'dias_hasta_salida': dias_restantes,
+            'aplica_reembolso': aplica_reembolso,
+            'monto_sena': float(montos['monto_sena']),
+            'monto_pagos_adicionales': float(montos['monto_pagos_adicionales']),
+            'monto_reembolsable': float(montos['monto_reembolsable']),
+            'tipo_devolucion': tipo_devolucion,
+            'politica': '> 20 días: se devuelve el monto (sin seña). ≤ 20 días: sin devolución.',
+            'advertencia': 'Se cancelarán TODOS los pasajeros de esta reserva.' if obj.modalidad_facturacion == 'individual' else None
+        }
 
     def get_puede_confirmarse(self, obj):
         """Si la reserva puede confirmarse"""

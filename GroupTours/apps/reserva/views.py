@@ -4,6 +4,7 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.decorators import action
 from django_filters.rest_framework import DjangoFilterBackend
 from django.shortcuts import get_object_or_404
+from django.db import transaction
 
 from .models import Reserva, ReservaServiciosAdicionales, Pasajero
 from .serializers import (
@@ -21,7 +22,8 @@ from .services import (
     obtener_resumen_reserva,
     obtener_pasajeros_reserva,
     obtener_comprobantes_reserva,
-    obtener_servicios_reserva
+    obtener_servicios_reserva,
+    distribuir_devolucion_en_pasajeros,
 )
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 
@@ -1800,6 +1802,267 @@ class ReservaViewSet(viewsets.ModelViewSet):
                 {'error': f'Error al obtener comprobantes: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+    # ----- ENDPOINT: Cancelar una reserva -----
+    @action(detail=True, methods=['post'], url_path='cancelar')
+    def cancelar_reserva(self, request, pk=None):
+        """
+        POST /api/reservas/{id}/cancelar/
+
+        CANCELACIÓN TOTAL de la reserva - Cancela TODOS los pasajeros.
+        
+        Aplica las políticas de reembolso:
+        - > 20 días antes de la salida → se devuelve el monto reembolsable (sin seña)
+        - ≤ 20 días antes de la salida → no se devuelve ningún monto
+        
+        Comportamiento según modalidad de facturación:
+        
+        FACTURACIÓN GLOBAL:
+        - Se cancela la reserva completa
+        - Se genera UNA Nota de Crédito por la factura global
+        - Devolución por el monto reembolsable total (excluyendo seña)
+        
+        FACTURACIÓN INDIVIDUAL:
+        - Se cancelan TODOS los pasajeros de la reserva
+        - Se generará una Nota de Crédito por cada factura individual (manual)
+        - Devolución por el monto reembolsable total de todos los pasajeros
+        
+        Siempre:
+        - Libera los cupos en paquetes propios
+        - Registra el motivo y fecha de cancelación
+        - Crea comprobante de devolución si aplica (con movimiento de caja automático)
+        
+        Body:
+        {
+            "motivo_cancelacion_id": "1",  // requerido - ver opciones abajo
+            "motivo_observaciones": "El cliente cambió de planes",  // opcional
+            "metodo_devolucion": "efectivo",  // condicional: requerido si aplica reembolso
+            "observaciones": "Observaciones del comprobante",  // opcional
+            "referencia": "REF-001"  // opcional
+        }
+        
+        Motivos disponibles:
+        - 1: Cancelación voluntaria del cliente
+        - 2: Cambio de planes del cliente
+        - 3: Problemas de salud
+        - 4: Problemas con documentación
+        - 5: Cancelación automática por falta de pago
+        - 6: Fuerza mayor / Caso fortuito
+        - 7: Error en la reserva
+        - 8: Otro motivo
+        
+        IMPORTANTE: Esta es una cancelación TOTAL. 
+        No se puede cancelar solo algunos pasajeros en esta versión.
+        """
+        from decimal import Decimal
+
+        from apps.comprobante.models import ComprobantePago
+        from apps.empleado.models import Empleado
+        from apps.arqueo_caja.models import AperturaCaja
+        from apps.comprobante.serializers import ComprobantePagoSerializer
+
+        reserva = self.get_object()
+
+        if reserva.estado == 'cancelada':
+            return Response(
+                {'error': 'La reserva ya se encuentra cancelada.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not reserva.salida or not reserva.salida.fecha_salida:
+            return Response(
+                {'error': 'La reserva no tiene fecha de salida definida. No se puede cancelar automáticamente.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Obtener información de TODOS los pasajeros (incluidos pendientes)
+        pasajeros_info = []
+        for pasajero in reserva.pasajeros.all():
+            pasajeros_info.append({
+                'id': pasajero.id,
+                'nombre': f"{pasajero.persona.nombre} {pasajero.persona.apellido}",
+                'precio_asignado': float(pasajero.precio_asignado or 0),
+                'monto_pagado': float(pasajero.monto_pagado),
+                'saldo_pendiente': float(pasajero.saldo_pendiente),
+                'es_pendiente': '_PEND' in pasajero.persona.documento
+            })
+        
+        # Obtener facturas que serán afectadas
+        from apps.facturacion.models import FacturaElectronica
+        facturas_info = []
+        facturas_activas = FacturaElectronica.objects.filter(
+            reserva=reserva,
+            activo=True
+        )
+        
+        for factura in facturas_activas:
+            facturas_info.append({
+                'id': factura.id,
+                'numero': factura.numero_factura,
+                'tipo': factura.tipo_facturacion,
+                'total': float(factura.total_general),
+                'pasajero': {
+                    'id': factura.pasajero.id,
+                    'nombre': f"{factura.pasajero.persona.nombre} {factura.pasajero.persona.apellido}"
+                } if factura.pasajero else None
+            })
+
+        dias_restantes = reserva.dias_hasta_salida
+        if dias_restantes is None:
+            return Response(
+                {'error': 'No se pudo calcular la cantidad de días hasta la salida.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        motivo_cancelacion_id = request.data.get('motivo_cancelacion_id') or '1'
+        motivo_observaciones = request.data.get('motivo_observaciones', '') or ''
+        observaciones = request.data.get('observaciones', '') or ''
+        referencia = request.data.get('referencia', '') or ''
+
+        # Validar que el motivo_cancelacion_id sea válido
+        motivos_validos = [choice[0] for choice in Reserva.MOTIVOS_CANCELACION]
+        if motivo_cancelacion_id not in motivos_validos:
+            return Response(
+                {
+                    'error': f'Motivo de cancelación inválido. Debe ser uno de: {", ".join(motivos_validos)}',
+                    'motivos_disponibles': [
+                        {'id': id_motivo, 'descripcion': desc}
+                        for id_motivo, desc in Reserva.MOTIVOS_CANCELACION
+                    ]
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        montos = reserva.calcular_montos_cancelacion()
+        monto_reembolsable = montos['monto_reembolsable']
+        aplica_reembolso = dias_restantes > 20 and monto_reembolsable > 0
+
+        metodo_devolucion = request.data.get('metodo_devolucion')
+        if aplica_reembolso and not metodo_devolucion:
+            return Response(
+                {'error': 'Debe indicar el método de devolución cuando corresponde un reembolso.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        empleado_id = request.data.get('empleado')
+        if empleado_id:
+            try:
+                empleado = Empleado.objects.get(id=empleado_id)
+            except Empleado.DoesNotExist:
+                return Response(
+                    {'error': f'No existe empleado con ID {empleado_id}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        else:
+            empleado = getattr(request.user, 'empleado', None)
+            if not empleado:
+                empleado = Empleado.objects.first()
+
+        if not empleado:
+            return Response(
+                {'error': 'No se pudo determinar el empleado que registra la cancelación.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        empleado_registrador = getattr(request.user, 'empleado', None) or empleado
+
+        if aplica_reembolso:
+            # Validar método de pago
+            metodos_validos = [choice[0] for choice in ComprobantePago.METODOS_PAGO]
+            if metodo_devolucion not in metodos_validos:
+                return Response(
+                    {'error': f'Método de devolución inválido. Opciones: {", ".join(metodos_validos)}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            apertura_activa = AperturaCaja.objects.filter(
+                responsable=empleado_registrador,
+                esta_abierta=True,
+                activo=True
+            ).first()
+
+            if not apertura_activa:
+                return Response(
+                    {'error': 'No se puede registrar la devolución. El empleado no tiene una caja abierta.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        comprobante_data = None
+
+        try:
+            with transaction.atomic():
+                reserva.marcar_cancelada(
+                    motivo_cancelacion_id=motivo_cancelacion_id,
+                    motivo_observaciones=motivo_observaciones,
+                    liberar_cupo=True
+                )
+
+                if aplica_reembolso:
+                    comprobante = ComprobantePago(
+                        reserva=reserva,
+                        tipo='devolucion',
+                        monto=monto_reembolsable,
+                        metodo_pago=metodo_devolucion,
+                        referencia=referencia,
+                        observaciones=(
+                            observaciones or f"Devolución por cancelación voluntaria de la reserva {reserva.codigo}"
+                        ),
+                        empleado=empleado
+                    )
+                    comprobante.save(usuario_registro=empleado_registrador)
+
+                    distribuir_devolucion_en_pasajeros(reserva, comprobante, monto_reembolsable)
+                    comprobante.actualizar_monto_reserva()
+                    comprobante.refresh_from_db()
+                    comprobante_data = ComprobantePagoSerializer(comprobante).data
+
+                reserva.refresh_from_db()
+
+        except ValueError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except ValidationError as e:
+            error_msg = str(e.message) if hasattr(e, 'message') else str(e)
+            return Response({'error': error_msg}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({'error': f'Error al cancelar la reserva: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        serializer = ReservaDetalleSerializer(reserva)
+        
+        # Información sobre cupos liberados
+        cupos_info = {
+            'fueron_liberados': reserva.cupos_liberados,
+            'cantidad_pasajeros': reserva.cantidad_pasajeros,
+            'es_paquete_propio': reserva.paquete.propio if reserva.paquete else False,
+            'observacion': 'Cupos liberados' if reserva.cupos_liberados else 'No se liberaron cupos (paquete de distribuidor)'
+        }
+        
+        response_data = {
+            'message': 'Reserva cancelada exitosamente',
+            'tipo_cancelacion': 'total',
+            'modalidad_facturacion': reserva.modalidad_facturacion,
+            'dias_hasta_salida': dias_restantes,
+            'politica_aplicada': '> 20 días: reembolso aplicado' if dias_restantes > 20 else '≤ 20 días: sin reembolso',
+            'monto_sena': float(montos['monto_sena']),
+            'monto_pagos_adicionales': float(montos['monto_pagos_adicionales']),
+            'monto_reembolsable': float(monto_reembolsable),
+            'reembolso_generado': bool(comprobante_data),
+            'comprobante_devolucion': comprobante_data,
+            'pasajeros_cancelados': len(pasajeros_info),
+            'pasajeros_afectados': pasajeros_info,
+            'facturas_afectadas': len(facturas_info),
+            'facturas_info': facturas_info,
+            'cupos_info': cupos_info,
+            'reserva': serializer.data,
+        }
+        
+        # Agregar advertencia si es facturación individual
+        if reserva.modalidad_facturacion == 'individual':
+            response_data['advertencia'] = (
+                'CANCELACIÓN TOTAL: Se cancelaron TODOS los pasajeros de esta reserva. '
+                'Cada pasajero con factura individual tendrá su propia Nota de Crédito.'
+            )
+        
+        return Response(response_data, status=status.HTTP_200_OK)
 
     # ----- ENDPOINT: Obtener solo servicios de una reserva -----
     @action(detail=True, methods=['get'], url_path='detalle-servicios')

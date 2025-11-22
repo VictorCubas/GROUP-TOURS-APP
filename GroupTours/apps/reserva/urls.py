@@ -26,6 +26,9 @@ urlpatterns = [
     path('<int:pk>/registrar-senia/', ReservaViewSet.as_view({'post': 'registrar_senia'}), name='reserva-registrar-senia'),
     path('<int:pk>/registrar-pago/', ReservaViewSet.as_view({'post': 'registrar_pago'}), name='reserva-registrar-pago'),
 
+    # Endpoint de cancelación
+    path('<int:pk>/cancelar/', ReservaViewSet.as_view({'post': 'cancelar_reserva'}), name='reserva-cancelar'),
+
     # Endpoints de comprobantes
     path('<int:pk>/generar-comprobante/', ReservaViewSet.as_view({'post': 'generar_comprobante'}), name='reserva-generar-comprobante'),
     path('<int:pk>/descargar-comprobante/', ReservaViewSet.as_view({'get': 'descargar_comprobante'}), name='reserva-descargar-comprobante'),

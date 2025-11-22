@@ -2,6 +2,8 @@
 Servicios de negocio para la app de reservas.
 Contiene funciones reutilizables para obtener y procesar información de reservas.
 """
+from decimal import Decimal
+
 from django.core.exceptions import ObjectDoesNotExist
 from .models import Reserva
 
@@ -131,6 +133,7 @@ def obtener_resumen_reserva(reserva_id):
         'fechas': {
             'salida': reserva.salida.fecha_salida if reserva.salida else None,
             'regreso': reserva.salida.fecha_regreso if reserva.salida else None,
+            'dias_hasta_salida': reserva.dias_hasta_salida,
         },
         'cantidad_pasajeros': reserva.cantidad_pasajeros,
         'costos': {
@@ -143,6 +146,10 @@ def obtener_resumen_reserva(reserva_id):
                 'simbolo': reserva.paquete.moneda.simbolo,
                 'codigo': reserva.paquete.moneda.codigo,
             } if reserva.paquete and reserva.paquete.moneda else None,
+        },
+        'cancelacion': {
+            'fecha': reserva.fecha_cancelacion,
+            'motivo': reserva.motivo_cancelacion,
         },
         'validaciones': {
             'puede_confirmarse': reserva.puede_confirmarse(),
@@ -339,3 +346,59 @@ def obtener_servicios_reserva(reserva_id):
         'servicios_adicionales': servicios_adicionales,
         'costo_servicios_adicionales': float(reserva.costo_servicios_adicionales),
     }
+
+
+def distribuir_devolucion_en_pasajeros(reserva, comprobante, monto_a_devolver):
+    """
+    Distribuye el monto de devolución entre los pasajeros respetando la seña no reembolsable.
+
+    Args:
+        reserva (Reserva): Reserva asociada.
+        comprobante (ComprobantePago): Comprobante de devolución.
+        monto_a_devolver (Decimal): Monto total a devolver (positivo).
+
+    Returns:
+        Decimal: Monto efectivamente distribuido.
+
+    Raises:
+        ValueError: Si no se puede distribuir la totalidad del monto.
+    """
+    from apps.comprobante.models import ComprobantePagoDistribucion
+
+    if not monto_a_devolver or monto_a_devolver <= Decimal('0'):
+        return Decimal('0')
+
+    restante = Decimal(monto_a_devolver)
+    pasajeros = reserva.pasajeros.all().order_by('id')
+
+    for pasajero in pasajeros:
+        if restante <= 0:
+            break
+
+        monto_pagado = pasajero.monto_pagado
+        seña_requerida = pasajero.seña_requerida
+        excedente = monto_pagado - min(monto_pagado, seña_requerida)
+
+        if excedente <= 0:
+            continue
+
+        asignacion = min(excedente, restante)
+        if asignacion <= 0:
+            continue
+
+        ComprobantePagoDistribucion.objects.create(
+            comprobante=comprobante,
+            pasajero=pasajero,
+            monto=-asignacion,
+            observaciones=f"Devolución por cancelación de la reserva {reserva.codigo}"
+        )
+        restante -= asignacion
+
+    total_distribuido = Decimal(monto_a_devolver) - restante
+
+    if restante > 0:
+        raise ValueError(
+            f"No se pudo distribuir la devolución completa. Restante: {restante}"
+        )
+
+    return total_distribuido
