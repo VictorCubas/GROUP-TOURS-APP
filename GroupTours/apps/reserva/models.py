@@ -252,9 +252,10 @@ class Reserva(models.Model):
     @property
     def seña_total(self):
         """Seña total requerida según la cantidad de cupos"""
-        if self.salida and self.salida.senia:
+        from decimal import Decimal
+        if self.salida and self.salida.senia and self.cantidad_pasajeros:
             return self.salida.senia * self.cantidad_pasajeros
-        return 0
+        return Decimal("0")
 
     def puede_confirmarse(self):
         """
@@ -684,10 +685,12 @@ class Reserva(models.Model):
     @property
     def costo_servicios_adicionales(self):
         """Suma total de todos los servicios adicionales activos"""
-        return sum(
+        from decimal import Decimal
+        total = sum(
             sa.subtotal
             for sa in self.servicios_adicionales.filter(activo=True)
         )
+        return Decimal(str(total)) if total else Decimal("0")
 
     @property
     def precio_base_paquete(self):
@@ -710,6 +713,8 @@ class Reserva(models.Model):
         NOTA: precio_unitario YA incluye habitación + ganancia + servicios base del paquete.
         Solo sumamos los servicios adicionales contratados aparte.
         """
+        from decimal import Decimal
+        
         if not self.cantidad_pasajeros:
             return self.costo_servicios_adicionales
 
@@ -815,9 +820,16 @@ class Pasajero(models.Model):
         return f"{self.persona} - Reserva {self.reserva.codigo}"
 
     def save(self, *args, **kwargs):
+        from decimal import Decimal
+        
         # Auto-asignar precio si no está definido (tomar el precio_unitario de la reserva)
-        if self.precio_asignado is None and self.reserva and self.reserva.precio_unitario:
-            self.precio_asignado = self.reserva.precio_unitario
+        if self.precio_asignado is None and self.reserva:
+            # Intentar obtener precio_unitario de la reserva, sino usar precio_base_paquete
+            if self.reserva.precio_unitario:
+                self.precio_asignado = self.reserva.precio_unitario
+            else:
+                # Fallback: usar precio_base_paquete (que calcula dinámicamente si es necesario)
+                self.precio_asignado = self.reserva.precio_base_paquete or Decimal("0")
 
         super().save(*args, **kwargs)
 
@@ -848,6 +860,9 @@ class Pasajero(models.Model):
             d.monto
             for d in self.distribuciones_pago.filter(comprobante__activo=True)
         )
+        
+        # Convertir a Decimal si sum retornó un int (lista vacía)
+        total_pagos_decimal = Decimal(str(total_pagos)) if total_pagos else Decimal("0")
 
         # 2. Restar las NC que NO tienen comprobante de devolución asociado
         from apps.facturacion.models import NotaCreditoElectronica
@@ -868,7 +883,6 @@ class Pasajero(models.Model):
                     total_nc_sin_distribucion += nc.total_general
 
         # Monto pagado efectivo = distribuciones (con devoluciones negativas) - NC sin distribución
-        total_pagos_decimal = total_pagos if total_pagos else Decimal("0")
         monto_final = total_pagos_decimal - total_nc_sin_distribucion
 
         # PROTECCIÓN: El monto pagado no puede ser negativo
@@ -891,11 +905,15 @@ class Pasajero(models.Model):
         Porcentaje del precio que ha sido pagado por este pasajero.
         Retorna valor entre 0 y 100.
         """
-        from decimal import Decimal
+        from decimal import Decimal, InvalidOperation
         if not self.precio_asignado or self.precio_asignado == 0:
             return Decimal("0")
-        porcentaje = (self.monto_pagado / self.precio_asignado) * Decimal("100")
-        return round(porcentaje, 2)
+        
+        try:
+            porcentaje = (self.monto_pagado / self.precio_asignado) * Decimal("100")
+            return round(porcentaje, 2)
+        except (InvalidOperation, ZeroDivisionError):
+            return Decimal("0")
 
     @property
     def seña_requerida(self):

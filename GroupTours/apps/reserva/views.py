@@ -2064,6 +2064,385 @@ class ReservaViewSet(viewsets.ModelViewSet):
         
         return Response(response_data, status=status.HTTP_200_OK)
 
+    # ----- ENDPOINT: Cancelación Automática de Reservas Vencidas -----
+    @action(detail=False, methods=['get', 'post'], url_path='cancelacion-automatica')
+    def cancelacion_automatica(self, request):
+        """
+        GET/POST /api/reservas/cancelacion-automatica/
+        
+        Procesa la cancelación automática de reservas que NO están pagadas al 100%
+        y faltan menos de 15 días para la salida.
+        
+        Criterios de elegibilidad:
+        - Estado: pendiente o confirmada
+        - Tiene fecha de salida definida
+        - Días hasta salida: < 15
+        - NO está pagada al 100%
+        - Está activa
+        
+        Query params:
+        - dry_run=true: Solo muestra qué reservas se cancelarían SIN aplicar cambios (SIMULACIÓN)
+        - dry_run=false: Ejecuta la cancelación real (solo en POST)
+        
+        GET siempre ejecuta en modo dry-run (simulación segura)
+        POST puede ejecutar la cancelación real si dry_run=false
+        
+        Respuesta:
+        {
+            "dry_run": true/false,
+            "total_evaluadas": 50,
+            "total_califican": 3,
+            "reservas_procesadas": [
+                {
+                    "id": 123,
+                    "codigo": "RSV-2025-0123",
+                    "estado": "confirmada",
+                    "dias_hasta_salida": 10,
+                    "fecha_salida": "2025-12-02",
+                    "monto_pagado": 1000000,
+                    "monto_total": 5000000,
+                    "porcentaje_pagado": 20.0,
+                    "titular": "Juan Pérez",
+                    "paquete": "Paquete XYZ",
+                    "accion": "Se cancelaría" o "Cancelada",
+                    "motivo": "Faltan 10 días y solo pagó 20%"
+                }
+            ],
+            "mensaje": "Descripción del resultado",
+            "advertencia": "Advertencia si aplica"
+        }
+        """
+        from datetime import timedelta
+        from django.utils import timezone
+        
+        # Determinar si es dry-run
+        # GET siempre es dry-run, POST puede ser real o dry-run según parámetro
+        if request.method == 'GET':
+            dry_run = True
+        else:
+            # POST: leer parámetro (default False = ejecuta la cancelación)
+            dry_run_param = request.query_params.get('dry_run', 'false').lower()
+            dry_run = dry_run_param in ['true', '1', 'yes']
+        
+        hoy = timezone.now().date()
+        
+        # Obtener todas las reservas que podrían calificar
+        queryset = Reserva.objects.filter(
+            estado__in=['pendiente', 'confirmada'],
+            salida__isnull=False,
+            salida__fecha_salida__isnull=False,
+            activo=True
+        ).select_related('salida', 'paquete', 'titular', 'habitacion')
+        
+        total_evaluadas = queryset.count()
+        reservas_procesadas = []
+        canceladas_count = 0
+        
+        for reserva in queryset:
+            dias_restantes = reserva.dias_hasta_salida
+            
+            # Validar que tenga días hasta salida
+            if dias_restantes is None:
+                continue
+            
+            # Solo procesar si faltan menos de 15 días
+            if dias_restantes >= 15:
+                continue
+            
+            # Solo procesar si NO está totalmente pagada
+            if reserva.esta_totalmente_pagada():
+                continue
+            
+            # Calcular información de la reserva
+            monto_pagado = float(reserva.monto_pagado) if reserva.monto_pagado else 0.0
+            monto_total = float(reserva.costo_total_estimado) if reserva.costo_total_estimado else 0.0
+            porcentaje_pagado = (monto_pagado / monto_total * 100) if monto_total > 0 else 0.0
+            
+            titular_nombre = f"{reserva.titular.nombre} {reserva.titular.apellido}" if reserva.titular else "Sin titular"
+            
+            reserva_info = {
+                'id': reserva.id,
+                'codigo': reserva.codigo,
+                'estado': reserva.estado,
+                'estado_display': reserva.get_estado_display(),
+                'dias_hasta_salida': dias_restantes,
+                'fecha_salida': reserva.salida.fecha_salida.isoformat() if reserva.salida and reserva.salida.fecha_salida else None,
+                'monto_pagado': monto_pagado,
+                'monto_total': monto_total,
+                'porcentaje_pagado': round(porcentaje_pagado, 2),
+                'titular': titular_nombre,
+                'paquete': reserva.paquete.nombre if reserva.paquete else None,
+                'cantidad_pasajeros': reserva.cantidad_pasajeros or 0,
+                'motivo': f"Faltan {dias_restantes} días y solo pagó {round(porcentaje_pagado, 2)}%"
+            }
+            
+            # Ejecutar cancelación o solo simular
+            if dry_run:
+                reserva_info['accion'] = 'Se cancelaría (simulación)'
+                reserva_info['aplicado'] = False
+            else:
+                # Cancelar la reserva realmente
+                try:
+                    exito = reserva.marcar_cancelada(
+                        motivo_cancelacion_id='5',  # '5' = Cancelación automática por falta de pago
+                        motivo_observaciones=f"Cancelación automática por falta de pago. Días restantes: {dias_restantes}, Pagado: {round(porcentaje_pagado, 2)}%",
+                        liberar_cupo=True
+                    )
+                    if exito:
+                        reserva_info['accion'] = 'Cancelada exitosamente'
+                        reserva_info['aplicado'] = True
+                        canceladas_count += 1
+                    else:
+                        reserva_info['accion'] = 'Ya estaba cancelada'
+                        reserva_info['aplicado'] = False
+                except Exception as e:
+                    reserva_info['accion'] = f'Error al cancelar: {str(e)}'
+                    reserva_info['aplicado'] = False
+                    reserva_info['error'] = str(e)
+            
+            reservas_procesadas.append(reserva_info)
+        
+        # Construir respuesta
+        total_califican = len(reservas_procesadas)
+        
+        if dry_run:
+            if total_califican == 0:
+                mensaje = "✅ No se encontraron reservas que califiquen para cancelación automática"
+            else:
+                mensaje = f"⚠️ [SIMULACIÓN] Se encontraron {total_califican} reservas que SERÍAN canceladas si ejecutas sin dry_run"
+        else:
+            if canceladas_count == 0:
+                mensaje = "✅ No se cancelaron reservas (ninguna calificaba o ya estaban canceladas)"
+            else:
+                mensaje = f"✅ Se cancelaron automáticamente {canceladas_count} reservas"
+        
+        response_data = {
+            'dry_run': dry_run,
+            'metodo': request.method,
+            'total_evaluadas': total_evaluadas,
+            'total_califican': total_califican,
+            'total_canceladas': canceladas_count if not dry_run else 0,
+            'reservas_procesadas': reservas_procesadas,
+            'mensaje': mensaje,
+            'criterios': {
+                'estados_validos': ['pendiente', 'confirmada'],
+                'dias_limite': 15,
+                'debe_estar_impaga': True,
+                'debe_estar_activa': True
+            }
+        }
+        
+        # Agregar advertencia si es simulación
+        if dry_run and total_califican > 0:
+            response_data['advertencia'] = (
+                f"⚠️ ESTO ES UNA SIMULACIÓN. Las {total_califican} reservas mostradas NO han sido canceladas. "
+                "Para cancelarlas realmente, ejecuta POST /api/reservas/cancelacion-automatica/ (sin ?dry_run=true)"
+            )
+        
+        # Agregar confirmación si se ejecutó realmente
+        if not dry_run and canceladas_count > 0:
+            response_data['confirmacion'] = (
+                f"✅ Se han cancelado {canceladas_count} reservas en la base de datos. "
+                "Los cupos han sido liberados y se registró el motivo de cancelación."
+            )
+        
+        return Response(response_data, status=status.HTTP_200_OK)
+
+    # ----- ENDPOINT: Ajustar fecha de salida para testing -----
+    @action(detail=True, methods=['post'], url_path='ajustar-fecha-testing')
+    def ajustar_fecha_testing(self, request, pk=None):
+        """
+        POST /api/reservas/{id}/ajustar-fecha-testing/
+        
+        ⚠️ ENDPOINT PARA TESTING ÚNICAMENTE ⚠️
+        
+        Modifica la fecha de salida de una reserva para poder probar
+        la funcionalidad de cancelación automática.
+        
+        Body (opcional):
+        {
+            "dias_hasta_salida": 10,         // Días hasta la salida (default: 10)
+            "ajustar_para": "calificar"      // "calificar" o "no_calificar" (default: "calificar")
+        }
+        
+        - "calificar": Ajusta fecha para que califique para cancelación (< 15 días)
+        - "no_calificar": Ajusta fecha para que NO califique (> 15 días, ej: 20 días)
+        
+        La cancelación automática requiere:
+        - Días hasta salida < 15
+        - NO estar pagada al 100%
+        - Estado: pendiente o confirmada
+        
+        Respuesta:
+        {
+            "mensaje": "Fecha ajustada exitosamente",
+            "reserva_id": 274,
+            "reserva_codigo": "RSV-2025-0272",
+            "antes": {
+                "fecha_salida": "2025-12-20",
+                "dias_hasta_salida": 28,
+                "calificaba": false
+            },
+            "despues": {
+                "fecha_salida": "2025-12-02",
+                "dias_hasta_salida": 10,
+                "califica_ahora": true
+            },
+            "estado_pago": {
+                "esta_totalmente_pagada": true,
+                "porcentaje_pagado": 100.0,
+                "nota": "La reserva está pagada al 100%, no calificará por este criterio"
+            },
+            "advertencia": "⚠️ Este cambio es para TESTING. Afecta la base de datos real."
+        }
+        """
+        from datetime import date, timedelta
+        
+        reserva = self.get_object()
+        
+        # Validar que tenga salida
+        if not reserva.salida or not reserva.salida.fecha_salida:
+            return Response(
+                {'error': 'La reserva no tiene fecha de salida definida.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Obtener parámetros del body
+        dias_hasta_salida = request.data.get('dias_hasta_salida', 10)
+        ajustar_para = request.data.get('ajustar_para', 'calificar').lower()
+        
+        # Validar días
+        try:
+            dias_hasta_salida = int(dias_hasta_salida)
+        except (ValueError, TypeError):
+            return Response(
+                {'error': 'El parámetro "dias_hasta_salida" debe ser un número entero.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Ajustar días según el objetivo
+        if ajustar_para == 'calificar':
+            # Para que califique: < 15 días
+            if dias_hasta_salida >= 15:
+                dias_hasta_salida = 10  # Default seguro para calificar
+        elif ajustar_para == 'no_calificar':
+            # Para que NO califique: >= 15 días
+            if dias_hasta_salida < 15:
+                dias_hasta_salida = 20  # Default seguro para no calificar
+        else:
+            return Response(
+                {'error': 'El parámetro "ajustar_para" debe ser "calificar" o "no_calificar".'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Guardar estado anterior
+        fecha_anterior = reserva.salida.fecha_salida
+        dias_anteriores = reserva.dias_hasta_salida
+        
+        # Verificar si calificaba antes
+        calificaba_antes = (
+            dias_anteriores is not None and 
+            dias_anteriores < 15 and 
+            not reserva.esta_totalmente_pagada() and
+            reserva.estado in ['pendiente', 'confirmada']
+        )
+        
+        # Calcular nueva fecha
+        hoy = date.today()
+        nueva_fecha = hoy + timedelta(days=dias_hasta_salida)
+        
+        # Modificar la fecha de salida
+        reserva.salida.fecha_salida = nueva_fecha
+        reserva.salida.save(update_fields=['fecha_salida'])
+        
+        # Refrescar la reserva para obtener el nuevo cálculo de días
+        reserva.refresh_from_db()
+        reserva.salida.refresh_from_db()
+        
+        # Verificar si califica después del cambio
+        nuevos_dias = reserva.dias_hasta_salida
+        esta_totalmente_pagada = reserva.esta_totalmente_pagada()
+        
+        califica_ahora = (
+            nuevos_dias is not None and 
+            nuevos_dias < 15 and 
+            not esta_totalmente_pagada and
+            reserva.estado in ['pendiente', 'confirmada']
+        )
+        
+        # Calcular porcentaje pagado
+        monto_pagado = float(reserva.monto_pagado) if reserva.monto_pagado else 0.0
+        monto_total = float(reserva.costo_total_estimado) if reserva.costo_total_estimado else 0.0
+        porcentaje_pagado = (monto_pagado / monto_total * 100) if monto_total > 0 else 0.0
+        
+        # Construir respuesta
+        response_data = {
+            'mensaje': 'Fecha de salida ajustada exitosamente para testing',
+            'reserva_id': reserva.id,
+            'reserva_codigo': reserva.codigo,
+            'antes': {
+                'fecha_salida': fecha_anterior.isoformat() if fecha_anterior else None,
+                'dias_hasta_salida': dias_anteriores,
+                'calificaba': calificaba_antes
+            },
+            'despues': {
+                'fecha_salida': nueva_fecha.isoformat(),
+                'dias_hasta_salida': nuevos_dias,
+                'califica_ahora': califica_ahora
+            },
+            'estado_pago': {
+                'esta_totalmente_pagada': esta_totalmente_pagada,
+                'monto_pagado': monto_pagado,
+                'monto_total': monto_total,
+                'porcentaje_pagado': round(porcentaje_pagado, 2)
+            },
+            'criterios_cancelacion': {
+                'dias_menor_15': nuevos_dias < 15 if nuevos_dias is not None else False,
+                'no_pagada_100': not esta_totalmente_pagada,
+                'estado_valido': reserva.estado in ['pendiente', 'confirmada'],
+                'todos_cumplen': califica_ahora
+            },
+            'advertencia': '⚠️ Este cambio es para TESTING. La fecha fue modificada en la base de datos real.'
+        }
+        
+        # Agregar nota si no califica por pago
+        if esta_totalmente_pagada:
+            response_data['nota'] = (
+                'La reserva está pagada al 100%. Aunque los días sean < 15, '
+                'NO calificará para cancelación automática porque ya está pagada.'
+            )
+        
+        # Agregar nota si no califica por estado
+        if reserva.estado not in ['pendiente', 'confirmada']:
+            response_data['nota'] = (
+                f'La reserva está en estado "{reserva.estado}". '
+                'Solo reservas en estado "pendiente" o "confirmada" califican para cancelación automática.'
+            )
+        
+        # Agregar próximos pasos sugeridos
+        if califica_ahora:
+            response_data['proximos_pasos'] = (
+                'La reserva ahora CALIFICA para cancelación automática. '
+                'Puedes ejecutar: GET /api/reservas/cancelacion-automatica/ para verificarla en la lista, '
+                'o POST /api/reservas/cancelacion-automatica/ para ejecutar la cancelación masiva.'
+            )
+        else:
+            razones = []
+            if nuevos_dias >= 15:
+                razones.append(f'Faltan {nuevos_dias} días (necesita < 15)')
+            if esta_totalmente_pagada:
+                razones.append('Está pagada al 100%')
+            if reserva.estado not in ['pendiente', 'confirmada']:
+                razones.append(f'Estado "{reserva.estado}" no válido')
+            
+            response_data['proximos_pasos'] = (
+                f'La reserva NO califica para cancelación automática. '
+                f'Razones: {", ".join(razones)}. '
+                f'Puedes ajustar nuevamente con días < 15 o cambiar el estado de pago.'
+            )
+        
+        return Response(response_data, status=status.HTTP_200_OK)
+
     # ----- ENDPOINT: Obtener solo servicios de una reserva -----
     @action(detail=True, methods=['get'], url_path='detalle-servicios')
     def detalle_servicios(self, request, pk=None):

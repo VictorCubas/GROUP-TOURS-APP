@@ -61,10 +61,10 @@ class PasajeroSerializer(serializers.ModelSerializer):
         help_text="Saldo que le falta pagar a este pasajero"
     )
     porcentaje_pagado = serializers.DecimalField(
-        max_digits=5,
+        max_digits=8,
         decimal_places=2,
         read_only=True,
-        help_text="Porcentaje del precio pagado (0-100)"
+        help_text="Porcentaje del precio pagado (0-100, puede exceder 100 en caso de mezcla de monedas)"
     )
     seña_requerida = serializers.DecimalField(
         max_digits=12,
@@ -381,12 +381,26 @@ class ReservaSerializer(serializers.ModelSerializer):
     dias_hasta_salida = serializers.SerializerMethodField(read_only=True)
     monto_reembolsable = serializers.SerializerMethodField(read_only=True)
     puede_cancelar = serializers.SerializerMethodField(read_only=True)
+    califica_cancelacion_automatica = serializers.SerializerMethodField(read_only=True)
     info_cancelacion = serializers.SerializerMethodField(read_only=True)
     motivo_cancelacion_display = serializers.CharField(
         source='get_motivo_cancelacion_id_display',
         read_only=True,
         help_text="Descripción legible del motivo de cancelación"
     )
+    
+    # Código del paquete
+    paquete_codigo = serializers.SerializerMethodField(
+        read_only=True,
+        help_text="Código del paquete relacionado a la reserva (formato: PAQ-2024-XXXX)"
+    )
+    
+    def get_paquete_codigo(self, obj):
+        """Genera el código del paquete en formato PAQ-2024-XXXX"""
+        if not obj.paquete:
+            return None
+        # Usar el mismo formato que en PaqueteSerializer
+        return f"PAQ-2024-{obj.paquete.id:04d}"
 
     class Meta:
         model = Reserva
@@ -398,6 +412,7 @@ class ReservaSerializer(serializers.ModelSerializer):
             "titular_id",
             "paquete",
             "paquete_id",
+            "paquete_codigo",  # Código del paquete
             "salida",
             "salida_id",
             "hotel",  # Read-only, calculado desde habitacion.hotel
@@ -424,6 +439,7 @@ class ReservaSerializer(serializers.ModelSerializer):
             "dias_hasta_salida",
             "monto_reembolsable",
             "puede_cancelar",
+            "califica_cancelacion_automatica",  # NUEVO: Indica si califica para cancelación automática
             "info_cancelacion",
             # Campos de conversión a guaraníes
             "precio_unitario_en_guaranies",
@@ -469,6 +485,54 @@ class ReservaSerializer(serializers.ModelSerializer):
             return True
         # Confirmada o finalizada también pueden cancelarse
         return obj.estado in ['confirmada', 'finalizada']
+
+    def get_califica_cancelacion_automatica(self, obj):
+        """
+        Indica si la reserva califica para cancelación automática.
+        
+        IMPORTANTE: Esto es diferente de puede_cancelar.
+        - puede_cancelar: Permite cancelación MANUAL (disponible siempre, incluso si está pagada 100%)
+        - califica_cancelacion_automatica: Indica si el SISTEMA la cancelará automáticamente
+        
+        Criterios para cancelación AUTOMÁTICA:
+        - Días hasta salida < 15
+        - NO está pagada al 100% (si pagó todo, no se auto-cancela)
+        - Estado: pendiente o confirmada
+        - Está activa
+        - Tiene fecha de salida definida
+        
+        Returns:
+            bool: True si califica para cancelación automática, False en caso contrario
+        """
+        # Validar que tenga fecha de salida
+        if not obj.salida or not obj.salida.fecha_salida:
+            return False
+        
+        # Validar que esté activa
+        if not obj.activo:
+            return False
+        
+        # Validar estado (solo pendiente o confirmada pueden auto-cancelarse)
+        if obj.estado not in ['pendiente', 'confirmada']:
+            return False
+        
+        # Obtener días hasta salida
+        dias_restantes = obj.dias_hasta_salida
+        if dias_restantes is None:
+            return False
+        
+        # Verificar días (< 15 para calificar)
+        if dias_restantes >= 15:
+            return False
+        
+        # CLAVE: Verificar que NO esté pagada al 100%
+        # Si ya pagó todo, no tiene sentido cancelar automáticamente
+        # PERO: Siempre puede cancelarse manualmente (ver puede_cancelar)
+        if obj.esta_totalmente_pagada():
+            return False
+        
+        # Si llegó aquí, cumple todos los criterios para cancelación automática
+        return True
 
     def get_info_cancelacion(self, obj):
         """Información útil sobre lo que implica cancelar esta reserva"""
@@ -751,7 +815,7 @@ class PasajeroEstadoCuentaSerializer(serializers.ModelSerializer):
         read_only=True
     )
     porcentaje_pagado = serializers.DecimalField(
-        max_digits=5,
+        max_digits=8,
         decimal_places=2,
         read_only=True
     )
@@ -1051,6 +1115,7 @@ class ReservaDetalleSerializer(serializers.ModelSerializer):
     dias_hasta_salida = serializers.SerializerMethodField()
     monto_reembolsable = serializers.SerializerMethodField()
     puede_cancelar = serializers.SerializerMethodField()
+    califica_cancelacion_automatica = serializers.SerializerMethodField()
     info_cancelacion = serializers.SerializerMethodField()
 
     # Estado
@@ -1152,6 +1217,7 @@ class ReservaDetalleSerializer(serializers.ModelSerializer):
             'dias_hasta_salida',
             'monto_reembolsable',
             'puede_cancelar',
+            'califica_cancelacion_automatica',  # NUEVO
             'info_cancelacion',
             'puede_confirmarse',
             'esta_totalmente_pagada',
@@ -1391,6 +1457,54 @@ class ReservaDetalleSerializer(serializers.ModelSerializer):
             return True
         # Confirmada o finalizada también pueden cancelarse
         return obj.estado in ['confirmada', 'finalizada']
+
+    def get_califica_cancelacion_automatica(self, obj):
+        """
+        Indica si la reserva califica para cancelación automática.
+        
+        IMPORTANTE: Esto es diferente de puede_cancelar.
+        - puede_cancelar: Permite cancelación MANUAL (disponible siempre, incluso si está pagada 100%)
+        - califica_cancelacion_automatica: Indica si el SISTEMA la cancelará automáticamente
+        
+        Criterios para cancelación AUTOMÁTICA:
+        - Días hasta salida < 15
+        - NO está pagada al 100% (si pagó todo, no se auto-cancela)
+        - Estado: pendiente o confirmada
+        - Está activa
+        - Tiene fecha de salida definida
+        
+        Returns:
+            bool: True si califica para cancelación automática, False en caso contrario
+        """
+        # Validar que tenga fecha de salida
+        if not obj.salida or not obj.salida.fecha_salida:
+            return False
+        
+        # Validar que esté activa
+        if not obj.activo:
+            return False
+        
+        # Validar estado (solo pendiente o confirmada pueden auto-cancelarse)
+        if obj.estado not in ['pendiente', 'confirmada']:
+            return False
+        
+        # Obtener días hasta salida
+        dias_restantes = obj.dias_hasta_salida
+        if dias_restantes is None:
+            return False
+        
+        # Verificar días (< 15 para calificar)
+        if dias_restantes >= 15:
+            return False
+        
+        # CLAVE: Verificar que NO esté pagada al 100%
+        # Si ya pagó todo, no tiene sentido cancelar automáticamente
+        # PERO: Siempre puede cancelarse manualmente (ver puede_cancelar)
+        if obj.esta_totalmente_pagada():
+            return False
+        
+        # Si llegó aquí, cumple todos los criterios para cancelación automática
+        return True
 
     def get_info_cancelacion(self, obj):
         """Información útil sobre lo que implica cancelar esta reserva"""

@@ -637,7 +637,29 @@ def reporte_paquetes(request):
         
         busqueda = request.query_params.get('busqueda')
         if busqueda:
-            queryset = queryset.filter(nombre__icontains=busqueda)
+            # Intentar extraer el ID del código si viene en formato PAQ-2024-XXXX o PAQ-XXXX
+            paquete_id = None
+            busqueda_upper = busqueda.upper().strip()
+            
+            if busqueda_upper.startswith('PAQ'):
+                # Formato: PAQ-2024-0142, PAQ-2024-142, PAQ-142
+                parts = busqueda_upper.replace('PAQ-', '').replace('PAQ', '').strip('-').split('-')
+                # Tomar el último número (puede ser solo uno si es PAQ-142)
+                try:
+                    paquete_id = int(parts[-1])
+                except (ValueError, IndexError):
+                    pass
+            elif busqueda.isdigit():
+                # Si es solo un número, usarlo como ID directamente
+                paquete_id = int(busqueda)
+            
+            # Filtrar por ID o por nombre
+            if paquete_id:
+                queryset = queryset.filter(
+                    Q(id=paquete_id) | Q(nombre__icontains=busqueda)
+                )
+            else:
+                queryset = queryset.filter(nombre__icontains=busqueda)
         
         # ===== FILTRO: SALIDAS EN PRÓXIMOS X DÍAS =====
         fecha_salida_proxima = request.query_params.get('fecha_salida_proxima')
@@ -1390,7 +1412,29 @@ def exportar_paquetes_pdf(request):
         
         busqueda = request.query_params.get('busqueda')
         if busqueda:
-            queryset = queryset.filter(nombre__icontains=busqueda)
+            # Intentar extraer el ID del código si viene en formato PAQ-2024-XXXX o PAQ-XXXX
+            paquete_id = None
+            busqueda_upper = busqueda.upper().strip()
+            
+            if busqueda_upper.startswith('PAQ'):
+                # Formato: PAQ-2024-0142, PAQ-2024-142, PAQ-142
+                parts = busqueda_upper.replace('PAQ-', '').replace('PAQ', '').strip('-').split('-')
+                # Tomar el último número (puede ser solo uno si es PAQ-142)
+                try:
+                    paquete_id = int(parts[-1])
+                except (ValueError, IndexError):
+                    pass
+            elif busqueda.isdigit():
+                # Si es solo un número, usarlo como ID directamente
+                paquete_id = int(busqueda)
+            
+            # Filtrar por ID o por nombre
+            if paquete_id:
+                queryset = queryset.filter(
+                    Q(id=paquete_id) | Q(nombre__icontains=busqueda)
+                )
+            else:
+                queryset = queryset.filter(nombre__icontains=busqueda)
         
         # ===== FILTRO: FECHA SALIDA PRÓXIMA =====
         fecha_salida_proxima = request.query_params.get('fecha_salida_proxima')
@@ -1589,7 +1633,29 @@ def exportar_paquetes_excel(request):
         
         busqueda = request.query_params.get('busqueda')
         if busqueda:
-            queryset = queryset.filter(nombre__icontains=busqueda)
+            # Intentar extraer el ID del código si viene en formato PAQ-2024-XXXX o PAQ-XXXX
+            paquete_id = None
+            busqueda_upper = busqueda.upper().strip()
+            
+            if busqueda_upper.startswith('PAQ'):
+                # Formato: PAQ-2024-0142, PAQ-2024-142, PAQ-142
+                parts = busqueda_upper.replace('PAQ-', '').replace('PAQ', '').strip('-').split('-')
+                # Tomar el último número (puede ser solo uno si es PAQ-142)
+                try:
+                    paquete_id = int(parts[-1])
+                except (ValueError, IndexError):
+                    pass
+            elif busqueda.isdigit():
+                # Si es solo un número, usarlo como ID directamente
+                paquete_id = int(busqueda)
+            
+            # Filtrar por ID o por nombre
+            if paquete_id:
+                queryset = queryset.filter(
+                    Q(id=paquete_id) | Q(nombre__icontains=busqueda)
+                )
+            else:
+                queryset = queryset.filter(nombre__icontains=busqueda)
         
         # ===== FILTRO: FECHA SALIDA PRÓXIMA =====
         fecha_salida_proxima = request.query_params.get('fecha_salida_proxima')
