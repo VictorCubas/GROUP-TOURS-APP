@@ -1,0 +1,220 @@
+{
+  "clientName": "Thunder Client",
+  "collectionName": "Reportes API - Group Tours",
+  "collectionId": "reportes-api",
+  "dateExported": "2024-11-22",
+  "version": "1.0",
+  "folders": [
+    {
+      "name": "1. Autenticación",
+      "requests": [
+        {
+          "name": "Login - Obtener Token JWT",
+          "method": "POST",
+          "url": "{{base_url}}/api/login/",
+          "headers": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": {
+            "type": "json",
+            "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"admin123\"\n}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Reportes - Movimientos de Cajas",
+      "requests": [
+        {
+          "name": "Movimientos - Básico (Obligatorio fechas)",
+          "method": "GET",
+          "url": "{{base_url}}/api/dashboard/reportes/movimientos-cajas/?fecha_desde=2024-11-01&fecha_hasta=2024-11-30",
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{jwt_token}}"
+            }
+          ]
+        },
+        {
+          "name": "Movimientos - Con Filtros Avanzados",
+          "method": "GET",
+          "url": "{{base_url}}/api/dashboard/reportes/movimientos-cajas/?fecha_desde=2024-11-01&fecha_hasta=2024-11-30&tipo_movimiento=ingreso&page=1&page_size=50",
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{jwt_token}}"
+            }
+          ]
+        },
+        {
+          "name": "Movimientos - Buscar por texto",
+          "method": "GET",
+          "url": "{{base_url}}/api/dashboard/reportes/movimientos-cajas/?fecha_desde=2024-11-01&fecha_hasta=2024-11-30&busqueda=paquete",
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{jwt_token}}"
+            }
+          ]
+        },
+        {
+          "name": "Movimientos - Por Caja Específica",
+          "method": "GET",
+          "url": "{{base_url}}/api/dashboard/reportes/movimientos-cajas/?fecha_desde=2024-11-01&fecha_hasta=2024-11-30&caja_id=1",
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{jwt_token}}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Reportes - Paquetes",
+      "requests": [
+        {
+          "name": "Paquetes - Todos Activos",
+          "method": "GET",
+          "url": "{{base_url}}/api/dashboard/reportes/paquetes/?estado=activo",
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{jwt_token}}"
+            }
+          ]
+        },
+        {
+          "name": "Paquetes - Con Paginación",
+          "method": "GET",
+          "url": "{{base_url}}/api/dashboard/reportes/paquetes/?estado=activo&page=1&page_size=20",
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{jwt_token}}"
+            }
+          ]
+        },
+        {
+          "name": "Paquetes - Por Destino",
+          "method": "GET",
+          "url": "{{base_url}}/api/dashboard/reportes/paquetes/?destino_id=3",
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{jwt_token}}"
+            }
+          ]
+        },
+        {
+          "name": "Paquetes - Buscar por Nombre",
+          "method": "GET",
+          "url": "{{base_url}}/api/dashboard/reportes/paquetes/?busqueda=Buenos Aires",
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{jwt_token}}"
+            }
+          ]
+        },
+        {
+          "name": "Paquetes - Con Fechas de Salida",
+          "method": "GET",
+          "url": "{{base_url}}/api/dashboard/reportes/paquetes/?fecha_salida_desde=2024-12-01&fecha_salida_hasta=2024-12-31",
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{jwt_token}}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Reportes - Reservas",
+      "requests": [
+        {
+          "name": "Reservas - Todas",
+          "method": "GET",
+          "url": "{{base_url}}/api/dashboard/reportes/reservas/",
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{jwt_token}}"
+            }
+          ]
+        },
+        {
+          "name": "Reservas - Por Estado",
+          "method": "GET",
+          "url": "{{base_url}}/api/dashboard/reportes/reservas/?estado=confirmada",
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{jwt_token}}"
+            }
+          ]
+        },
+        {
+          "name": "Reservas - Por Estado de Pago",
+          "method": "GET",
+          "url": "{{base_url}}/api/dashboard/reportes/reservas/?estado_pago=pago_parcial",
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{jwt_token}}"
+            }
+          ]
+        },
+        {
+          "name": "Reservas - Con Fechas",
+          "method": "GET",
+          "url": "{{base_url}}/api/dashboard/reportes/reservas/?fecha_desde=2024-11-01&fecha_hasta=2024-11-30",
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{jwt_token}}"
+            }
+          ]
+        },
+        {
+          "name": "Reservas - Buscar por Código/Titular",
+          "method": "GET",
+          "url": "{{base_url}}/api/dashboard/reportes/reservas/?busqueda=RES-2024",
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{jwt_token}}"
+            }
+          ]
+        },
+        {
+          "name": "Reservas - Con Paginación Grande",
+          "method": "GET",
+          "url": "{{base_url}}/api/dashboard/reportes/reservas/?page=1&page_size=100",
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{jwt_token}}"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "environments": [
+    {
+      "name": "Local Development",
+      "variables": {
+        "base_url": "http://127.0.0.1:8000",
+        "jwt_token": "YOUR_JWT_TOKEN_HERE"
+      }
+    }
+  ]
+}
+
+

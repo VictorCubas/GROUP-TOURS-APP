@@ -76,14 +76,37 @@ class PaqueteFilter(django_filters.FilterSet):
 
     def filter_busqueda(self, queryset, name, value):
         """
-        Filtra paquetes por nombre, destino, país o zona geográfica.
+        Filtra paquetes por nombre, destino, país, zona geográfica o código.
+        Busca por código en formato PAQ-2024-XXXX o solo el número.
         """
-        return queryset.filter(
-            Q(nombre__icontains=value) |
-            Q(destino__ciudad__nombre__icontains=value) |
-            Q(destino__ciudad__pais__nombre__icontains=value) |
-            Q(destino__ciudad__pais__zona_geografica__nombre__icontains=value) |  # 🔹 búsqueda por zona
-            Q(tipo_paquete__nombre__icontains=value) |
-            Q(distribuidora__nombre__icontains=value) |
-            Q(modalidad__icontains=value)
-        )
+        # Intentar extraer el ID del código si viene en formato PAQ-2024-XXXX
+        paquete_id = None
+        if value.upper().startswith('PAQ-'):
+            # Formato: PAQ-2024-0142 o PAQ-2024-142
+            parts = value.split('-')
+            if len(parts) >= 3:
+                try:
+                    paquete_id = int(parts[-1])  # Toma el último número
+                except ValueError:
+                    pass
+        else:
+            # Si es solo un número, intentar buscarlo como ID
+            try:
+                paquete_id = int(value)
+            except ValueError:
+                pass
+        
+        # Construir el query
+        q_filters = Q(nombre__icontains=value) | \
+                    Q(destino__ciudad__nombre__icontains=value) | \
+                    Q(destino__ciudad__pais__nombre__icontains=value) | \
+                    Q(destino__ciudad__pais__zona_geografica__nombre__icontains=value) | \
+                    Q(tipo_paquete__nombre__icontains=value) | \
+                    Q(distribuidora__nombre__icontains=value) | \
+                    Q(modalidad__icontains=value)
+        
+        # Si detectamos un ID de paquete, agregarlo a la búsqueda
+        if paquete_id is not None:
+            q_filters |= Q(id=paquete_id)
+        
+        return queryset.filter(q_filters)

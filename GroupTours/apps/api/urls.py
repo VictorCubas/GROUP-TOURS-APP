@@ -25,5 +25,6 @@ urlpatterns = [
     path('zona_geografica/', include('apps.zona_geografica.urls')),
     path('', include('apps.comprobante.urls')),  # Comprobantes, distribuciones y vouchers
     path('arqueo-caja/', include('apps.arqueo_caja.urls')),  # Arqueo de caja
+    path('dashboard/', include('apps.dashboard.urls')),  # Dashboard y reportes
     # Puedes seguir agregando aquí otras rutas
 ]
