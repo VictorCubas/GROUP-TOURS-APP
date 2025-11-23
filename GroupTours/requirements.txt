@@ -12,6 +12,7 @@ djangorestframework_simplejwt==5.5.1
 drf-polymorphic==2.1.1
 gunicorn==23.0.0
 h11==0.16.0
+openpyxl==3.1.5
 packaging==25.0
 pi==0.1.2
 pillow==11.3.0
