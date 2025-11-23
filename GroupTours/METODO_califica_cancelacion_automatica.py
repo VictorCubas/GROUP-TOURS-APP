@@ -52,3 +52,4 @@ def get_califica_cancelacion_automatica(self, obj):
     return True
 
 
+
