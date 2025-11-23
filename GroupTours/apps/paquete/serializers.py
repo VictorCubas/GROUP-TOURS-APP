@@ -363,6 +363,9 @@ class PaqueteServicioSerializer(serializers.ModelSerializer):
 # Paquete Serializer
 # ---------------------------------------------------------------------
 class PaqueteSerializer(serializers.ModelSerializer):
+    # Código del paquete (generar si no existe en modelo)
+    codigo = serializers.SerializerMethodField()
+    
     tipo_paquete = TipoPaqueteSimpleSerializer(read_only=True)
     destino = DestinoNestedSerializer(read_only=True)
     distribuidora = DistribuidoraSimpleSerializer(read_only=True, allow_null=True)
@@ -425,6 +428,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
         model = Paquete
         fields = [
             "id",
+            "codigo",
             "nombre",
             "tipo_paquete",
             "tipo_paquete_id",
@@ -537,6 +541,12 @@ class PaqueteSerializer(serializers.ModelSerializer):
 
 
     # --------- Campos calculados ---------
+    def get_codigo(self, obj):
+        """Generar código del paquete si no existe"""
+        if hasattr(obj, 'codigo') and obj.codigo:
+            return obj.codigo
+        return f"PAQ-2024-{obj.id:04d}"
+    
     def get_fecha_inicio(self, obj):
         salida = obj.salidas.filter(activo=True).order_by("fecha_salida").first()
         return salida.fecha_salida if salida else None

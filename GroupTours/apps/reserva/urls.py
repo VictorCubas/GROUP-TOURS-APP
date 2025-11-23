@@ -26,6 +26,12 @@ urlpatterns = [
     path('<int:pk>/registrar-senia/', ReservaViewSet.as_view({'post': 'registrar_senia'}), name='reserva-registrar-senia'),
     path('<int:pk>/registrar-pago/', ReservaViewSet.as_view({'post': 'registrar_pago'}), name='reserva-registrar-pago'),
 
+    # Endpoint de cancelación
+    path('<int:pk>/cancelar/', ReservaViewSet.as_view({'post': 'cancelar_reserva'}), name='reserva-cancelar'),
+    
+    # Endpoint de cancelación automática (sin ID de reserva)
+    path('cancelacion-automatica/', ReservaViewSet.as_view({'get': 'cancelacion_automatica', 'post': 'cancelacion_automatica'}), name='reserva-cancelacion-automatica'),
+
     # Endpoints de comprobantes
     path('<int:pk>/generar-comprobante/', ReservaViewSet.as_view({'post': 'generar_comprobante'}), name='reserva-generar-comprobante'),
     path('<int:pk>/descargar-comprobante/', ReservaViewSet.as_view({'get': 'descargar_comprobante'}), name='reserva-descargar-comprobante'),
@@ -44,6 +50,9 @@ urlpatterns = [
     # Endpoint de diagnóstico y corrección
     path('<int:pk>/diagnostico-estado/', ReservaViewSet.as_view({'get': 'diagnostico_estado'}), name='reserva-diagnostico-estado'),
     path('<int:pk>/forzar-actualizacion-estado/', ReservaViewSet.as_view({'post': 'forzar_actualizacion_estado'}), name='reserva-forzar-actualizacion-estado'),
+    
+    # Endpoint de testing para cancelación automática
+    path('<int:pk>/ajustar-fecha-testing/', ReservaViewSet.as_view({'post': 'ajustar_fecha_testing'}), name='reserva-ajustar-fecha-testing'),
 
     # Endpoints de comprobantes y vouchers por reserva
     path('<int:reserva_pk>/comprobantes/', ReservaComprobantesViewSet.as_view({'get': 'list', 'post': 'create'}), name='reserva-comprobantes'),

@@ -758,8 +758,11 @@ class ComprobantePagoDistribucion(models.Model):
                 "El pasajero no pertenece a la reserva del comprobante"
             )
 
-        # Validar que el monto es positivo
-        if self.monto <= 0:
+        # Validar que el monto es positivo, excepto en devoluciones
+        if self.comprobante and self.comprobante.tipo == 'devolucion':
+            if self.monto >= 0:
+                raise ValidationError("Las devoluciones deben registrarse con montos negativos en las distribuciones")
+        elif self.monto <= 0:
             raise ValidationError("El monto de la distribución debe ser mayor a cero")
 
         # Validar que no se exceda el monto total del comprobante
