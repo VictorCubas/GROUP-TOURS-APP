@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.db import models
 from django.core.exceptions import ValidationError
 from django.utils.timezone import now
@@ -28,6 +30,17 @@ class Reserva(models.Model):
     CONDICIONES_PAGO = [
         ("contado", "Contado"),
         ("credito", "Crédito"),
+    ]
+
+    MOTIVOS_CANCELACION = [
+        ('1', 'Cancelación voluntaria del cliente'),
+        ('2', 'Cambio de planes del cliente'),
+        ('3', 'Problemas de salud'),
+        ('4', 'Problemas con documentación'),
+        ('5', 'Cancelación automática por falta de pago'),
+        ('6', 'Fuerza mayor / Caso fortuito'),
+        ('7', 'Error en la reserva'),
+        ('8', 'Otro motivo'),
     ]
 
     codigo = models.CharField(
@@ -117,6 +130,27 @@ class Reserva(models.Model):
         blank=True,
         help_text="Condición de pago elegida al confirmar la reserva (contado o crédito). NULL mientras esté pendiente."
     )
+    fecha_cancelacion = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Fecha y hora en la que la reserva fue cancelada"
+    )
+    motivo_cancelacion_id = models.CharField(
+        max_length=2,
+        choices=MOTIVOS_CANCELACION,
+        null=True,
+        blank=True,
+        help_text="ID del motivo de cancelación"
+    )
+    motivo_cancelacion = models.TextField(
+        null=True,
+        blank=True,
+        help_text="Observaciones adicionales sobre la cancelación"
+    )
+    cupos_liberados = models.BooleanField(
+        default=False,
+        help_text="Indica si los cupos asociados a la reserva ya fueron liberados"
+    )
 
     class Meta:
         verbose_name = "Reserva"
@@ -190,6 +224,16 @@ class Reserva(models.Model):
         return self.habitacion.hotel if self.habitacion else None
 
     @property
+    def dias_hasta_salida(self):
+        """
+        Retorna la cantidad de días que faltan para la fecha de salida.
+        Si no hay salida asociada, retorna None.
+        """
+        if not self.salida or not self.salida.fecha_salida:
+            return None
+        return (self.salida.fecha_salida - now().date()).days
+
+    @property
     def pasajeros_cargados(self):
         """
         Cantidad de pasajeros REALES registrados en esta reserva.
@@ -208,9 +252,10 @@ class Reserva(models.Model):
     @property
     def seña_total(self):
         """Seña total requerida según la cantidad de cupos"""
-        if self.salida and self.salida.senia:
+        from decimal import Decimal
+        if self.salida and self.salida.senia and self.cantidad_pasajeros:
             return self.salida.senia * self.cantidad_pasajeros
-        return 0
+        return Decimal("0")
 
     def puede_confirmarse(self):
         """
@@ -259,6 +304,101 @@ class Reserva(models.Model):
         for pasajero in pasajeros_reales:
             if not pasajero.esta_totalmente_pagado:
                 return False
+
+        return True
+
+    def calcular_montos_cancelacion(self):
+        """
+        Calcula los montos involucrados al cancelar una reserva.
+        Returns:
+            dict con monto_sena, monto_pagos_adicionales y monto_reembolsable.
+        """
+        from django.db.models import Sum
+
+        comprobantes_activos = self.comprobantes.filter(activo=True)
+
+        monto_sena = comprobantes_activos.filter(tipo='sena').aggregate(
+            total=Sum('monto')
+        )['total'] or Decimal('0')
+
+        monto_pagos_adicionales = comprobantes_activos.filter(
+            tipo__in=['pago_parcial', 'pago_total']
+        ).aggregate(total=Sum('monto'))['total'] or Decimal('0')
+
+        monto_devoluciones = comprobantes_activos.filter(
+            tipo='devolucion'
+        ).aggregate(total=Sum('monto'))['total'] or Decimal('0')
+
+        monto_reembolsable = max(monto_pagos_adicionales - monto_devoluciones, Decimal('0'))
+
+        return {
+            'monto_sena': monto_sena,
+            'monto_pagos_adicionales': monto_pagos_adicionales,
+            'monto_reembolsable': monto_reembolsable,
+        }
+
+    def liberar_cupo(self, forzar=False):
+        """
+        Libera el cupo asociado a la reserva solo para paquetes propios.
+        """
+        if self.cupos_liberados and not forzar:
+            return
+
+        if not self.paquete or not self.paquete.propio:
+            return
+
+        if not self.salida:
+            return
+
+        cupo_actualizado = False
+
+        if self.habitacion:
+            cupo_hab_salida = CupoHabitacionSalida.objects.filter(
+                salida=self.salida,
+                habitacion=self.habitacion
+            ).first()
+
+            if cupo_hab_salida:
+                cupo_hab_salida.cupo += 1
+                cupo_hab_salida.save(update_fields=['cupo'])
+                cupo_actualizado = True
+
+            if self.salida.cupo is not None:
+                capacidad = self.habitacion.capacidad or self.cantidad_pasajeros or 0
+                if capacidad > 0:
+                    self.salida.cupo += capacidad
+                    self.salida.save(update_fields=['cupo'])
+                    cupo_actualizado = True
+
+        if cupo_actualizado:
+            self.cupos_liberados = True
+            self.save(update_fields=['cupos_liberados'])
+
+    def marcar_cancelada(self, motivo_cancelacion_id=None, motivo_observaciones=None, liberar_cupo=True):
+        """
+        Cambia el estado de la reserva a cancelada, registra motivo/fecha
+        y libera cupos si corresponde.
+        
+        Args:
+            motivo_cancelacion_id: ID del motivo (choice definido en MOTIVOS_CANCELACION)
+            motivo_observaciones: Observaciones adicionales sobre la cancelación
+            liberar_cupo: Si debe liberar los cupos (True por defecto)
+        """
+        if self.estado == "cancelada":
+            return False
+
+        self.estado = "cancelada"
+        self.motivo_cancelacion_id = motivo_cancelacion_id or '8'  # '8' = Otro motivo
+        self.motivo_cancelacion = motivo_observaciones or ""
+        self.fecha_cancelacion = now()
+        self.datos_completos = False
+        self.save(update_fields=[
+            'estado', 'motivo_cancelacion_id', 'motivo_cancelacion', 
+            'fecha_cancelacion', 'datos_completos'
+        ])
+
+        if liberar_cupo:
+            self.liberar_cupo()
 
         return True
 
@@ -545,10 +685,12 @@ class Reserva(models.Model):
     @property
     def costo_servicios_adicionales(self):
         """Suma total de todos los servicios adicionales activos"""
-        return sum(
+        from decimal import Decimal
+        total = sum(
             sa.subtotal
             for sa in self.servicios_adicionales.filter(activo=True)
         )
+        return Decimal(str(total)) if total else Decimal("0")
 
     @property
     def precio_base_paquete(self):
@@ -571,6 +713,8 @@ class Reserva(models.Model):
         NOTA: precio_unitario YA incluye habitación + ganancia + servicios base del paquete.
         Solo sumamos los servicios adicionales contratados aparte.
         """
+        from decimal import Decimal
+        
         if not self.cantidad_pasajeros:
             return self.costo_servicios_adicionales
 
@@ -676,9 +820,16 @@ class Pasajero(models.Model):
         return f"{self.persona} - Reserva {self.reserva.codigo}"
 
     def save(self, *args, **kwargs):
+        from decimal import Decimal
+        
         # Auto-asignar precio si no está definido (tomar el precio_unitario de la reserva)
-        if self.precio_asignado is None and self.reserva and self.reserva.precio_unitario:
-            self.precio_asignado = self.reserva.precio_unitario
+        if self.precio_asignado is None and self.reserva:
+            # Intentar obtener precio_unitario de la reserva, sino usar precio_base_paquete
+            if self.reserva.precio_unitario:
+                self.precio_asignado = self.reserva.precio_unitario
+            else:
+                # Fallback: usar precio_base_paquete (que calcula dinámicamente si es necesario)
+                self.precio_asignado = self.reserva.precio_base_paquete or Decimal("0")
 
         super().save(*args, **kwargs)
 
@@ -709,6 +860,9 @@ class Pasajero(models.Model):
             d.monto
             for d in self.distribuciones_pago.filter(comprobante__activo=True)
         )
+        
+        # Convertir a Decimal si sum retornó un int (lista vacía)
+        total_pagos_decimal = Decimal(str(total_pagos)) if total_pagos else Decimal("0")
 
         # 2. Restar las NC que NO tienen comprobante de devolución asociado
         from apps.facturacion.models import NotaCreditoElectronica
@@ -729,7 +883,6 @@ class Pasajero(models.Model):
                     total_nc_sin_distribucion += nc.total_general
 
         # Monto pagado efectivo = distribuciones (con devoluciones negativas) - NC sin distribución
-        total_pagos_decimal = total_pagos if total_pagos else Decimal("0")
         monto_final = total_pagos_decimal - total_nc_sin_distribucion
 
         # PROTECCIÓN: El monto pagado no puede ser negativo
@@ -752,11 +905,15 @@ class Pasajero(models.Model):
         Porcentaje del precio que ha sido pagado por este pasajero.
         Retorna valor entre 0 y 100.
         """
-        from decimal import Decimal
+        from decimal import Decimal, InvalidOperation
         if not self.precio_asignado or self.precio_asignado == 0:
             return Decimal("0")
-        porcentaje = (self.monto_pagado / self.precio_asignado) * Decimal("100")
-        return round(porcentaje, 2)
+        
+        try:
+            porcentaje = (self.monto_pagado / self.precio_asignado) * Decimal("100")
+            return round(porcentaje, 2)
+        except (InvalidOperation, ZeroDivisionError):
+            return Decimal("0")
 
     @property
     def seña_requerida(self):
