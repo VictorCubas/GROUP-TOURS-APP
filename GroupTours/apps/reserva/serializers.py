@@ -335,6 +335,14 @@ class ReservaSerializer(serializers.ModelSerializer):
         default=True,
         help_text="Si es True, el titular se agrega automáticamente como pasajero. Default: True"
     )
+    
+    # Bandera para forzar recálculo de precio en actualizaciones
+    recalcular_precio = serializers.BooleanField(
+        write_only=True,
+        required=False,
+        default=False,
+        help_text="Si es True, recalcula el precio_unitario usando la lógica actualizada. Útil para corregir precios de reservas antiguas."
+    )
 
     # Campos calculados
     precio_base_paquete = serializers.DecimalField(
@@ -450,6 +458,7 @@ class ReservaSerializer(serializers.ModelSerializer):
             "pasajeros",
             "pasajeros_data",
             "titular_como_pasajero",
+            "recalcular_precio",
             "activo",
             "fecha_modificacion",
         ]
@@ -595,6 +604,9 @@ class ReservaSerializer(serializers.ModelSerializer):
 
         # Extraer la bandera titular_como_pasajero (default: True para mantener compatibilidad)
         titular_como_pasajero = validated_data.pop("titular_como_pasajero", True)
+        
+        # Extraer la bandera recalcular_precio (no es parte del modelo, solo del serializer)
+        validated_data.pop("recalcular_precio", None)
 
         estado_manual = validated_data.get("estado", None)
         instance = super().create(validated_data)
@@ -634,9 +646,27 @@ class ReservaSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         # Extraer pasajeros_data si existe (para updates, no se actualizan pasajeros aquí)
         validated_data.pop("pasajeros_data", None)
+        
+        # Extraer bandera de recálculo antes de actualizar
+        recalcular_precio_solicitado = validated_data.pop("recalcular_precio", False)
+
+        # Detectar si cambiaron campos que afectan el precio
+        campos_precio_cambiaron = any([
+            'salida' in validated_data,
+            'habitacion' in validated_data,
+            'paquete' in validated_data
+        ])
 
         estado_manual = validated_data.get("estado", None)
         instance = super().update(instance, validated_data)
+        
+        # Recalcular precio si se solicita explícitamente O si cambiaron campos relevantes
+        if (recalcular_precio_solicitado or campos_precio_cambiaron) and instance.salida and instance.habitacion:
+            precio_recalculado = instance.calcular_precio_unitario()
+            if precio_recalculado:
+                instance.precio_unitario = precio_recalculado
+                instance.save(update_fields=['precio_unitario'])
+        
         if not estado_manual:  # si no se pasó manualmente
             instance.actualizar_estado()
         return instance

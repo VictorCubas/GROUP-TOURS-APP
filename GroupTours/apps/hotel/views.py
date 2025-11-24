@@ -213,6 +213,8 @@ class HotelViewSet(viewsets.ModelViewSet):
 
         else:
             # Para paquetes propios: calcular normalmente
+            from apps.paquete.utils import convertir_entre_monedas
+            
             for hotel in hoteles:
                 for habitacion in hotel.habitaciones.all():
                     # Obtener cupo
@@ -225,10 +227,31 @@ class HotelViewSet(viewsets.ModelViewSet):
                     except CupoHabitacionSalida.DoesNotExist:
                         cupo = 0
 
-                    # Calcular precio
+                    # Calcular precio de la habitación
                     precio_noche = habitacion.precio_noche or Decimal('0')
                     precio_habitacion_total = precio_noche * noches
-                    costo_base = precio_habitacion_total + total_servicios
+
+                    # Convertir precio de habitación a la moneda del paquete si es necesario
+                    if habitacion.moneda and salida.moneda and habitacion.moneda != salida.moneda:
+                        try:
+                            precio_habitacion_total_convertido = convertir_entre_monedas(
+                                monto=precio_habitacion_total,
+                                moneda_origen=habitacion.moneda,
+                                moneda_destino=salida.moneda,
+                                fecha=salida.fecha_salida
+                            )
+                            precio_noche_convertido = precio_habitacion_total_convertido / noches if noches > 0 else Decimal('0')
+                        except ValidationError:
+                            # Si falla la conversión, usar el precio original (fallback)
+                            precio_habitacion_total_convertido = precio_habitacion_total
+                            precio_noche_convertido = precio_noche
+                    else:
+                        # Misma moneda o no hay moneda definida, usar directo
+                        precio_habitacion_total_convertido = precio_habitacion_total
+                        precio_noche_convertido = precio_noche
+
+                    # Calcular costo base y precio final
+                    costo_base = precio_habitacion_total_convertido + total_servicios
                     precio_venta_final = costo_base * factor
 
                     # Calcular precio en moneda alternativa
@@ -244,7 +267,7 @@ class HotelViewSet(viewsets.ModelViewSet):
                         'habitacion_numero': habitacion.numero,
                         'habitacion_tipo': habitacion.tipo,
                         'capacidad': habitacion.capacidad,
-                        'precio_noche': str(precio_noche),
+                        'precio_noche': str(precio_noche_convertido),
                         'precio_venta_final': str(precio_venta_final),
                         'precio_moneda_alternativa': precio_moneda_alternativa,
                         'cupo': cupo,

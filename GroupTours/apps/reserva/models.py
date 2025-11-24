@@ -632,10 +632,29 @@ class Reserva(models.Model):
             else:
                 noches = 1
 
-            # 3. Precio base de la habitación por toda la estadía
+            # 3. Precio base de la habitación por toda la estadía (en su moneda original)
             precio_habitacion_total = precio_habitacion * noches
 
-            # 4. Sumar servicios incluidos en el paquete
+            # 4. Convertir precio de habitación a la moneda del paquete si es necesario
+            if self.habitacion.moneda and self.salida.moneda and self.habitacion.moneda != self.salida.moneda:
+                # Las monedas son diferentes, debemos convertir
+                from apps.paquete.utils import convertir_entre_monedas
+                
+                try:
+                    precio_habitacion_total_convertido = convertir_entre_monedas(
+                        monto=precio_habitacion_total,
+                        moneda_origen=self.habitacion.moneda,
+                        moneda_destino=self.salida.moneda,
+                        fecha=self.salida.fecha_salida
+                    )
+                except ValidationError:
+                    # Si falla la conversión, usar el precio original (fallback)
+                    precio_habitacion_total_convertido = precio_habitacion_total
+            else:
+                # Misma moneda o no hay moneda definida, usar directo
+                precio_habitacion_total_convertido = precio_habitacion_total
+
+            # 5. Sumar servicios incluidos en el paquete
             total_servicios = Decimal("0")
             for ps in self.paquete.paquete_servicios.all():
                 if ps.precio and ps.precio > 0:
@@ -643,10 +662,10 @@ class Reserva(models.Model):
                 elif hasattr(ps.servicio, "precio") and ps.servicio.precio:
                     total_servicios += ps.servicio.precio
 
-            # 5. Calcular costo base total (habitación + servicios)
-            costo_base_total = precio_habitacion_total + total_servicios
+            # 6. Calcular costo base total (habitación convertida + servicios)
+            costo_base_total = precio_habitacion_total_convertido + total_servicios
 
-            # 6. Aplicar ganancia sobre el costo total
+            # 7. Aplicar ganancia sobre el costo total
             ganancia = self.salida.ganancia or Decimal("0")
             if ganancia > 0:
                 factor = Decimal("1") + (ganancia / Decimal("100"))

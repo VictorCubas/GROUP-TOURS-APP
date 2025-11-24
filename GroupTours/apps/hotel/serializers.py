@@ -132,10 +132,34 @@ class HabitacionSerializer(serializers.ModelSerializer):
             # 1. Calcular precio por noche de esta habitación
             precio_noche = obj.precio_noche or Decimal('0')
 
-            # 2. Precio base de la habitación por toda la estadía
+            # 2. Precio base de la habitación por toda la estadía (en su moneda original)
             precio_habitacion_total = precio_noche * noches
 
-            # 3. Sumar servicios incluidos en el paquete
+            # 3. Convertir precio de habitación a la moneda del paquete si es necesario
+            if obj.moneda and salida.moneda and obj.moneda != salida.moneda:
+                # Las monedas son diferentes, debemos convertir
+                from apps.paquete.utils import convertir_entre_monedas
+                from django.core.exceptions import ValidationError as DjangoValidationError
+                
+                try:
+                    precio_habitacion_total_convertido = convertir_entre_monedas(
+                        monto=precio_habitacion_total,
+                        moneda_origen=obj.moneda,
+                        moneda_destino=salida.moneda,
+                        fecha=salida.fecha_salida
+                    )
+                    # Actualizar también precio_noche convertido para mostrar
+                    precio_noche_convertido = precio_habitacion_total_convertido / noches if noches > 0 else Decimal('0')
+                except DjangoValidationError:
+                    # Si falla la conversión, usar el precio original (fallback)
+                    precio_habitacion_total_convertido = precio_habitacion_total
+                    precio_noche_convertido = precio_noche
+            else:
+                # Misma moneda o no hay moneda definida, usar directo
+                precio_habitacion_total_convertido = precio_habitacion_total
+                precio_noche_convertido = precio_noche
+
+            # 4. Sumar servicios incluidos en el paquete
             total_servicios = Decimal('0')
             for ps in salida.paquete.paquete_servicios.all():
                 if ps.precio and ps.precio > 0:
@@ -143,23 +167,23 @@ class HabitacionSerializer(serializers.ModelSerializer):
                 elif hasattr(ps.servicio, 'precio') and ps.servicio.precio:
                     total_servicios += ps.servicio.precio
 
-            # 4. Calcular costo base total (habitación + servicios)
-            costo_base_total = precio_habitacion_total + total_servicios
+            # 5. Calcular costo base total (habitación convertida + servicios)
+            costo_base_total = precio_habitacion_total_convertido + total_servicios
 
-            # 5. Aplicar ganancia sobre el costo total
+            # 6. Aplicar ganancia sobre el costo total
             ganancia = salida.ganancia or Decimal('0')
             if ganancia > 0:
                 factor = Decimal('1') + (ganancia / Decimal('100'))
             else:
                 factor = Decimal('1')
 
-            # 6. Precio de venta final
+            # 7. Precio de venta final
             precio_venta_final = costo_base_total * factor
 
             return {
                 'noches': noches,
-                'precio_noche': str(precio_noche),
-                'precio_habitacion_total': str(precio_habitacion_total),
+                'precio_noche': str(precio_noche_convertido),
+                'precio_habitacion_total': str(precio_habitacion_total_convertido),
                 'servicios_paquete': str(total_servicios),
                 'costo_base': str(costo_base_total),
                 'ganancia_porcentaje': str(ganancia),
