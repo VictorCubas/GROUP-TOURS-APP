@@ -22,6 +22,9 @@ class HabitacionSerializer(serializers.ModelSerializer):
 
     # Campos adicionales para análisis de precios
     precio_calculado = serializers.SerializerMethodField(read_only=True)
+    
+    # Permitir id opcional para actualizaciones (no obligatorio para creación)
+    id = serializers.IntegerField(required=False, allow_null=True)
 
     class Meta:
         model = Habitacion
@@ -30,7 +33,7 @@ class HabitacionSerializer(serializers.ModelSerializer):
             'precio_noche', 'moneda', 'moneda_nombre', 'moneda_simbolo', 'servicios',
             'cupo', 'precio_calculado', 'activo', 'fecha_creacion', 'fecha_modificacion'
         ]
-        read_only_fields = ['id', 'fecha_creacion', 'fecha_modificacion', 'hotel']
+        read_only_fields = ['fecha_creacion', 'fecha_modificacion', 'hotel']
 
     def get_cupo(self, obj):
         """
@@ -257,12 +260,48 @@ class HotelSerializer(serializers.ModelSerializer):
         # Actualiza servicios ManyToMany
         instance.servicios.set(servicios)
 
-        # Política: reemplaza habitaciones existentes
-        instance.habitaciones.all().delete()
-        for hab in habitaciones_data:
-            servicios_hab = hab.pop('servicios', [])
-            habitacion = Habitacion.objects.create(hotel=instance, **hab)
-            habitacion.servicios.set(servicios_hab)
+        # === ACTUALIZACIÓN INTELIGENTE DE HABITACIONES ===
+        # En lugar de eliminar y recrear, actualizamos/creamos/desactivamos según sea necesario
+        
+        habitaciones_existentes = {hab.id: hab for hab in instance.habitaciones.all()}
+        habitaciones_en_payload = []
+        
+        # Procesar habitaciones del payload
+        for hab_data in habitaciones_data:
+            servicios_hab = hab_data.pop('servicios', [])
+            hab_id = hab_data.pop('id', None)
+            
+            if hab_id and hab_id in habitaciones_existentes:
+                # Actualizar habitación existente
+                habitacion = habitaciones_existentes[hab_id]
+                for attr, value in hab_data.items():
+                    setattr(habitacion, attr, value)
+                habitacion.save()
+                habitacion.servicios.set(servicios_hab)
+                habitaciones_en_payload.append(hab_id)
+            else:
+                # Crear nueva habitación
+                habitacion = Habitacion.objects.create(hotel=instance, **hab_data)
+                habitacion.servicios.set(servicios_hab)
+                if habitacion.id:
+                    habitaciones_en_payload.append(habitacion.id)
+        
+        # Manejar habitaciones que ya no están en el payload
+        for hab_id, habitacion in habitaciones_existentes.items():
+            if hab_id not in habitaciones_en_payload:
+                # Verificar si tiene reservas asociadas
+                if habitacion.reservas.filter(activo=True).exists():
+                    # Soft delete: marcar como inactiva en lugar de eliminar
+                    habitacion.activo = False
+                    habitacion.save()
+                else:
+                    # Sin reservas: eliminar físicamente
+                    try:
+                        habitacion.delete()
+                    except Exception:
+                        # Si falla, hacer soft delete
+                        habitacion.activo = False
+                        habitacion.save()
 
         return instance
 
