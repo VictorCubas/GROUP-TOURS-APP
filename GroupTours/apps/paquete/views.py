@@ -1,12 +1,12 @@
-from rest_framework import viewsets
+from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.decorators import action
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
-from .models import Paquete
-from .serializers import PaqueteSerializer
+from .models import Paquete, SalidaPaquete
+from .serializers import PaqueteSerializer, SalidaPaqueteSerializer, SalidaPaqueteActualizarFechasSerializer
 from .filters import PaqueteFilter
 
 
@@ -104,3 +104,103 @@ class PaqueteViewSet(viewsets.ModelViewSet):
             for item in queryset
         ]
         return Response(data)
+
+
+# -------------------- VIEWSET SALIDA PAQUETE --------------------
+class SalidaPaqueteViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet para gestionar las Salidas de Paquete.
+    
+    Endpoints disponibles:
+    - GET /api/salidas/ - Listar todas las salidas
+    - GET /api/salidas/{id}/ - Ver detalle de una salida
+    - POST /api/salidas/ - Crear nueva salida (generalmente se hace desde el paquete)
+    - PUT/PATCH /api/salidas/{id}/ - Actualizar salida completa
+    - PATCH /api/salidas/{id}/actualizar_fechas/ - Actualizar solo fechas de salida
+    - DELETE /api/salidas/{id}/ - Eliminar salida (soft delete con activo=False)
+    """
+    
+    queryset = SalidaPaquete.objects.select_related(
+        'paquete',
+        'moneda',
+        'temporada',
+        'habitacion_fija'
+    ).prefetch_related(
+        'hoteles',
+        'cupos_habitaciones',
+        'precios_catalogo_hoteles',
+        'precios_catalogo'
+    ).order_by('-fecha_salida')
+    
+    serializer_class = SalidaPaqueteSerializer
+    permission_classes = []
+    
+    def get_queryset(self):
+        """
+        Opcionalmente filtra por paquete_id si se proporciona en query params
+        """
+        queryset = super().get_queryset()
+        paquete_id = self.request.query_params.get('paquete_id', None)
+        
+        if paquete_id:
+            queryset = queryset.filter(paquete_id=paquete_id)
+        
+        return queryset
+    
+    @action(detail=True, methods=['patch'], url_path='actualizar-fechas')
+    def actualizar_fechas(self, request, pk=None):
+        """
+        Endpoint específico para actualizar solo las fechas de una salida.
+        
+        Permite adelantar o retrasar fechas sin afectar otros campos.
+        
+        Ejemplo de uso:
+        PATCH /api/salidas/123/actualizar-fechas/
+        {
+            "fecha_salida": "2025-12-06",
+            "fecha_regreso": "2025-12-15"
+        }
+        
+        Respuesta exitosa:
+        {
+            "id": 123,
+            "fecha_salida": "2025-12-06",
+            "fecha_regreso": "2025-12-15",
+            "mensaje": "Fechas actualizadas correctamente"
+        }
+        """
+        salida = self.get_object()
+        
+        # Usar el serializer especializado para actualizar fechas
+        serializer = SalidaPaqueteActualizarFechasSerializer(
+            salida, 
+            data=request.data, 
+            partial=True
+        )
+        
+        if serializer.is_valid():
+            serializer.save()
+            
+            # Recalcular precios si es necesario (por si cambian las noches)
+            salida.calcular_precio_venta()
+            
+            return Response({
+                **serializer.data,
+                "mensaje": "Fechas actualizadas correctamente",
+                "paquete": salida.paquete.nombre
+            }, status=status.HTTP_200_OK)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    def destroy(self, request, *args, **kwargs):
+        """
+        Soft delete - marca la salida como inactiva en lugar de eliminarla
+        """
+        salida = self.get_object()
+        salida.activo = False
+        salida.save()
+        
+        return Response({
+            "mensaje": "Salida desactivada correctamente",
+            "id": salida.id
+        }, status=status.HTTP_200_OK)

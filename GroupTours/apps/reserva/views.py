@@ -2036,6 +2036,17 @@ class ReservaViewSet(viewsets.ModelViewSet):
             'observacion': 'Cupos liberados' if reserva.cupos_liberados else 'No se liberaron cupos (paquete de distribuidor)'
         }
         
+        # Determinar la factura principal para generar Nota de Crédito
+        factura_para_nc = None
+        if facturas_info:
+            # Si hay facturación global, tomar la factura total
+            factura_global = next((f for f in facturas_info if f['tipo'] == 'total'), None)
+            if factura_global:
+                factura_para_nc = factura_global
+            else:
+                # Si es individual, tomar la primera factura activa
+                factura_para_nc = facturas_info[0] if facturas_info else None
+
         response_data = {
             'message': 'Reserva cancelada exitosamente',
             'tipo_cancelacion': 'total',
@@ -2051,10 +2062,11 @@ class ReservaViewSet(viewsets.ModelViewSet):
             'pasajeros_afectados': pasajeros_info,
             'facturas_afectadas': len(facturas_info),
             'facturas_info': facturas_info,
+            'factura_para_nota_credito': factura_para_nc,
             'cupos_info': cupos_info,
             'reserva': serializer.data,
         }
-        
+
         # Agregar advertencia si es facturación individual
         if reserva.modalidad_facturacion == 'individual':
             response_data['advertencia'] = (

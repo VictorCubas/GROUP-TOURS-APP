@@ -151,6 +151,34 @@ class PrecioCatalogoHabitacionSerializer(serializers.ModelSerializer):
 # ---------------------------------------------------------------------
 # SalidaPaquete Serializer
 # ---------------------------------------------------------------------
+# ---------------------------------------------------------------------
+# Serializer simple para actualización de fechas de salida
+# ---------------------------------------------------------------------
+class SalidaPaqueteActualizarFechasSerializer(serializers.ModelSerializer):
+    """
+    Serializer específico para actualizar solo las fechas de una salida.
+    Útil para adelantar o retrasar fechas sin tener que actualizar todo el paquete.
+    """
+    class Meta:
+        model = SalidaPaquete
+        fields = ['id', 'fecha_salida', 'fecha_regreso']
+        read_only_fields = ['id']
+
+    def validate(self, attrs):
+        """
+        Valida que si hay fecha_regreso, sea posterior a fecha_salida
+        """
+        fecha_salida = attrs.get('fecha_salida', self.instance.fecha_salida if self.instance else None)
+        fecha_regreso = attrs.get('fecha_regreso', self.instance.fecha_regreso if self.instance else None)
+
+        if fecha_salida and fecha_regreso and fecha_regreso <= fecha_salida:
+            raise serializers.ValidationError({
+                "fecha_regreso": "La fecha de regreso debe ser posterior a la fecha de salida."
+            })
+
+        return attrs
+
+
 class SalidaPaqueteSerializer(serializers.ModelSerializer):
     id = serializers.IntegerField(read_only=True)
 
