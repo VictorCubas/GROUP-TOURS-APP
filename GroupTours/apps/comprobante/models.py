@@ -342,6 +342,42 @@ class ComprobantePago(models.Model):
             # Si no existe la moneda USD, continuamos (caso excepcional)
             pass
 
+        # ========================================
+        # CONVERSIÓN AUTOMÁTICA DE MONEDAS
+        # ========================================
+        # Detectar la moneda del paquete y convertir a PYG si es necesario
+        monto_en_pyg = self.monto  # Por defecto, asumir que ya está en PYG
+        
+        if self.reserva and self.reserva.paquete:
+            paquete = self.reserva.paquete
+            
+            # Si el paquete tiene moneda definida y NO es Guaraníes
+            if paquete.moneda and paquete.moneda.codigo != 'PYG':
+                # Convertir el monto a Guaraníes
+                from apps.paquete.utils import convertir_entre_monedas
+                from apps.moneda.models import Moneda
+                
+                try:
+                    # Obtener la moneda Guaraníes
+                    moneda_pyg = Moneda.objects.get(codigo='PYG')
+                    
+                    # Convertir monto desde la moneda del paquete a Guaraníes
+                    monto_en_pyg = convertir_entre_monedas(
+                        monto=self.monto,
+                        moneda_origen=paquete.moneda,
+                        moneda_destino=moneda_pyg,
+                        fecha=self.fecha_pago.date()
+                    )
+                    
+                    # Log informativo para auditoría
+                    print(f"💱 Conversión automática: {self.monto} {paquete.moneda.codigo} → {monto_en_pyg} PYG")
+                    
+                except Exception as e:
+                    # Si falla la conversión, usar el monto original y registrar warning
+                    print(f"⚠️ Error en conversión de moneda para {self.numero_comprobante}: {str(e)}")
+                    print(f"   Usando monto original: {self.monto}")
+                    # monto_en_pyg ya tiene el valor por defecto (self.monto)
+
         # Determinar tipo de movimiento
         tipo_movimiento = 'egreso' if self.tipo == 'devolucion' else 'ingreso'
 
@@ -353,13 +389,13 @@ class ComprobantePago(models.Model):
         if self.observaciones:
             descripcion += f"\nObs: {self.observaciones}"
 
-        # Crear el movimiento de caja
+        # Crear el movimiento de caja con el monto convertido a PYG
         movimiento = MovimientoCaja.objects.create(
             apertura_caja=apertura,
             comprobante=self,
             tipo_movimiento=tipo_movimiento,
             concepto=concepto,
-            monto=self.monto,
+            monto=monto_en_pyg,  # ← Monto convertido a PYG
             metodo_pago=self.metodo_pago,
             referencia=self.numero_comprobante,
             descripcion=descripcion,

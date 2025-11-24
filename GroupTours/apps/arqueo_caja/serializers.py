@@ -329,9 +329,13 @@ class MovimientoCajaListSerializer(serializers.ModelSerializer):
     
     def get_moneda_original(self, obj):
         """
-        Detecta la moneda original del movimiento.
-        Si tiene comprobante asociado, usa la moneda del paquete de la reserva.
-        Si no, asume PYG (guaraníes).
+        Detecta la moneda original del paquete asociado al movimiento.
+        
+        IMPORTANTE: Este campo es SOLO informativo. Indica la moneda del paquete
+        de la reserva, NO la moneda en que está guardado el monto.
+        
+        El campo 'monto' SIEMPRE está en PYG, independientemente de este valor.
+        Este campo sirve para saber si el pago original era en USD u otra moneda.
         """
         try:
             if obj.comprobante and obj.comprobante.reserva and obj.comprobante.reserva.paquete:
@@ -347,67 +351,37 @@ class MovimientoCajaListSerializer(serializers.ModelSerializer):
     def get_monto_gs(self, obj):
         """
         Monto en guaraníes.
-        Detecta la moneda real del movimiento desde comprobante → reserva → paquete.
+        
+        IMPORTANTE: Desde la implementación de conversión automática de monedas,
+        el campo 'monto' en MovimientoCaja SIEMPRE está en Guaraníes (PYG).
+        Los pagos se convierten automáticamente antes de guardarse en caja.
+        
+        Este campo simplemente retorna el monto tal cual está guardado.
         """
-        from apps.moneda.models import CotizacionMoneda
-        from decimal import Decimal
-        
-        # Intentar obtener la moneda del comprobante asociado
-        moneda_codigo = None
-        if obj.comprobante and obj.comprobante.reserva and obj.comprobante.reserva.paquete:
-            moneda_obj = obj.comprobante.reserva.paquete.moneda
-            if moneda_obj:
-                moneda_codigo = moneda_obj.codigo
-        
-        # Si no hay moneda o es PYG, el monto ya está en Gs
-        if not moneda_codigo or moneda_codigo == 'PYG':
-            return float(obj.monto)
-        
-        # Si el monto está en otra moneda, convertir a Gs
-        try:
-            moneda_obj = obj.comprobante.reserva.paquete.moneda
-            monto_gs = CotizacionMoneda.convertir_a_guaranies(obj.monto, moneda_obj)
-            return float(monto_gs)
-        except Exception:
-            # Si falla la conversión, asumir que ya está en Gs
-            return float(obj.monto)
+        return float(obj.monto)
     
     def get_monto_usd(self, obj):
         """
         Monto convertido a dólares usando la cotización vigente.
-        Detecta la moneda real del movimiento desde comprobante → reserva → paquete.
+        
+        IMPORTANTE: El campo 'monto' en MovimientoCaja SIEMPRE está en Guaraníes (PYG).
+        Este método convierte ese monto (PYG) a USD para visualización/referencia.
+        
+        La conversión es: monto_pyg / cotizacion_usd
         """
         from apps.moneda.models import Moneda, CotizacionMoneda
         from decimal import Decimal
         
         try:
-            # Intentar obtener la moneda del comprobante asociado
-            moneda_codigo = None
-            if obj.comprobante and obj.comprobante.reserva and obj.comprobante.reserva.paquete:
-                moneda_obj = obj.comprobante.reserva.paquete.moneda
-                if moneda_obj:
-                    moneda_codigo = moneda_obj.codigo
-            
-            # Si el monto ya está en USD, retornarlo directamente
-            if moneda_codigo == 'USD':
-                return float(obj.monto)
-            
-            # Si está en Gs o sin moneda, convertir a USD
+            # El monto siempre está en PYG, convertir a USD para referencia
             moneda_usd = Moneda.objects.get(codigo='USD')
             fecha_movimiento = obj.fecha_hora_movimiento.date()
             cotizacion = CotizacionMoneda.obtener_cotizacion_vigente(moneda_usd, fecha_movimiento)
             
             if cotizacion and cotizacion.valor_en_guaranies > 0:
-                # Si el monto está en Gs o sin moneda definida
-                if not moneda_codigo or moneda_codigo == 'PYG':
-                    monto_usd = Decimal(str(obj.monto)) / Decimal(str(cotizacion.valor_en_guaranies))
-                    return float(round(monto_usd, 2))
-                else:
-                    # Si está en otra moneda, primero convertir a Gs, luego a USD
-                    moneda_obj = obj.comprobante.reserva.paquete.moneda
-                    monto_gs = CotizacionMoneda.convertir_a_guaranies(obj.monto, moneda_obj)
-                    monto_usd = monto_gs / Decimal(str(cotizacion.valor_en_guaranies))
-                    return float(round(monto_usd, 2))
+                # Convertir de PYG a USD
+                monto_usd = Decimal(str(obj.monto)) / Decimal(str(cotizacion.valor_en_guaranies))
+                return float(round(monto_usd, 2))
             
             return None
             

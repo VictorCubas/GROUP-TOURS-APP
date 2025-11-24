@@ -79,6 +79,11 @@ def registrar_movimiento_desde_comprobante(comprobante):
     """
     Crea un movimiento de caja a partir de un comprobante de pago.
     Solo se registra si hay una caja abierta.
+    
+    IMPORTANTE: Los montos se convierten automáticamente a Guaraníes (PYG) 
+    antes de registrarse en caja, independientemente de la moneda original 
+    del paquete. Esto asegura que todos los saldos de caja estén en una 
+    sola moneda consistente.
 
     Args:
         comprobante: Instancia de ComprobantePago
@@ -95,14 +100,50 @@ def registrar_movimiento_desde_comprobante(comprobante):
 
     # Determinar tipo y concepto
     tipo_movimiento, concepto = mapear_comprobante_a_concepto(comprobante)
+    
+    # ========================================
+    # CONVERSIÓN AUTOMÁTICA DE MONEDAS
+    # ========================================
+    # Detectar la moneda del paquete y convertir a PYG si es necesario
+    monto_en_pyg = comprobante.monto  # Por defecto, asumir que ya está en PYG
+    
+    if comprobante.reserva and comprobante.reserva.paquete:
+        paquete = comprobante.reserva.paquete
+        
+        # Si el paquete tiene moneda definida y NO es Guaraníes
+        if paquete.moneda and paquete.moneda.codigo != 'PYG':
+            # Convertir el monto a Guaraníes
+            from apps.paquete.utils import convertir_entre_monedas
+            from apps.moneda.models import Moneda
+            
+            try:
+                # Obtener la moneda Guaraníes
+                moneda_pyg = Moneda.objects.get(codigo='PYG')
+                
+                # Convertir monto desde la moneda del paquete a Guaraníes
+                monto_en_pyg = convertir_entre_monedas(
+                    monto=comprobante.monto,
+                    moneda_origen=paquete.moneda,
+                    moneda_destino=moneda_pyg,
+                    fecha=comprobante.fecha_pago.date()
+                )
+                
+                # Log informativo para auditoría
+                print(f"💱 Conversión automática: {comprobante.monto} {paquete.moneda.codigo} → {monto_en_pyg} PYG")
+                
+            except Exception as e:
+                # Si falla la conversión, usar el monto original y registrar warning
+                print(f"⚠️ Error en conversión de moneda para {comprobante.numero_comprobante}: {str(e)}")
+                print(f"   Usando monto original: {comprobante.monto}")
+                # monto_en_pyg ya tiene el valor por defecto (comprobante.monto)
 
-    # Crear movimiento
+    # Crear movimiento con el monto convertido a PYG
     movimiento = MovimientoCaja.objects.create(
         apertura_caja=apertura,
         comprobante=comprobante,
         tipo_movimiento=tipo_movimiento,
         concepto=concepto,
-        monto=comprobante.monto,
+        monto=monto_en_pyg,  # ← Monto convertido a PYG
         metodo_pago=comprobante.metodo_pago,
         referencia=comprobante.numero_comprobante,
         descripcion=f"Pago de reserva {comprobante.reserva.codigo}",
