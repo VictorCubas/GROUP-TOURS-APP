@@ -2248,6 +2248,241 @@ class ReservaViewSet(viewsets.ModelViewSet):
         
         return Response(response_data, status=status.HTTP_200_OK)
 
+    # ============================================
+    # ENDPOINTS: SOFT DELETE (Activar/Desactivar)
+    # ============================================
+    
+    @action(detail=True, methods=['post'], url_path='desactivar')
+    def desactivar(self, request, pk=None):
+        """
+        POST /api/reservas/{id}/desactivar/
+        
+        Desactiva una reserva (soft delete - eliminación lógica).
+        La reserva NO se elimina de la base de datos, solo se marca como inactiva.
+        
+        IMPORTANTE: Este endpoint es SOLO para reservas mal creadas o de prueba.
+        Para cancelar reservas con transacciones, usar el endpoint /cancelar/
+        
+        Ventajas del soft delete:
+        - Mantiene el historial completo
+        - Permite auditoría
+        - Es reversible (se puede reactivar)
+        - No afecta integridad referencial
+        - Preserva datos para análisis futuro
+        
+        Validaciones aplicadas:
+        1. NO se puede desactivar si tiene facturas activas
+        2. NO se puede desactivar si tiene comprobantes con movimientos de caja
+        3. SOLO se recomienda para reservas en estado "pendiente"
+        4. Ya debe estar activa (activo=True)
+        
+        Response exitoso (200):
+        {
+            "success": true,
+            "message": "Reserva desactivada exitosamente",
+            "advertencias": [
+                "Esta es una desactivación suave (soft delete)",
+                "Los datos permanecen en la base de datos"
+            ],
+            "data": {
+                "id": 20,
+                "codigo": "RES-2024-00020",
+                "activo": false,
+                "fecha_modificacion": "2024-11-24T10:30:00Z"
+            }
+        }
+        
+        Errores posibles:
+        - 400: Ya está desactivada
+        - 400: Tiene facturas activas (debe anularlas primero)
+        - 400: Tiene movimientos de caja (debe cancelar formalmente)
+        - 400: Estado no permite desactivación directa
+        """
+        reserva = self.get_object()
+        
+        # ═══════════════════════════════════════
+        # VALIDACIÓN 1: Verificar que esté activa
+        # ═══════════════════════════════════════
+        if not reserva.activo:
+            return Response(
+                {
+                    'success': False,
+                    'error': 'La reserva ya está desactivada',
+                    'data': {
+                        'id': reserva.id,
+                        'codigo': reserva.codigo,
+                        'activo': reserva.activo
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # ═══════════════════════════════════════
+        # VALIDACIÓN 2: Verificar facturas activas
+        # ═══════════════════════════════════════
+        from apps.facturacion.models import FacturaElectronica
+        facturas_activas = FacturaElectronica.objects.filter(
+            reserva=reserva,
+            activo=True
+        )
+        
+        if facturas_activas.exists():
+            return Response(
+                {
+                    'success': False,
+                    'error': 'No se puede desactivar: la reserva tiene facturas activas',
+                    'mensaje': 'Debe anular las facturas primero mediante Nota de Crédito o usar el endpoint /cancelar/',
+                    'facturas': [
+                        {
+                            'id': f.id,
+                            'numero': f.numero_factura,
+                            'tipo': f.tipo_facturacion,
+                            'total': str(f.total_general),
+                            'fecha': f.fecha_emision.isoformat() if f.fecha_emision else None
+                        }
+                        for f in facturas_activas
+                    ],
+                    'sugerencia': 'Use POST /api/reservas/{id}/cancelar/ para reservas con facturas'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # ═══════════════════════════════════════
+        # VALIDACIÓN 3: Verificar comprobantes con movimientos de caja
+        # ═══════════════════════════════════════
+        from apps.comprobante.models import ComprobantePago
+        comprobantes_con_caja = ComprobantePago.objects.filter(
+            reserva=reserva,
+            activo=True,
+            movimiento_caja__isnull=False
+        )
+        
+        if comprobantes_con_caja.exists():
+            return Response(
+                {
+                    'success': False,
+                    'error': 'No se puede desactivar: la reserva tiene movimientos de caja registrados',
+                    'mensaje': 'Los comprobantes tienen movimientos de caja activos. Debe cancelar la reserva formalmente.',
+                    'comprobantes': [
+                        {
+                            'id': c.id,
+                            'numero': c.numero_comprobante,
+                            'tipo': c.tipo,
+                            'monto': str(c.monto),
+                            'fecha': c.fecha_pago.isoformat(),
+                            'tiene_movimiento_caja': True
+                        }
+                        for c in comprobantes_con_caja
+                    ],
+                    'sugerencia': 'Use POST /api/reservas/{id}/cancelar/ para reservas con pagos'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # ═══════════════════════════════════════
+        # ADVERTENCIA 4: Estado de la reserva
+        # ═══════════════════════════════════════
+        advertencias = [
+            'Esta es una desactivación suave (soft delete)',
+            'Los datos permanecen en la base de datos para auditoría',
+            'La reserva puede ser reactivada usando POST /api/reservas/{id}/activar/'
+        ]
+        
+        if reserva.estado in ['confirmada', 'finalizada']:
+            advertencias.append(
+                f'⚠️ ADVERTENCIA: La reserva está en estado "{reserva.estado}". '
+                'Se recomienda usar /cancelar/ para reservas confirmadas.'
+            )
+        
+        # ═══════════════════════════════════════
+        # PROCEDER CON DESACTIVACIÓN
+        # ═══════════════════════════════════════
+        reserva.activo = False
+        reserva.save(update_fields=['activo', 'fecha_modificacion'])
+        
+        return Response({
+            'success': True,
+            'message': f'Reserva {reserva.codigo} desactivada exitosamente',
+            'advertencias': advertencias,
+            'data': {
+                'id': reserva.id,
+                'codigo': reserva.codigo,
+                'estado': reserva.estado,
+                'activo': reserva.activo,
+                'fecha_modificacion': reserva.fecha_modificacion.isoformat(),
+                'titular': f"{reserva.titular.nombre} {reserva.titular.apellido}" if reserva.titular else None,
+                'paquete': reserva.paquete.nombre if reserva.paquete else None
+            }
+        })
+    
+    @action(detail=True, methods=['post'], url_path='activar')
+    def activar(self, request, pk=None):
+        """
+        POST /api/reservas/{id}/activar/
+        
+        Reactiva una reserva previamente desactivada.
+        Revierte el soft delete realizado con el endpoint /desactivar/
+        
+        Use este endpoint para:
+        - Recuperar reservas desactivadas por error
+        - Reactivar reservas de prueba que se necesiten nuevamente
+        - Corregir desactivaciones accidentales
+        
+        Response exitoso (200):
+        {
+            "success": true,
+            "message": "Reserva reactivada exitosamente",
+            "data": {
+                "id": 20,
+                "codigo": "RES-2024-00020",
+                "activo": true,
+                "fecha_modificacion": "2024-11-24T10:35:00Z"
+            }
+        }
+        
+        Errores posibles:
+        - 400: La reserva ya está activa
+        - 404: Reserva no encontrada
+        """
+        reserva = self.get_object()
+        
+        # ═══════════════════════════════════════
+        # VALIDACIÓN: Verificar que esté inactiva
+        # ═══════════════════════════════════════
+        if reserva.activo:
+            return Response(
+                {
+                    'success': False,
+                    'error': 'La reserva ya está activa',
+                    'data': {
+                        'id': reserva.id,
+                        'codigo': reserva.codigo,
+                        'activo': reserva.activo
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # ═══════════════════════════════════════
+        # PROCEDER CON ACTIVACIÓN
+        # ═══════════════════════════════════════
+        reserva.activo = True
+        reserva.save(update_fields=['activo', 'fecha_modificacion'])
+        
+        return Response({
+            'success': True,
+            'message': f'Reserva {reserva.codigo} reactivada exitosamente',
+            'data': {
+                'id': reserva.id,
+                'codigo': reserva.codigo,
+                'estado': reserva.estado,
+                'activo': reserva.activo,
+                'fecha_modificacion': reserva.fecha_modificacion.isoformat(),
+                'titular': f"{reserva.titular.nombre} {reserva.titular.apellido}" if reserva.titular else None,
+                'paquete': reserva.paquete.nombre if reserva.paquete else None
+            }
+        })
+
     # ----- ENDPOINT: Ajustar fecha de salida para testing -----
     @action(detail=True, methods=['post'], url_path='ajustar-fecha-testing')
     def ajustar_fecha_testing(self, request, pk=None):
@@ -2442,6 +2677,284 @@ class ReservaViewSet(viewsets.ModelViewSet):
             )
         
         return Response(response_data, status=status.HTTP_200_OK)
+
+    # ----- ENDPOINT: Desactivar reserva (soft delete) -----
+    @action(detail=True, methods=['post'], url_path='desactivar')
+    def desactivar(self, request, pk=None):
+        """
+        POST /api/reservas/{id}/desactivar/
+        
+        Desactiva una reserva (soft delete - eliminación lógica).
+        La reserva no se elimina de la base de datos, solo se marca como inactiva.
+        
+        ⚠️ VALIDACIONES ESTRICTAS:
+        - Solo se pueden desactivar reservas en estado "pendiente"
+        - NO puede tener comprobantes activos
+        - NO puede tener facturas activas
+        - NO puede tener movimientos de caja
+        
+        Para reservas con pagos o facturas, use el endpoint:
+        POST /api/reservas/{id}/cancelar/
+        
+        Beneficios del soft delete:
+        - Mantiene el historial
+        - Permite auditoría
+        - Reversible (se puede reactivar)
+        - No afecta integridad referencial
+        
+        Response exitoso:
+        {
+            "success": true,
+            "message": "Reserva desactivada exitosamente",
+            "advertencias": [
+                "Esta es una desactivación suave (soft delete)",
+                "Los datos permanecen en la base de datos"
+            ],
+            "data": {
+                "id": 20,
+                "codigo": "RES-2024-00020",
+                "activo": false,
+                "fecha_modificacion": "2024-11-23T10:30:00Z"
+            }
+        }
+        
+        Errores posibles:
+        - 400: La reserva ya está desactivada
+        - 400: Tiene facturas activas (debe anular con NC primero)
+        - 400: Tiene movimientos de caja (debe cancelar formalmente)
+        - 400: Estado no permite desactivación (solo pendientes)
+        """
+        reserva = self.get_object()
+        
+        # ═══════════════════════════════════════════════════════
+        # VALIDACIÓN 1: Verificar que no esté ya desactivada
+        # ═══════════════════════════════════════════════════════
+        if not reserva.activo:
+            return Response(
+                {
+                    'success': False,
+                    'error': 'La reserva ya está desactivada.',
+                    'data': {
+                        'id': reserva.id,
+                        'codigo': reserva.codigo,
+                        'activo': reserva.activo
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # ═══════════════════════════════════════════════════════
+        # VALIDACIÓN 2: Verificar que no tenga facturas activas
+        # ═══════════════════════════════════════════════════════
+        from apps.facturacion.models import FacturaElectronica
+        facturas_activas = FacturaElectronica.objects.filter(
+            reserva=reserva,
+            activo=True
+        )
+        
+        if facturas_activas.exists():
+            facturas_info = [
+                {
+                    'id': f.id,
+                    'numero': f.numero_factura,
+                    'tipo': f.tipo_facturacion,
+                    'total': str(f.total_general),
+                    'fecha_emision': f.fecha_emision.isoformat() if f.fecha_emision else None
+                }
+                for f in facturas_activas
+            ]
+            
+            return Response(
+                {
+                    'success': False,
+                    'error': 'No se puede desactivar: la reserva tiene facturas electrónicas activas',
+                    'mensaje': 'Debe anular las facturas primero mediante Nota de Crédito o usar el endpoint /cancelar/ para cancelación formal',
+                    'facturas_activas': facturas_info,
+                    'sugerencia': 'Use POST /api/reservas/{id}/cancelar/ para cancelación completa con NC automática'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # ═══════════════════════════════════════════════════════
+        # VALIDACIÓN 3: Verificar comprobantes y movimientos de caja
+        # ═══════════════════════════════════════════════════════
+        from apps.comprobante.models import ComprobantePago
+        
+        comprobantes_activos = ComprobantePago.objects.filter(
+            reserva=reserva,
+            activo=True
+        )
+        
+        if comprobantes_activos.exists():
+            comprobantes_con_caja = comprobantes_activos.filter(
+                movimiento_caja__isnull=False
+            )
+            
+            if comprobantes_con_caja.exists():
+                comprobantes_info = [
+                    {
+                        'id': c.id,
+                        'numero': c.numero_comprobante,
+                        'tipo': c.get_tipo_display(),
+                        'monto': str(c.monto),
+                        'tiene_movimiento_caja': True,
+                        'fecha_pago': c.fecha_pago.isoformat() if c.fecha_pago else None
+                    }
+                    for c in comprobantes_con_caja
+                ]
+                
+                return Response(
+                    {
+                        'success': False,
+                        'error': 'No se puede desactivar: la reserva tiene comprobantes con movimientos de caja registrados',
+                        'mensaje': 'Los comprobantes tienen movimientos de caja activos. Debe cancelar la reserva formalmente para revertir los movimientos.',
+                        'comprobantes': comprobantes_info,
+                        'sugerencia': 'Use POST /api/reservas/{id}/cancelar/ que maneja automáticamente devoluciones y movimientos de caja'
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Si hay comprobantes sin movimientos de caja, advertir
+            comprobantes_info = [
+                {
+                    'id': c.id,
+                    'numero': c.numero_comprobante,
+                    'tipo': c.get_tipo_display(),
+                    'monto': str(c.monto)
+                }
+                for c in comprobantes_activos
+            ]
+            
+            return Response(
+                {
+                    'success': False,
+                    'error': 'No se puede desactivar: la reserva tiene comprobantes activos',
+                    'mensaje': 'Aunque no tengan movimientos de caja, los comprobantes deben anularse formalmente',
+                    'comprobantes': comprobantes_info,
+                    'sugerencia': 'Use POST /api/reservas/{id}/cancelar/ para cancelación formal'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # ═══════════════════════════════════════════════════════
+        # VALIDACIÓN 4: Verificar estado de la reserva
+        # ═══════════════════════════════════════════════════════
+        if reserva.estado in ['confirmada', 'finalizada']:
+            return Response(
+                {
+                    'success': False,
+                    'error': f'No se puede desactivar: la reserva está en estado "{reserva.get_estado_display()}"',
+                    'mensaje': 'Solo se pueden desactivar reservas en estado "pendiente" sin pagos ni facturas',
+                    'estado_actual': reserva.estado,
+                    'sugerencia': 'Use POST /api/reservas/{id}/cancelar/ para reservas confirmadas o finalizadas'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # ═══════════════════════════════════════════════════════
+        # VALIDACIÓN 5: Verificar si ya está cancelada
+        # ═══════════════════════════════════════════════════════
+        if reserva.estado == 'cancelada':
+            return Response(
+                {
+                    'success': False,
+                    'error': 'La reserva ya está cancelada',
+                    'mensaje': 'No es necesario desactivarla, ya está en estado cancelado',
+                    'fecha_cancelacion': reserva.fecha_cancelacion.isoformat() if reserva.fecha_cancelacion else None,
+                    'motivo': reserva.get_motivo_cancelacion_display() if reserva.motivo_cancelacion else None
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # ═══════════════════════════════════════════════════════
+        # PROCEDER CON DESACTIVACIÓN
+        # ═══════════════════════════════════════════════════════
+        reserva.activo = False
+        reserva.save(update_fields=['activo', 'fecha_modificacion'])
+        
+        return Response({
+            'success': True,
+            'message': 'Reserva desactivada exitosamente',
+            'advertencias': [
+                'Esta es una desactivación suave (soft delete)',
+                'Los datos permanecen en la base de datos para auditoría',
+                'La reserva puede ser reactivada usando POST /api/reservas/{id}/activar/',
+                'Si la reserva tiene cupos asignados, no se liberan automáticamente'
+            ],
+            'data': {
+                'id': reserva.id,
+                'codigo': reserva.codigo,
+                'estado': reserva.estado,
+                'activo': reserva.activo,
+                'fecha_modificacion': reserva.fecha_modificacion.isoformat() if reserva.fecha_modificacion else None
+            }
+        }, status=status.HTTP_200_OK)
+
+    # ----- ENDPOINT: Activar reserva (revertir soft delete) -----
+    @action(detail=True, methods=['post'], url_path='activar')
+    def activar(self, request, pk=None):
+        """
+        POST /api/reservas/{id}/activar/
+        
+        Reactiva una reserva previamente desactivada (revierte soft delete).
+        
+        Validaciones:
+        - La reserva debe estar desactivada (activo=False)
+        - Se pueden activar reservas en cualquier estado
+        
+        Response exitoso:
+        {
+            "success": true,
+            "message": "Reserva activada exitosamente",
+            "data": {
+                "id": 20,
+                "codigo": "RES-2024-00020",
+                "activo": true,
+                "fecha_modificacion": "2024-11-23T10:35:00Z"
+            }
+        }
+        
+        Errores posibles:
+        - 400: La reserva ya está activa
+        """
+        reserva = self.get_object()
+        
+        # ═══════════════════════════════════════════════════════
+        # VALIDACIÓN: Verificar que esté desactivada
+        # ═══════════════════════════════════════════════════════
+        if reserva.activo:
+            return Response(
+                {
+                    'success': False,
+                    'error': 'La reserva ya está activa.',
+                    'data': {
+                        'id': reserva.id,
+                        'codigo': reserva.codigo,
+                        'activo': reserva.activo,
+                        'estado': reserva.estado
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # ═══════════════════════════════════════════════════════
+        # PROCEDER CON ACTIVACIÓN
+        # ═══════════════════════════════════════════════════════
+        reserva.activo = True
+        reserva.save(update_fields=['activo', 'fecha_modificacion'])
+        
+        return Response({
+            'success': True,
+            'message': 'Reserva activada exitosamente',
+            'data': {
+                'id': reserva.id,
+                'codigo': reserva.codigo,
+                'estado': reserva.estado,
+                'activo': reserva.activo,
+                'fecha_modificacion': reserva.fecha_modificacion.isoformat() if reserva.fecha_modificacion else None
+            },
+            'nota': 'La reserva está nuevamente visible en el sistema'
+        }, status=status.HTTP_200_OK)
 
     # ----- ENDPOINT: Obtener solo servicios de una reserva -----
     @action(detail=True, methods=['get'], url_path='detalle-servicios')

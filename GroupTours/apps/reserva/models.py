@@ -69,10 +69,6 @@ class Reserva(models.Model):
         related_name="reservas",
         help_text="Paquete turístico reservado"
     )
-    activo = models.BooleanField(
-        default=True,
-        help_text="Indica si el servicio adicional está activo"
-    )
     salida = models.ForeignKey(
         SalidaPaquete,
         on_delete=models.PROTECT,
@@ -91,7 +87,10 @@ class Reserva(models.Model):
     )
     fecha_reserva = models.DateTimeField(auto_now_add=True)
     
-    activo = models.BooleanField(default=True)
+    activo = models.BooleanField(
+        default=True,
+        help_text="Indica si la reserva está activa. False = eliminación lógica (soft delete). Solo se pueden desactivar reservas pendientes sin pagos ni facturas."
+    )
     fecha_modificacion = models.DateTimeField(auto_now=True)
     
     cantidad_pasajeros = models.PositiveIntegerField(
