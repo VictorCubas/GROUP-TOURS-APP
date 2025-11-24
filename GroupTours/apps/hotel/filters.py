@@ -13,7 +13,7 @@ class HotelFilter(django_filters.FilterSet):
     pais = django_filters.CharFilter(field_name='ciudad__pais__nombre', lookup_expr='icontains')
     cadena = django_filters.CharFilter(field_name='cadena__nombre', lookup_expr='icontains')
     estrellas = django_filters.NumberFilter(field_name='estrellas', lookup_expr='exact')
-
+    destino_id = django_filters.NumberFilter(method='filter_by_destino')
 
     # Filtro unificado
     busqueda = django_filters.CharFilter(method='filter_busqueda')
@@ -35,7 +35,7 @@ class HotelFilter(django_filters.FilterSet):
             'nombre', 'activo', 'ciudad_id', 'ciudad', 
             'pais', 'cadena', 'busqueda',
             'fecha_creacion_desde', 'fecha_creacion_hasta',
-            'estrellas'
+            'estrellas', 'destino_id'
         ]
 
     def filter_fecha_hasta(self, queryset, name, value):
@@ -55,3 +55,10 @@ class HotelFilter(django_filters.FilterSet):
             Q(ciudad__nombre__icontains=value) |
             Q(ciudad__pais__nombre__icontains=value)
         )
+    
+    def filter_by_destino(self, queryset, name, value):
+        """
+        Filtra hoteles que pertenecen a un destino específico.
+        Los destinos tienen una relación ManyToMany con hoteles.
+        """
+        return queryset.filter(destinos__id=value).distinct()
