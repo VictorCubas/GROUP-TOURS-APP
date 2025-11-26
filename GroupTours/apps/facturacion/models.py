@@ -2832,10 +2832,28 @@ def generar_nota_credito_total(factura_id, motivo, observaciones=''):
     Anula completamente una factura (o su saldo restante si hay NC previas).
 
     IMPORTANTE: Requiere que haya una caja abierta en el punto de expedición.
+    
+    COMPORTAMIENTO SEGÚN MOTIVO (2025-11-26):
+    
+    Si motivo es '1' (Devolución y Ajuste) o '2' (Devolución):
+        → CANCELA LA RESERVA (cliente se va)
+        - Cancela automáticamente la reserva
+        - Libera cupos del paquete
+        - Crea movimiento de caja como 'devolucion'
+        
+    Si motivo es '3' (Descuento) u otros ajustes ('4'-'8'):
+        → NO CANCELA LA RESERVA (cliente mantiene su reserva)
+        - La reserva permanece activa
+        - Los cupos NO se liberan
+        - Crea movimiento de caja como 'otro_egreso'
 
     Args:
         factura_id: ID de la factura a acreditar
         motivo: Motivo de la nota de crédito (de MOTIVO_CHOICES)
+                '1' = Devolución y Ajuste de precios (cancela reserva)
+                '2' = Devolución (cancela reserva)
+                '3' = Descuento (NO cancela reserva)
+                '4'-'8' = Otros ajustes (NO cancelan reserva)
         observaciones: Texto adicional (opcional)
 
     Returns:
@@ -2843,6 +2861,11 @@ def generar_nota_credito_total(factura_id, motivo, observaciones=''):
 
     Raises:
         ValidationError: Si la factura no se puede acreditar o no hay caja abierta
+        
+    Side Effects:
+        - SIEMPRE crea MovimientoCaja de tipo egreso
+        - CONDICIONALMENTE cancela la reserva (solo si motivo='1' o '2')
+        - NO crea comprobante de devolución
     """
     factura = FacturaElectronica.objects.get(id=factura_id)
 
@@ -2932,6 +2955,72 @@ def generar_nota_credito_total(factura_id, motivo, observaciones=''):
         # No fallar si el PDF no se genera
         print(f"Error generando PDF de NC: {e}")
 
+    # ========================================
+    # NUEVA FUNCIONALIDAD: Cancelar reserva y crear movimiento de caja
+    # ========================================
+    
+    # Clasificar el motivo de la NC para determinar el comportamiento
+    # Motivos '1' y '2' implican CANCELACIÓN (devolución real)
+    # Otros motivos son AJUSTES DE PRECIO (descuentos, bonificaciones, etc.)
+    MOTIVOS_QUE_CANCELAN = ['1', '2']  # Devolución y Ajuste de precios, Devolución
+    es_cancelacion = motivo in MOTIVOS_QUE_CANCELAN
+    
+    # 1. Crear movimiento de caja de egreso (SIEMPRE se crea, sea cancelación o descuento)
+    from apps.arqueo_caja.models import MovimientoCaja
+    
+    try:
+        # Determinar concepto según el tipo de NC
+        concepto_movimiento = 'devolucion' if es_cancelacion else 'otro_egreso'
+        
+        movimiento = MovimientoCaja.objects.create(
+            apertura_caja=apertura,
+            tipo_movimiento='egreso',
+            concepto=concepto_movimiento,
+            monto=nota_credito.total_general,
+            metodo_pago='efectivo',  # Por defecto efectivo
+            referencia=f"NC: {nota_credito.numero_nota_credito}",
+            descripcion=(
+                f"{'Devolución' if es_cancelacion else 'Ajuste de precio'} por Nota de Crédito {nota_credito.tipo_nota}\n"
+                f"Factura afectada: {factura.numero_factura}\n"
+                f"Motivo: {nota_credito.get_motivo_display()}"
+            ),
+            usuario_registro=apertura.responsable,
+            fecha_hora_movimiento=nota_credito.fecha_emision
+        )
+        print(f"✅ Movimiento de caja creado: {movimiento.numero_movimiento} - Gs. {nota_credito.total_general:,.0f}")
+    except Exception as e:
+        print(f"⚠️ Error al crear movimiento de caja: {str(e)}")
+    
+    # 2. Cancelar la reserva SOLO si el motivo implica cancelación
+    if es_cancelacion and factura.reserva:
+        try:
+            reserva = factura.reserva
+            
+            # Verificar que no esté ya cancelada
+            if reserva.estado != 'cancelada':
+                exito = reserva.marcar_cancelada(
+                    motivo_cancelacion_id='2',  # '2' = Devolución (cambio de planes del cliente)
+                    motivo_observaciones=(
+                        f"Cancelada automáticamente por Nota de Crédito Total (motivo: {nota_credito.get_motivo_display()}).\n"
+                        f"NC: {nota_credito.numero_nota_credito}\n"
+                        f"Monto acreditado: Gs. {nota_credito.total_general:,.0f}"
+                    ),
+                    liberar_cupo=True
+                )
+                
+                if exito:
+                    print(f"✅ Reserva {reserva.codigo} cancelada automáticamente")
+                else:
+                    print(f"⚠️ No se pudo cancelar la reserva {reserva.codigo}")
+            else:
+                print(f"ℹ️ Reserva {reserva.codigo} ya estaba cancelada")
+                
+        except Exception as e:
+            print(f"⚠️ Error al cancelar reserva: {str(e)}")
+    elif not es_cancelacion and factura.reserva:
+        # Si es un descuento/ajuste, NO cancelar pero informar
+        print(f"ℹ️ NC por {nota_credito.get_motivo_display()}: Reserva {factura.reserva.codigo} mantiene su estado (no se cancela)")
+
     return nota_credito
 
 
@@ -2941,6 +3030,20 @@ def generar_nota_credito_parcial(factura_id, items_a_acreditar, motivo, observac
     Anula parcialmente una factura acreditando items específicos.
 
     IMPORTANTE: Requiere que haya una caja abierta en el punto de expedición.
+    
+    COMPORTAMIENTO SEGÚN MOTIVO (2025-11-26):
+    
+    Si motivo es '1' (Devolución y Ajuste) o '2' (Devolución):
+        → CANCELA LA RESERVA (cliente se va)
+        - Cancela automáticamente la reserva
+        - Libera cupos del paquete
+        - Crea movimiento de caja como 'devolucion'
+        
+    Si motivo es '3' (Descuento) u otros ajustes ('4'-'8'):
+        → NO CANCELA LA RESERVA (cliente mantiene su reserva)
+        - La reserva permanece activa
+        - Los cupos NO se liberan
+        - Crea movimiento de caja como 'otro_egreso'
 
     Args:
         factura_id: ID de la factura a acreditar
@@ -2954,7 +3057,11 @@ def generar_nota_credito_parcial(factura_id, items_a_acreditar, motivo, observac
                 },
                 ...
             ]
-        motivo: Motivo de la nota de crédito
+        motivo: Motivo de la nota de crédito (de MOTIVO_CHOICES)
+                '1' = Devolución y Ajuste de precios (cancela reserva)
+                '2' = Devolución (cancela reserva)
+                '3' = Descuento (NO cancela reserva)
+                '4'-'8' = Otros ajustes (NO cancelan reserva)
         observaciones: Texto adicional (opcional)
 
     Returns:
@@ -2962,6 +3069,11 @@ def generar_nota_credito_parcial(factura_id, items_a_acreditar, motivo, observac
 
     Raises:
         ValidationError: Si los datos son inválidos o no hay caja abierta
+        
+    Side Effects:
+        - SIEMPRE crea MovimientoCaja de tipo egreso
+        - CONDICIONALMENTE cancela la reserva (solo si motivo='1' o '2')
+        - NO crea comprobante de devolución
     """
     factura = FacturaElectronica.objects.get(id=factura_id)
 
@@ -3072,6 +3184,72 @@ def generar_nota_credito_parcial(factura_id, items_a_acreditar, motivo, observac
         nota_credito.generar_pdf()
     except Exception as e:
         print(f"Error generando PDF de NC: {e}")
+
+    # ========================================
+    # NUEVA FUNCIONALIDAD: Cancelar reserva y crear movimiento de caja
+    # ========================================
+    
+    # Clasificar el motivo de la NC para determinar el comportamiento
+    # Motivos '1' y '2' implican CANCELACIÓN (devolución real)
+    # Otros motivos son AJUSTES DE PRECIO (descuentos, bonificaciones, etc.)
+    MOTIVOS_QUE_CANCELAN = ['1', '2']  # Devolución y Ajuste de precios, Devolución
+    es_cancelacion = motivo in MOTIVOS_QUE_CANCELAN
+    
+    # 1. Crear movimiento de caja de egreso (SIEMPRE se crea, sea cancelación o descuento)
+    from apps.arqueo_caja.models import MovimientoCaja
+    
+    try:
+        # Determinar concepto según el tipo de NC
+        concepto_movimiento = 'devolucion' if es_cancelacion else 'otro_egreso'
+        
+        movimiento = MovimientoCaja.objects.create(
+            apertura_caja=apertura,
+            tipo_movimiento='egreso',
+            concepto=concepto_movimiento,
+            monto=nota_credito.total_general,
+            metodo_pago='efectivo',  # Por defecto efectivo
+            referencia=f"NC: {nota_credito.numero_nota_credito}",
+            descripcion=(
+                f"{'Devolución' if es_cancelacion else 'Ajuste de precio'} por Nota de Crédito {nota_credito.tipo_nota}\n"
+                f"Factura afectada: {factura.numero_factura}\n"
+                f"Motivo: {nota_credito.get_motivo_display()}"
+            ),
+            usuario_registro=apertura.responsable,
+            fecha_hora_movimiento=nota_credito.fecha_emision
+        )
+        print(f"✅ Movimiento de caja creado: {movimiento.numero_movimiento} - Gs. {nota_credito.total_general:,.0f}")
+    except Exception as e:
+        print(f"⚠️ Error al crear movimiento de caja: {str(e)}")
+    
+    # 2. Cancelar la reserva SOLO si el motivo implica cancelación
+    if es_cancelacion and factura.reserva:
+        try:
+            reserva = factura.reserva
+            
+            # Verificar que no esté ya cancelada
+            if reserva.estado != 'cancelada':
+                exito = reserva.marcar_cancelada(
+                    motivo_cancelacion_id='2',  # '2' = Devolución (cambio de planes del cliente)
+                    motivo_observaciones=(
+                        f"Cancelada automáticamente por Nota de Crédito Parcial (motivo: {nota_credito.get_motivo_display()}).\n"
+                        f"NC: {nota_credito.numero_nota_credito}\n"
+                        f"Monto acreditado: Gs. {nota_credito.total_general:,.0f}"
+                    ),
+                    liberar_cupo=True
+                )
+                
+                if exito:
+                    print(f"✅ Reserva {reserva.codigo} cancelada automáticamente")
+                else:
+                    print(f"⚠️ No se pudo cancelar la reserva {reserva.codigo}")
+            else:
+                print(f"ℹ️ Reserva {reserva.codigo} ya estaba cancelada")
+                
+        except Exception as e:
+            print(f"⚠️ Error al cancelar reserva: {str(e)}")
+    elif not es_cancelacion and factura.reserva:
+        # Si es un descuento/ajuste, NO cancelar pero informar
+        print(f"ℹ️ NC por {nota_credito.get_motivo_display()}: Reserva {factura.reserva.codigo} mantiene su estado (no se cancela)")
 
     return nota_credito
 

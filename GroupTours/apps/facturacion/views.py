@@ -934,14 +934,37 @@ def descargar_pdf_factura(request, factura_id):
 def generar_nota_credito_total_view(request, factura_id):
     """
     Genera una nota de crédito total para anular completamente una factura.
+    
+    COMPORTAMIENTO SEGÚN MOTIVO (2025-11-26):
+    
+    Motivos que CANCELAN la reserva ('1', '2'):
+        - Cancela la reserva automáticamente
+        - Libera cupos del paquete
+        - Crea MovimientoCaja como 'devolucion'
+        
+    Motivos que NO cancelan ('3'-'8' - descuentos/ajustes):
+        - La reserva permanece activa
+        - Los cupos NO se liberan
+        - Crea MovimientoCaja como 'otro_egreso'
+    
+    Requiere caja abierta en el punto de expedición de la factura.
 
     POST /api/facturacion/generar-nota-credito-total/{factura_id}/
 
     Body:
     {
-        "motivo": "cancelacion_reserva",  # obligatorio
+        "motivo": "2",  # obligatorio - código de motivo:
+                        # '1' = Devolución y Ajuste (cancela)
+                        # '2' = Devolución (cancela)
+                        # '3' = Descuento (NO cancela)
+                        # '4'-'8' = Otros ajustes (NO cancelan)
         "observaciones": "Cliente canceló el viaje"  # opcional
     }
+    
+    Side Effects (según motivo):
+    - SIEMPRE: Crea MovimientoCaja de egreso
+    - SI motivo='1' o '2': Cancela reserva y libera cupos
+    - SI motivo='3'-'8': Mantiene reserva activa
     """
     try:
         motivo = request.data.get('motivo')
@@ -951,6 +974,9 @@ def generar_nota_credito_total_view(request, factura_id):
             return Response({
                 "error": "El motivo es obligatorio"
             }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Convertir motivo a string para comparaciones
+        motivo = str(motivo)
 
         # Generar nota de crédito
         nota_credito = generar_nota_credito_total(
@@ -982,12 +1008,30 @@ def generar_nota_credito_total_view(request, factura_id):
 def generar_nota_credito_parcial_view(request, factura_id):
     """
     Genera una nota de crédito parcial para anular items específicos de una factura.
+    
+    COMPORTAMIENTO SEGÚN MOTIVO (2025-11-26):
+    
+    Motivos que CANCELAN la reserva ('1', '2'):
+        - Cancela la reserva automáticamente
+        - Libera cupos del paquete
+        - Crea MovimientoCaja como 'devolucion'
+        
+    Motivos que NO cancelan ('3'-'8' - descuentos/ajustes):
+        - La reserva permanece activa
+        - Los cupos NO se liberan
+        - Crea MovimientoCaja como 'otro_egreso'
+    
+    Requiere caja abierta en el punto de expedición de la factura.
 
     POST /api/facturacion/generar-nota-credito-parcial/{factura_id}/
 
     Body:
     {
-        "motivo": "reduccion_pasajeros",  # obligatorio
+        "motivo": "2",  # obligatorio - código de motivo:
+                        # '1' = Devolución y Ajuste (cancela)
+                        # '2' = Devolución (cancela)
+                        # '3' = Descuento (NO cancela)
+                        # '4'-'8' = Otros ajustes (NO cancelan)
         "observaciones": "2 pasajeros cancelaron",  # opcional
         "items": [  # obligatorio
             {
@@ -998,6 +1042,11 @@ def generar_nota_credito_parcial_view(request, factura_id):
             }
         ]
     }
+    
+    Side Effects (según motivo):
+    - SIEMPRE: Crea MovimientoCaja de egreso
+    - SI motivo='1' o '2': Cancela reserva y libera cupos
+    - SI motivo='3'-'8': Mantiene reserva activa
     """
     try:
         motivo = request.data.get('motivo')
@@ -1021,6 +1070,9 @@ def generar_nota_credito_parcial_view(request, factura_id):
                 return Response({
                     "error": "Cada item debe tener: descripcion, cantidad y precio_unitario"
                 }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Convertir motivo a string para comparaciones
+        motivo = str(motivo)
 
         # Generar nota de crédito
         nota_credito = generar_nota_credito_parcial(

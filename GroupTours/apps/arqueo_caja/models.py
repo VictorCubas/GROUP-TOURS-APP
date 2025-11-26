@@ -462,8 +462,8 @@ class MovimientoCaja(models.Model):
     """
 
     TIPOS_MOVIMIENTO = [
-        ('ingreso', 'Ingreso'),
-        ('egreso', 'Egreso'),
+        ('ingreso', 'Débito'),
+        ('egreso', 'Crédito'),
     ]
 
     CONCEPTOS_INGRESO = [
