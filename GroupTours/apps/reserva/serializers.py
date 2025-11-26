@@ -544,7 +544,14 @@ class ReservaSerializer(serializers.ModelSerializer):
         return True
 
     def get_info_cancelacion(self, obj):
-        """Información útil sobre lo que implica cancelar esta reserva"""
+        """
+        Información útil sobre lo que implica cancelar esta reserva.
+        
+        NUEVO FLUJO (2025-11-26): Cancelación siempre por Nota de Crédito.
+        - Seña NO reembolsable
+        - NC se genera por pagos adicionales (sin seña)
+        - Si no tiene factura, primero se factura y luego se genera NC
+        """
         if obj.estado == 'cancelada':
             return {
                 'puede_cancelar': False,
@@ -556,40 +563,89 @@ class ReservaSerializer(serializers.ModelSerializer):
         # Contar TODOS los pasajeros (incluidos los pendientes) - para cancelación total
         pasajeros_count = obj.pasajeros.count()
         
-        # Contar facturas activas
+        # Verificar si tiene facturas activas
         from apps.facturacion.models import FacturaElectronica
-        facturas_count = FacturaElectronica.objects.filter(reserva=obj, activo=True).count()
+        facturas_activas = FacturaElectronica.objects.filter(reserva=obj, activo=True)
+        facturas_count = facturas_activas.count()
+        tiene_factura = facturas_count > 0
         
-        # Calcular información de reembolso
+        # Obtener primera factura si existe
+        factura_info = None
+        if tiene_factura:
+            primera_factura = facturas_activas.first()
+            factura_info = {
+                'id': primera_factura.id,
+                'numero': primera_factura.numero_factura,
+                'total': float(primera_factura.total_general),
+                'tipo': primera_factura.tipo_facturacion
+            }
+        
+        # Calcular montos
         dias_restantes = obj.dias_hasta_salida
         montos = obj.calcular_montos_cancelacion()
-        aplica_reembolso = dias_restantes and dias_restantes > 20 and montos['monto_reembolsable'] > 0
+        monto_total_pagado = float(obj.monto_pagado or 0)
+        monto_sena = float(montos['monto_sena'])
+        monto_nc = float(montos['monto_reembolsable'])  # Ya excluye la seña
         
-        # Determinar tipo de devolución según la política
-        if dias_restantes is None:
-            tipo_devolucion = 'No se puede determinar (sin fecha de salida)'
-        elif dias_restantes > 20:
-            if montos['monto_reembolsable'] > 0:
-                tipo_devolucion = f"Reembolso de Gs. {montos['monto_reembolsable']:,.0f} (sin seña)"
-            else:
-                tipo_devolucion = 'Sin reembolso (solo seña pagada, no reembolsable)'
+        # Determinar tipo de devolución (NUEVO: siempre por NC)
+        if monto_total_pagado <= 0:
+            tipo_devolucion = 'Sin devolución (no hay pagos registrados)'
+            metodo_cancelacion = 'directa'  # Sin NC
+        elif monto_nc <= 0:
+            tipo_devolucion = 'Sin devolución (solo seña pagada, no reembolsable)'
+            metodo_cancelacion = 'sin_nc'  # Cancelación sin NC
         else:
-            tipo_devolucion = 'Sin reembolso (cancelación tardía: 20 días o menos)'
+            tipo_devolucion = f"Nota de Crédito por Gs. {monto_nc:,.0f}"
+            metodo_cancelacion = 'con_nc'  # Cancelación con NC
+        
+        # Determinar flujo a seguir
+        if tiene_factura:
+            flujo = 'generar_nc'  # Directo a NC Parcial
+            paso_siguiente = f"POST /api/facturacion/generar-nota-credito-parcial/{factura_info['id']}/"
+        else:
+            if monto_nc > 0:
+                flujo = 'facturar_y_nc'  # Primero facturar, luego NC
+                paso_siguiente = f"POST /api/facturacion/generar-factura-cancelacion/{obj.id}/"
+            else:
+                flujo = 'cancelar_directo'  # Sin documentos fiscales
+                paso_siguiente = f"POST /api/reservas/{obj.id}/cancelar/"
         
         return {
             'puede_cancelar': True,
             'tipo_cancelacion': 'total',
             'modalidad_facturacion': obj.modalidad_facturacion,
             'pasajeros_afectados': pasajeros_count,
+            
+            # Información de facturación
+            'tiene_factura': tiene_factura,
             'facturas_activas': facturas_count,
-            'dias_hasta_salida': dias_restantes,
-            'aplica_reembolso': aplica_reembolso,
-            'monto_sena': float(montos['monto_sena']),
+            'factura': factura_info,
+            
+            # Montos
+            'monto_total_pagado': monto_total_pagado,
+            'monto_sena': monto_sena,
             'monto_pagos_adicionales': float(montos['monto_pagos_adicionales']),
-            'monto_reembolsable': float(montos['monto_reembolsable']),
+            'monto_nc': monto_nc,  # Monto de la Nota de Crédito (sin seña)
+            
+            # Información de cancelación
+            'dias_hasta_salida': dias_restantes,
             'tipo_devolucion': tipo_devolucion,
-            'politica': '> 20 días: se devuelve el monto (sin seña). ≤ 20 días: sin devolución.',
-            'advertencia': 'Se cancelarán TODOS los pasajeros de esta reserva.' if obj.modalidad_facturacion == 'individual' else None
+            'metodo_cancelacion': metodo_cancelacion,  # 'con_nc', 'sin_nc', 'directa'
+            
+            # Flujo a seguir
+            'flujo': flujo,  # 'generar_nc', 'facturar_y_nc', 'cancelar_directo'
+            'paso_siguiente': paso_siguiente,
+            
+            # Política y advertencias
+            'politica': 'La seña NO es reembolsable. Se genera Nota de Crédito solo por pagos adicionales.',
+            'advertencia': 'Se cancelarán TODOS los pasajeros de esta reserva.' if obj.modalidad_facturacion == 'individual' else None,
+            
+            # Items para NC (si tiene factura)
+            'items_nc': [{
+                'descripcion': f'Devolución por cancelación - Pagos adicionales (Reserva {obj.codigo})',
+                'cantidad': 1,
+                'precio_unitario': monto_nc
+            }] if tiene_factura and monto_nc > 0 else []
         }
 
     def create(self, validated_data):
@@ -1537,7 +1593,14 @@ class ReservaDetalleSerializer(serializers.ModelSerializer):
         return True
 
     def get_info_cancelacion(self, obj):
-        """Información útil sobre lo que implica cancelar esta reserva"""
+        """
+        Información útil sobre lo que implica cancelar esta reserva.
+        
+        NUEVO FLUJO (2025-11-26): Cancelación siempre por Nota de Crédito.
+        - Seña NO reembolsable
+        - NC se genera por pagos adicionales (sin seña)
+        - Si no tiene factura, primero se factura y luego se genera NC
+        """
         if obj.estado == 'cancelada':
             return {
                 'puede_cancelar': False,
@@ -1549,40 +1612,89 @@ class ReservaDetalleSerializer(serializers.ModelSerializer):
         # Contar TODOS los pasajeros (incluidos los pendientes) - para cancelación total
         pasajeros_count = obj.pasajeros.count()
         
-        # Contar facturas activas
+        # Verificar si tiene facturas activas
         from apps.facturacion.models import FacturaElectronica
-        facturas_count = FacturaElectronica.objects.filter(reserva=obj, activo=True).count()
+        facturas_activas = FacturaElectronica.objects.filter(reserva=obj, activo=True)
+        facturas_count = facturas_activas.count()
+        tiene_factura = facturas_count > 0
         
-        # Calcular información de reembolso
+        # Obtener primera factura si existe
+        factura_info = None
+        if tiene_factura:
+            primera_factura = facturas_activas.first()
+            factura_info = {
+                'id': primera_factura.id,
+                'numero': primera_factura.numero_factura,
+                'total': float(primera_factura.total_general),
+                'tipo': primera_factura.tipo_facturacion
+            }
+        
+        # Calcular montos
         dias_restantes = obj.dias_hasta_salida
         montos = obj.calcular_montos_cancelacion()
-        aplica_reembolso = dias_restantes and dias_restantes > 20 and montos['monto_reembolsable'] > 0
+        monto_total_pagado = float(obj.monto_pagado or 0)
+        monto_sena = float(montos['monto_sena'])
+        monto_nc = float(montos['monto_reembolsable'])  # Ya excluye la seña
         
-        # Determinar tipo de devolución según la política
-        if dias_restantes is None:
-            tipo_devolucion = 'No se puede determinar (sin fecha de salida)'
-        elif dias_restantes > 20:
-            if montos['monto_reembolsable'] > 0:
-                tipo_devolucion = f"Reembolso de Gs. {montos['monto_reembolsable']:,.0f} (sin seña)"
-            else:
-                tipo_devolucion = 'Sin reembolso (solo seña pagada, no reembolsable)'
+        # Determinar tipo de devolución (NUEVO: siempre por NC)
+        if monto_total_pagado <= 0:
+            tipo_devolucion = 'Sin devolución (no hay pagos registrados)'
+            metodo_cancelacion = 'directa'  # Sin NC
+        elif monto_nc <= 0:
+            tipo_devolucion = 'Sin devolución (solo seña pagada, no reembolsable)'
+            metodo_cancelacion = 'sin_nc'  # Cancelación sin NC
         else:
-            tipo_devolucion = 'Sin reembolso (cancelación tardía: 20 días o menos)'
+            tipo_devolucion = f"Nota de Crédito por Gs. {monto_nc:,.0f}"
+            metodo_cancelacion = 'con_nc'  # Cancelación con NC
+        
+        # Determinar flujo a seguir
+        if tiene_factura:
+            flujo = 'generar_nc'  # Directo a NC Parcial
+            paso_siguiente = f"POST /api/facturacion/generar-nota-credito-parcial/{factura_info['id']}/"
+        else:
+            if monto_nc > 0:
+                flujo = 'facturar_y_nc'  # Primero facturar, luego NC
+                paso_siguiente = f"POST /api/facturacion/generar-factura-cancelacion/{obj.id}/"
+            else:
+                flujo = 'cancelar_directo'  # Sin documentos fiscales
+                paso_siguiente = f"POST /api/reservas/{obj.id}/cancelar/"
         
         return {
             'puede_cancelar': True,
             'tipo_cancelacion': 'total',
             'modalidad_facturacion': obj.modalidad_facturacion,
             'pasajeros_afectados': pasajeros_count,
+            
+            # Información de facturación
+            'tiene_factura': tiene_factura,
             'facturas_activas': facturas_count,
-            'dias_hasta_salida': dias_restantes,
-            'aplica_reembolso': aplica_reembolso,
-            'monto_sena': float(montos['monto_sena']),
+            'factura': factura_info,
+            
+            # Montos
+            'monto_total_pagado': monto_total_pagado,
+            'monto_sena': monto_sena,
             'monto_pagos_adicionales': float(montos['monto_pagos_adicionales']),
-            'monto_reembolsable': float(montos['monto_reembolsable']),
+            'monto_nc': monto_nc,  # Monto de la Nota de Crédito (sin seña)
+            
+            # Información de cancelación
+            'dias_hasta_salida': dias_restantes,
             'tipo_devolucion': tipo_devolucion,
-            'politica': '> 20 días: se devuelve el monto (sin seña). ≤ 20 días: sin devolución.',
-            'advertencia': 'Se cancelarán TODOS los pasajeros de esta reserva.' if obj.modalidad_facturacion == 'individual' else None
+            'metodo_cancelacion': metodo_cancelacion,  # 'con_nc', 'sin_nc', 'directa'
+            
+            # Flujo a seguir
+            'flujo': flujo,  # 'generar_nc', 'facturar_y_nc', 'cancelar_directo'
+            'paso_siguiente': paso_siguiente,
+            
+            # Política y advertencias
+            'politica': 'La seña NO es reembolsable. Se genera Nota de Crédito solo por pagos adicionales.',
+            'advertencia': 'Se cancelarán TODOS los pasajeros de esta reserva.' if obj.modalidad_facturacion == 'individual' else None,
+            
+            # Items para NC (si tiene factura)
+            'items_nc': [{
+                'descripcion': f'Devolución por cancelación - Pagos adicionales (Reserva {obj.codigo})',
+                'cantidad': 1,
+                'precio_unitario': monto_nc
+            }] if tiene_factura and monto_nc > 0 else []
         }
 
     def get_puede_confirmarse(self, obj):

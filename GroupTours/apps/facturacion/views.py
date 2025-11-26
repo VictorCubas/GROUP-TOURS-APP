@@ -692,6 +692,107 @@ def generar_factura_total(request, reserva_id):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+def generar_factura_cancelacion(request, reserva_id):
+    """
+    Genera una factura sobre el monto pagado para el proceso de cancelación.
+    
+    Esta factura se genera SOLO cuando la reserva no tiene factura previa
+    y se va a cancelar. Factura sobre el monto pagado (no sobre el total).
+    
+    POST /api/facturacion/generar-factura-cancelacion/{reserva_id}/
+    
+    Body (opcional):
+        - subtipo_impuesto_id: ID del subtipo de impuesto a aplicar
+        - punto_expedicion_id: ID del punto de expedición (de la caja abierta)
+        
+        Facturación a terceros (opcional):
+        - cliente_facturacion_id: ID de ClienteFacturacion existente
+        - tercero_nombre: Nombre del tercero
+        - tercero_tipo_documento: Tipo de documento
+        - tercero_numero_documento: Número de documento
+        - tercero_direccion: Dirección (opcional)
+        - tercero_telefono: Teléfono (opcional)
+        - tercero_email: Email (opcional)
+    
+    Response:
+    {
+        "message": "Factura de cancelación generada",
+        "factura": { ... },
+        "info_nc": {
+            "monto_sena": 1000000,
+            "monto_a_acreditar": 3000000,
+            "items_nc": [
+                {
+                    "descripcion": "Devolución por cancelación...",
+                    "cantidad": 1,
+                    "precio_unitario": 3000000
+                }
+            ]
+        }
+    }
+    
+    Siguiente paso: Usar /generar-nota-credito-parcial/{factura_id}/
+    con los items_nc devueltos para cancelar la reserva.
+    """
+    try:
+        from apps.facturacion.models import generar_factura_cancelacion
+        
+        reserva = get_object_or_404(Reserva, id=reserva_id, activo=True)
+        subtipo_impuesto_id = request.data.get('subtipo_impuesto_id', None)
+        punto_expedicion_id = request.data.get('punto_expedicion_id', None)
+        
+        # Datos de terceros (opcional)
+        cliente_facturacion_id = request.data.get('cliente_facturacion_id', None)
+        tercero_nombre = request.data.get('tercero_nombre', None)
+        tercero_tipo_documento = request.data.get('tercero_tipo_documento', None)
+        tercero_numero_documento = request.data.get('tercero_numero_documento', None)
+        tercero_direccion = request.data.get('tercero_direccion', None)
+        tercero_telefono = request.data.get('tercero_telefono', None)
+        tercero_email = request.data.get('tercero_email', None)
+        
+        # Validar que no tenga factura previa
+        from apps.facturacion.models import FacturaElectronica
+        if FacturaElectronica.objects.filter(reserva=reserva, activo=True).exists():
+            return Response({
+                "error": "La reserva ya tiene una factura generada. Use el endpoint de NC directamente."
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Generar la factura de cancelación
+        resultado = generar_factura_cancelacion(
+            reserva=reserva,
+            subtipo_impuesto_id=subtipo_impuesto_id,
+            punto_expedicion_id=punto_expedicion_id,
+            cliente_facturacion_id=cliente_facturacion_id,
+            tercero_nombre=tercero_nombre,
+            tercero_tipo_documento=tercero_tipo_documento,
+            tercero_numero_documento=tercero_numero_documento,
+            tercero_direccion=tercero_direccion,
+            tercero_telefono=tercero_telefono,
+            tercero_email=tercero_email
+        )
+        
+        # Serializar la factura
+        factura_serializer = FacturaElectronicaDetalladaSerializer(resultado['factura'])
+        
+        return Response({
+            "message": "Factura de cancelación generada exitosamente",
+            "factura": factura_serializer.data,
+            "info_nc": resultado['info_nc'],
+            "siguiente_paso": f"Generar NC parcial en: /api/facturacion/generar-nota-credito-parcial/{resultado['factura'].id}/"
+        }, status=status.HTTP_201_CREATED)
+        
+    except DjangoValidationError as e:
+        return Response({
+            "error": str(e.message) if hasattr(e, 'message') else str(e)
+        }, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({
+            "error": f"Error al generar factura de cancelación: {str(e)}"
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
 def generar_factura_pasajero(request, pasajero_id):
     """
     Genera una factura individual para un pasajero específico.

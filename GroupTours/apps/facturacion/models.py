@@ -2190,6 +2190,273 @@ def generar_factura_individual(
 
 
 @transaction.atomic
+def generar_factura_cancelacion(
+    reserva, 
+    subtipo_impuesto_id=None, 
+    punto_expedicion_id=None,
+    cliente_facturacion_id=None,
+    tercero_nombre=None,
+    tercero_tipo_documento=None,
+    tercero_numero_documento=None,
+    tercero_direccion=None,
+    tercero_telefono=None,
+    tercero_email=None
+):
+    """
+    Genera una factura sobre el monto pagado hasta el momento,
+    específicamente para el proceso de cancelación de reserva.
+    
+    Características especiales:
+    - NO valida estado de la reserva (puede estar en cualquier estado)
+    - Factura sobre reserva.monto_pagado (NO sobre costo_total)
+    - condicion_venta = 'contado' (ya está pagado)
+    - tipo_facturacion = 'total' si está 100% pagado, 'parcial' si no
+    - Devuelve información adicional para generar la NC (excluyendo seña)
+    - Soporta facturación a terceros
+    
+    Args:
+        reserva: Instancia de Reserva
+        subtipo_impuesto_id: ID del subtipo de impuesto (IVA 10%, etc)
+        punto_expedicion_id: ID del punto de expedición (con caja abierta)
+        cliente_facturacion_id: ID de ClienteFacturacion existente (tercero)
+        tercero_nombre: Nombre del tercero (si se crea on-the-fly)
+        tercero_tipo_documento: Tipo de documento del tercero
+        tercero_numero_documento: Número de documento del tercero
+        tercero_direccion: Dirección del tercero (opcional)
+        tercero_telefono: Teléfono del tercero (opcional)
+        tercero_email: Email del tercero (opcional)
+        
+    Returns:
+        dict con:
+            - factura: FacturaElectronica generada
+            - info_nc: Información para generar NC (monto_sena, monto_a_acreditar, items_nc)
+        
+    Raises:
+        ValidationError: Si no hay monto pagado, no hay caja abierta, o faltan datos
+    """
+    from decimal import Decimal
+    
+    # Validar que haya pagos
+    if not reserva.monto_pagado or reserva.monto_pagado <= 0:
+        raise ValidationError("No hay pagos registrados para facturar")
+    
+    # Validar que tenga titular
+    if not reserva.titular:
+        raise ValidationError("La reserva no tiene titular asignado")
+    
+    # Obtener configuración de facturación
+    configuracion = FacturaElectronica.objects.filter(
+        es_configuracion=True,
+        activo=True
+    ).first()
+    
+    if not configuracion:
+        raise ValidationError("No existe configuración de facturación en el sistema")
+    
+    # Determinar subtipo de impuesto
+    if subtipo_impuesto_id:
+        subtipo_impuesto = SubtipoImpuesto.objects.get(id=subtipo_impuesto_id)
+    else:
+        subtipo_impuesto = configuracion.subtipo_impuesto
+    
+    if not subtipo_impuesto:
+        raise ValidationError("Debe especificar un subtipo de impuesto")
+    
+    # Obtener punto de expedición validando que haya caja abierta
+    punto_expedicion = obtener_punto_expedicion_caja_abierta(
+        punto_expedicion_id=punto_expedicion_id,
+        usuario=None
+    )
+    
+    # --- 🔹 Determinar cliente de facturación (tercero o titular) ---
+    cliente_facturacion = None
+    titular = reserva.titular
+    if not titular:
+        raise ValidationError("La reserva no tiene titular asignado")
+    
+    # Prioridad 1: Intentar obtener/crear cliente de facturación (tercero completo)
+    if cliente_facturacion_id or (tercero_nombre and tercero_tipo_documento and tercero_numero_documento):
+        cliente_facturacion = obtener_o_crear_cliente_facturacion(
+            cliente_facturacion_id=cliente_facturacion_id,
+            tercero_nombre=tercero_nombre,
+            tercero_tipo_documento=tercero_tipo_documento,
+            tercero_numero_documento=tercero_numero_documento,
+            tercero_direccion=tercero_direccion,
+            tercero_telefono=tercero_telefono,
+            tercero_email=tercero_email,
+            persona=None  # No vinculamos a persona si es tercero explícito
+        )
+    
+    # Prioridad 2: Si SOLO se cambió el documento (tipo y/o número), crear ClienteFacturacion con datos del titular
+    elif tercero_tipo_documento or tercero_numero_documento:
+        # El usuario quiere usar el titular pero con documento diferente
+        persona = titular
+        
+        # Determinar tipo de persona y extraer datos base
+        if hasattr(persona, 'personajuridica'):
+            nombre_base = persona.razon_social
+            tipo_doc_base = persona.tipo_documento
+            num_doc_base = getattr(persona, 'ruc', getattr(persona, 'documento', 'S/N'))
+        else:
+            nombre_base = f"{getattr(persona, 'nombre', '')} {getattr(persona, 'apellido', '')}".strip()
+            tipo_doc_base = persona.tipo_documento
+            num_doc_base = getattr(persona, 'documento', getattr(persona, 'ci_numero', 'S/N'))
+        
+        # Usar documento override si se proporciona, sino usar el original
+        tipo_doc_final = tercero_tipo_documento if tercero_tipo_documento else tipo_doc_base
+        num_doc_final = tercero_numero_documento if tercero_numero_documento else num_doc_base
+        
+        # Crear/buscar ClienteFacturacion con el documento modificado pero mismo nombre
+        cliente_facturacion = obtener_o_crear_cliente_facturacion(
+            cliente_facturacion_id=None,
+            tercero_nombre=nombre_base,
+            tercero_tipo_documento=tipo_doc_final,
+            tercero_numero_documento=num_doc_final,
+            tercero_direccion=getattr(persona, 'direccion', ''),
+            tercero_telefono=getattr(persona, 'telefono', ''),
+            tercero_email=getattr(persona, 'correo', getattr(persona, 'email', '')),
+            persona=titular  # Vinculamos a la persona original
+        )
+    
+    # Si hay cliente de facturación (tercero o titular con documento modificado), usar sus datos
+    if cliente_facturacion:
+        cliente_nombre = cliente_facturacion.nombre
+        cliente_tipo_documento = cliente_facturacion.tipo_documento.nombre
+        cliente_numero_documento = cliente_facturacion.numero_documento
+        cliente_direccion = cliente_facturacion.direccion or ''
+        cliente_telefono = cliente_facturacion.telefono or ''
+        cliente_email = cliente_facturacion.email or ''
+    else:
+        # Prioridad 3: Usar datos del titular de la reserva sin modificaciones
+        if hasattr(titular, 'personajuridica'):
+            cliente_nombre = titular.razon_social
+            cliente_tipo_documento = titular.tipo_documento.nombre if titular.tipo_documento else 'RUC'
+            cliente_numero_documento = getattr(titular, 'ruc', getattr(titular, 'documento', 'S/N'))
+        else:
+            cliente_nombre = f"{getattr(titular, 'nombre', '')} {getattr(titular, 'apellido', '')}".strip()
+            cliente_tipo_documento = titular.tipo_documento.nombre if titular.tipo_documento else 'CI'
+            cliente_numero_documento = getattr(titular, 'documento', getattr(titular, 'ci_numero', 'S/N'))
+        
+        cliente_direccion = getattr(titular, 'direccion', '')
+        cliente_telefono = getattr(titular, 'telefono', '')
+        cliente_email = getattr(titular, 'email', '')
+    
+    # Determinar tipo de facturación según si está 100% pagada
+    esta_100_pagada = reserva.esta_totalmente_pagada()
+    tipo_facturacion = 'total' if esta_100_pagada else 'parcial'
+    
+    # Siempre CONTADO para facturas de cancelación (ya está pagado)
+    condicion_venta = 'contado'
+    
+    # Preparar datos de conversión de moneda
+    datos_conversion = preparar_datos_factura_con_conversion(reserva)
+    
+    # Calcular monto a facturar (monto_pagado completo, incluyendo seña)
+    monto_a_facturar_original = reserva.monto_pagado
+    monto_a_facturar = convertir_monto_a_guaranies(monto_a_facturar_original, datos_conversion)
+    
+    # --- Crear factura ---
+    factura = FacturaElectronica.objects.create(
+        empresa=configuracion.empresa,
+        establecimiento=configuracion.establecimiento,
+        punto_expedicion=punto_expedicion,
+        timbrado=configuracion.timbrado,
+        tipo_impuesto=configuracion.tipo_impuesto,
+        subtipo_impuesto=subtipo_impuesto,
+        reserva=reserva,
+        tipo_facturacion=tipo_facturacion,
+        pasajero=None,
+        cliente_facturacion=cliente_facturacion,  # Vincular cliente de facturación si existe
+        fecha_emision=timezone.now(),
+        es_configuracion=False,
+        
+        cliente_tipo_documento=cliente_tipo_documento,
+        cliente_numero_documento=cliente_numero_documento,
+        cliente_nombre=cliente_nombre,
+        cliente_direccion=cliente_direccion,
+        cliente_telefono=cliente_telefono,
+        cliente_email=cliente_email,
+        
+        condicion_venta=condicion_venta,
+        fecha_vencimiento=None,  # Contado no tiene vencimiento
+        moneda=datos_conversion['moneda'],  # SIEMPRE PYG
+        
+        # Campos de conversión
+        moneda_original=datos_conversion['moneda_original'] if datos_conversion['requiere_conversion'] else None,
+        tasa_conversion_aplicada=datos_conversion['tasa_conversion'] if datos_conversion['requiere_conversion'] else None,
+    )
+    
+    # Crear detalle único con el monto pagado
+    paquete = reserva.paquete
+    cantidad_pasajeros = reserva.cantidad_pasajeros or 1
+    
+    # Calcular según el tipo de IVA
+    porcentaje_iva = subtipo_impuesto.porcentaje or Decimal('10')
+    
+    if porcentaje_iva == Decimal('0'):
+        monto_exenta = monto_a_facturar
+        monto_gravada_5 = Decimal('0')
+        monto_gravada_10 = Decimal('0')
+    elif porcentaje_iva == Decimal('5'):
+        monto_exenta = Decimal('0')
+        monto_gravada_5 = monto_a_facturar
+        monto_gravada_10 = Decimal('0')
+    else:  # 10%
+        monto_exenta = Decimal('0')
+        monto_gravada_5 = Decimal('0')
+        monto_gravada_10 = monto_a_facturar
+    
+    DetalleFactura.objects.create(
+        factura=factura,
+        numero_item=1,
+        descripcion=f"Paquete Turístico: {paquete.nombre} - Factura de Cancelación",
+        cantidad=cantidad_pasajeros,
+        precio_unitario=monto_a_facturar / cantidad_pasajeros,
+        monto_exenta=monto_exenta,
+        monto_gravada_5=monto_gravada_5,
+        monto_gravada_10=monto_gravada_10,
+        subtotal=monto_a_facturar
+    )
+    
+    # Calcular totales de la factura
+    factura.calcular_totales()
+    
+    # Guardar total_original si hubo conversión
+    if datos_conversion['requiere_conversion']:
+        factura.total_original = monto_a_facturar_original
+        factura.save(update_fields=['total_original'])
+        registrar_conversion_factura(factura, datos_conversion, monto_a_facturar_original)
+    
+    # Calcular información para NC (excluyendo seña)
+    montos_cancelacion = reserva.calcular_montos_cancelacion()
+    monto_sena = montos_cancelacion['monto_sena']
+    monto_a_acreditar = montos_cancelacion['monto_reembolsable']  # Ya excluye la seña
+    
+    # Convertir monto_a_acreditar a guaraníes si es necesario
+    monto_a_acreditar_pyg = convertir_monto_a_guaranies(monto_a_acreditar, datos_conversion)
+    
+    # Preparar items para NC parcial
+    items_nc = []
+    if monto_a_acreditar > 0:
+        items_nc.append({
+            'descripcion': f'Devolución por cancelación - Pagos adicionales (Reserva {reserva.codigo})',
+            'cantidad': 1,
+            'precio_unitario': float(monto_a_acreditar_pyg)
+        })
+    
+    # Retornar factura e información para NC
+    return {
+        'factura': factura,
+        'info_nc': {
+            'monto_sena': float(monto_sena),
+            'monto_a_acreditar': float(monto_a_acreditar),
+            'monto_a_acreditar_pyg': float(monto_a_acreditar_pyg),
+            'items_nc': items_nc
+        }
+    }
+
+
+@transaction.atomic
 def generar_todas_facturas_pasajeros(reserva, subtipo_impuesto_id=None):
     """
     Genera facturas individuales para todos los pasajeros que cumplan las condiciones.
