@@ -773,12 +773,23 @@ def generar_factura_cancelacion(request, reserva_id):
         
         # Serializar la factura
         factura_serializer = FacturaElectronicaDetalladaSerializer(resultado['factura'])
-        
+
+        # Determinar el siguiente paso según si hay monto reembolsable
+        if resultado['info_nc']['monto_a_acreditar'] > 0 and resultado['info_nc']['items_nc']:
+            # Hay pagos adicionales (sin seña) que se pueden devolver
+            siguiente_paso = f"Generar NC parcial en: /api/facturacion/generar-nota-credito-parcial/{resultado['factura'].id}/"
+            mensaje_adicional = "La reserva tiene pagos adicionales a la seña que pueden ser reembolsados."
+        else:
+            # Solo tiene seña (no reembolsable)
+            siguiente_paso = f"Cancelar reserva directamente en: /api/reservas/{reserva_id}/cancelar/ (sin devolución - solo seña)"
+            mensaje_adicional = "La reserva solo tiene seña pagada (no reembolsable). Puede cancelarla directamente sin generar NC."
+
         return Response({
             "message": "Factura de cancelación generada exitosamente",
             "factura": factura_serializer.data,
             "info_nc": resultado['info_nc'],
-            "siguiente_paso": f"Generar NC parcial en: /api/facturacion/generar-nota-credito-parcial/{resultado['factura'].id}/"
+            "siguiente_paso": siguiente_paso,
+            "nota": mensaje_adicional
         }, status=status.HTTP_201_CREATED)
         
     except DjangoValidationError as e:

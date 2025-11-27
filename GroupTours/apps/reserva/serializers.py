@@ -599,16 +599,23 @@ class ReservaSerializer(serializers.ModelSerializer):
             metodo_cancelacion = 'con_nc'  # Cancelación con NC
         
         # Determinar flujo a seguir
-        if tiene_factura:
-            flujo = 'generar_nc'  # Directo a NC Parcial
+        if tiene_factura and monto_nc > 0:
+            # Caso 1: Tiene factura Y monto a reembolsar → Generar NC sobre factura existente
+            flujo = 'generar_nc'
             paso_siguiente = f"POST /api/facturacion/generar-nota-credito-parcial/{factura_info['id']}/"
+        elif tiene_factura and monto_nc == 0:
+            # Caso 2: Tiene factura PERO monto_nc = 0 → Solo cancelar (ya está facturado)
+            flujo = 'cancelar_directo'
+            paso_siguiente = f"POST /api/reservas/{obj.id}/cancelar/"
+        elif not tiene_factura and monto_total_pagado > 0:
+            # Caso 3: NO tiene factura PERO hay pagos → Primero facturar (documenta fiscalmente)
+            # Aplica tanto si monto_nc > 0 (luego NC) o monto_nc = 0 (solo factura)
+            flujo = 'facturar_cancelacion'
+            paso_siguiente = f"POST /api/facturacion/generar-factura-cancelacion/{obj.id}/"
         else:
-            if monto_nc > 0:
-                flujo = 'facturar_y_nc'  # Primero facturar, luego NC
-                paso_siguiente = f"POST /api/facturacion/generar-factura-cancelacion/{obj.id}/"
-            else:
-                flujo = 'cancelar_directo'  # Sin documentos fiscales
-                paso_siguiente = f"POST /api/reservas/{obj.id}/cancelar/"
+            # Caso 4: NO tiene factura Y NO hay pagos → Cancelar directamente
+            flujo = 'cancelar_directo'
+            paso_siguiente = f"POST /api/reservas/{obj.id}/cancelar/"
         
         return {
             'puede_cancelar': True,
@@ -1648,16 +1655,23 @@ class ReservaDetalleSerializer(serializers.ModelSerializer):
             metodo_cancelacion = 'con_nc'  # Cancelación con NC
         
         # Determinar flujo a seguir
-        if tiene_factura:
-            flujo = 'generar_nc'  # Directo a NC Parcial
+        if tiene_factura and monto_nc > 0:
+            # Caso 1: Tiene factura Y monto a reembolsar → Generar NC sobre factura existente
+            flujo = 'generar_nc'
             paso_siguiente = f"POST /api/facturacion/generar-nota-credito-parcial/{factura_info['id']}/"
+        elif tiene_factura and monto_nc == 0:
+            # Caso 2: Tiene factura PERO monto_nc = 0 → Solo cancelar (ya está facturado)
+            flujo = 'cancelar_directo'
+            paso_siguiente = f"POST /api/reservas/{obj.id}/cancelar/"
+        elif not tiene_factura and monto_total_pagado > 0:
+            # Caso 3: NO tiene factura PERO hay pagos → Primero facturar (documenta fiscalmente)
+            # Aplica tanto si monto_nc > 0 (luego NC) o monto_nc = 0 (solo factura)
+            flujo = 'facturar_cancelacion'
+            paso_siguiente = f"POST /api/facturacion/generar-factura-cancelacion/{obj.id}/"
         else:
-            if monto_nc > 0:
-                flujo = 'facturar_y_nc'  # Primero facturar, luego NC
-                paso_siguiente = f"POST /api/facturacion/generar-factura-cancelacion/{obj.id}/"
-            else:
-                flujo = 'cancelar_directo'  # Sin documentos fiscales
-                paso_siguiente = f"POST /api/reservas/{obj.id}/cancelar/"
+            # Caso 4: NO tiene factura Y NO hay pagos → Cancelar directamente
+            flujo = 'cancelar_directo'
+            paso_siguiente = f"POST /api/reservas/{obj.id}/cancelar/"
         
         return {
             'puede_cancelar': True,
