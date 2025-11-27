@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.db import models
+from datetime import date
 
 from apps.nacionalidad.models import Nacionalidad
 from .models import Persona, PersonaFisica, PersonaJuridica
@@ -16,6 +17,23 @@ class TipoDocumentoSimpleSerializer(serializers.ModelSerializer):
         model = TipoDocumento
         fields = ['id', 'nombre', 'descripcion',]
 
+class ReservaSimpleSerializer(serializers.Serializer):
+    """Serializer simple para mostrar reservas de una persona con días para la salida."""
+    id = serializers.IntegerField(read_only=True)
+    codigo = serializers.CharField(read_only=True)
+    estado = serializers.CharField(read_only=True)
+    paquete_nombre = serializers.CharField(source='paquete.nombre', read_only=True)
+    salida_fecha = serializers.DateField(source='salida.fecha_salida', read_only=True)
+    dias_para_salida = serializers.SerializerMethodField()
+
+    def get_dias_para_salida(self, obj):
+        """Calcula los días faltantes para la salida del paquete."""
+        if obj.salida and obj.salida.fecha_salida:
+            hoy = date.today()
+            dias = (obj.salida.fecha_salida - hoy).days
+            return dias
+        return None
+
 # --- Serializers para lectura ---
 class PersonaFisicaSerializer(serializers.ModelSerializer):
     tipo = serializers.SerializerMethodField()
@@ -26,7 +44,7 @@ class PersonaFisicaSerializer(serializers.ModelSerializer):
         source='tipo_documento',
         write_only=True
     )
-    
+
     nacionalidad = NacionalidadSimpleSerializer(read_only=True) #para la recuperacion en el listado
     nacionalidad_id = serializers.PrimaryKeyRelatedField( #para guardar o editar
         queryset=Nacionalidad.objects.all(),
@@ -34,6 +52,7 @@ class PersonaFisicaSerializer(serializers.ModelSerializer):
         write_only=True
     )
 
+    reservas = serializers.SerializerMethodField()
 
     class Meta:
         model = PersonaFisica
@@ -41,11 +60,16 @@ class PersonaFisicaSerializer(serializers.ModelSerializer):
             'id', 'tipo', 'nombre', 'apellido', 'fecha_nacimiento', 'edad', 'sexo',
             'nacionalidad', 'nacionalidad_id', 'documento', 'email', 'telefono',
             'direccion', 'activo', 'fecha_creacion', 'fecha_modificacion', 'tipo_documento_id',
-            'tipo_documento'
+            'tipo_documento', 'reservas'
         ]
 
     def get_tipo(self, obj):
         return "fisica"
+
+    def get_reservas(self, obj):
+        """Obtiene las reservas de la persona como titular con días para la salida."""
+        reservas = obj.reservas_titulares.filter(activo=True).select_related('paquete', 'salida')
+        return ReservaSimpleSerializer(reservas, many=True).data
 
 class PersonaJuridicaSerializer(serializers.ModelSerializer):
     tipo = serializers.SerializerMethodField()
