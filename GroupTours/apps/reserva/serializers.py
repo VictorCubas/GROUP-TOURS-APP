@@ -734,6 +734,32 @@ class ReservaSerializer(serializers.ModelSerializer):
             instance.actualizar_estado()
         return instance
 
+    def to_representation(self, instance):
+        """
+        Sobrescribe to_representation para ordenar los pasajeros antes de serializar.
+
+        Orden de pasajeros:
+        1. Titular (si es pasajero, es_titular=True)
+        2. Pasajeros reales (por_asignar=False)
+        3. Pasajeros pendientes (por_asignar=True)
+        """
+        representation = super().to_representation(instance)
+
+        # Obtener los pasajeros ordenados
+        pasajeros_ordenados = instance.pasajeros.order_by(
+            '-es_titular',      # Primero el titular (True antes que False)
+            'por_asignar',      # Luego los reales (False antes que True)
+            'id'                # En caso de empate, ordenar por ID
+        )
+
+        # Serializar los pasajeros ordenados
+        representation['pasajeros'] = PasajeroSerializer(
+            pasajeros_ordenados,
+            many=True
+        ).data
+
+        return representation
+
     # ========== MÉTODOS DE CONVERSIÓN A GUARANÍES ==========
 
     def _convertir_a_guaranies(self, monto, obj):

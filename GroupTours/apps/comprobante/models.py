@@ -1416,6 +1416,133 @@ class Voucher(models.Model):
         y -= 20
 
         # ============================================================
+        # CONDICIONES DE CANCELACIÓN
+        # ============================================================
+        if y < 320:
+            c.showPage()
+            y = height - 50
+
+        c.setFont(subtitle_font, 12)
+        c.setFillColor(colors.HexColor("#e67e22"))
+        c.drawString(50, y, "CONDICIONES DE CANCELACIÓN")
+        c.setLineWidth(2)
+        c.setStrokeColor(colors.HexColor("#e67e22"))
+        c.line(50, y - 5, 260, y - 5)
+
+        y -= 25
+        c.setFont(normal_font, 9)
+        c.setFillColor(colors.black)
+
+        # Sección: Forma de devolución
+        c.setFont(title_font, 10)
+        c.drawString(50, y, "Forma de devolución:")
+        y -= 14
+        c.setFont(normal_font, 9)
+        
+        forma_devolucion_lines = [
+            "En caso de cancelación, el reintegro se gestiona exclusivamente mediante una Nota de",
+            "Crédito (NC) aplicable a futuras reservas. No se realizan devoluciones en efectivo."
+        ]
+        for line in forma_devolucion_lines:
+            if y < 100:
+                c.showPage()
+                y = height - 50
+                c.setFont(normal_font, 9)
+            c.drawString(55, y, line)
+            y -= 12
+
+        y -= 8
+
+        # Sección: Monto de la NC
+        c.setFont(title_font, 10)
+        c.setFillColor(colors.black)
+        c.drawString(50, y, "Monto de la NC:")
+        y -= 14
+        c.setFont(normal_font, 9)
+        
+        monto_nc_lines = [
+            "• La seña no es reembolsable, pero se convierte en una Nota de Crédito (NC) para ser",
+            "  utilizada en una próxima reserva.",
+            "• Los pagos posteriores a la seña también se acreditan en forma de NC.",
+            "",
+            "Ejemplo: Total abonado Gs. 4.000.000 → Seña Gs. 2.000.000 (NC) → Pagos adicionales",
+            "         Gs. 2.000.000 (NC)."
+        ]
+        for line in monto_nc_lines:
+            if y < 100:
+                c.showPage()
+                y = height - 50
+                c.setFont(normal_font, 9)
+            c.drawString(55, y, line)
+            y -= 12
+
+        y -= 8
+
+        # Sección: Vigencia
+        c.setFont(title_font, 10)
+        c.setFillColor(colors.black)
+        c.drawString(50, y, "Vigencia:")
+        y -= 14
+        c.setFont(normal_font, 9)
+        
+        vigencia_lines = [
+            "La NC posee un plazo de utilización. Para conocer la vigencia correspondiente, favor",
+            "comunicarse con nuestro equipo comercial."
+        ]
+        for line in vigencia_lines:
+            if y < 100:
+                c.showPage()
+                y = height - 50
+                c.setFont(normal_font, 9)
+            c.drawString(55, y, line)
+            y -= 12
+
+        y -= 8
+
+        # Sección: Proceso de cancelación
+        c.setFont(title_font, 10)
+        c.setFillColor(colors.black)
+        c.drawString(50, y, "Proceso de cancelación:")
+        y -= 14
+        c.setFont(normal_font, 9)
+        
+        c.drawString(55, y, f"• WhatsApp/Teléfono: {self.contacto_emergencia}")
+        y -= 12
+        c.drawString(55, y, "• Correo: reservas@grouptours.com.py")
+        y -= 12
+
+        y -= 10
+
+        # Sección: Disposición adicional (recuadro destacado)
+        if y < 120:
+            c.showPage()
+            y = height - 50
+
+        # Recuadro de fondo amarillo claro
+        c.setFillColor(colors.HexColor("#fff3cd"))
+        c.setStrokeColor(colors.HexColor("#e67e22"))
+        c.setLineWidth(1.5)
+        c.roundRect(50, y - 60, width - 100, 60, 5, fill=1, stroke=1)
+
+        c.setFont(title_font, 9)
+        c.setFillColor(colors.HexColor("#856404"))
+        c.drawString(60, y - 15, "Disposición adicional:")
+        y -= 15
+        
+        c.setFont(normal_font, 8)
+        c.setFillColor(colors.HexColor("#856404"))
+        disposicion_lines = [
+            "Si faltan menos de 15 días para la fecha del viaje y la reserva no se encuentra totalmente",
+            "abonada, los cupos podrán ser liberados. En todos los casos, los importes abonados se",
+            "aplicarán mediante NC."
+        ]
+        for line in disposicion_lines:
+            c.drawString(60, y - 15, line)
+            y -= 11
+
+        y -= 20
+
+        # ============================================================
         # PIE DE PÁGINA
         # ============================================================
         c.setFont(normal_font, 8)
