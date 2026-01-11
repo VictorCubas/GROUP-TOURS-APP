@@ -331,10 +331,10 @@ def revertir_usuarios_operativos(apps, schema_editor):
 class Migration(migrations.Migration):
     
     dependencies = [
-        ('usuario', '0009_alter_usuario_debe_cambiar_contrasenia'),  # Ajusta según tu última migración
+        ('usuario', '0006_alter_usuario_debe_cambiar_contrasenia'),  # Fixed: Changed from 0009 to 0006
         ('rol', '0006_rol_es_admin'),
         ('modulo', '0009_crear_modulo_pagos_permisos_cajero'),  # Asegura que los roles existan
-        ('persona', '0003_persona_activo_persona_fecha_creacion_and_more'),
+        ('persona', '0005_alter_personafisica_options_and_more'),  # Fixed: Changed to latest persona migration
         ('empleado', '0004_alter_empleado_salario'),
         ('puesto', '0001_initial'),
         ('tipo_remuneracion', '0001_initial'),
