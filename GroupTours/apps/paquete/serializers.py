@@ -96,7 +96,8 @@ class CupoHabitacionSalidaSerializer(serializers.ModelSerializer):
     def get_habitacion(self, obj):
         return {
             "id": obj.habitacion.id,
-            "tipo": obj.habitacion.tipo,
+            "tipo_habitacion": obj.habitacion.tipo_habitacion.nombre,
+            "capacidad": obj.habitacion.tipo_habitacion.capacidad,
             "hotel": obj.habitacion.hotel.nombre,
         }
 
@@ -143,7 +144,8 @@ class PrecioCatalogoHabitacionSerializer(serializers.ModelSerializer):
     def get_habitacion(self, obj):
         return {
             "id": obj.habitacion.id,
-            "tipo": obj.habitacion.tipo,
+            "tipo_habitacion": obj.habitacion.tipo_habitacion.nombre,
+            "capacidad": obj.habitacion.tipo_habitacion.capacidad,
             "hotel": obj.habitacion.hotel.nombre,
         }
 
@@ -260,7 +262,7 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
             {
                 "id": obj.habitacion_fija.id,
                 "hotel": obj.habitacion_fija.hotel.nombre,
-                "tipo": obj.habitacion_fija.tipo,
+                "tipo_habitacion": obj.habitacion_fija.tipo_habitacion.nombre,
             }
             if obj.habitacion_fija else None
         )

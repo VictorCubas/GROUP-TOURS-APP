@@ -1,4 +1,4 @@
-from .models import CadenaHotelera, Hotel, Habitacion, Servicio
+from .models import CadenaHotelera, Hotel, Habitacion, TipoHabitacion, Servicio
 from rest_framework import serializers
 
 
@@ -15,9 +15,18 @@ class ServicioSimpleSerializer(serializers.ModelSerializer):
         fields = ['id', 'nombre']
 
 
+class TipoHabitacionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TipoHabitacion
+        fields = ['id', 'nombre', 'capacidad', 'activo', 'fecha_creacion', 'fecha_modificacion']
+        read_only_fields = ['id', 'fecha_creacion', 'fecha_modificacion']
+
+
 class HabitacionSerializer(serializers.ModelSerializer):
     moneda_nombre = serializers.CharField(source='moneda.nombre', read_only=True)
     moneda_simbolo = serializers.CharField(source='moneda.simbolo', read_only=True)
+    tipo_habitacion_nombre = serializers.CharField(source='tipo_habitacion.nombre', read_only=True)
+    capacidad = serializers.IntegerField(source='tipo_habitacion.capacidad', read_only=True)
     cupo = serializers.SerializerMethodField()
 
     # Campos adicionales para análisis de precios
@@ -26,7 +35,7 @@ class HabitacionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Habitacion
         fields = [
-            'id', 'hotel', 'numero', 'tipo', 'capacidad',
+            'id', 'hotel', 'tipo_habitacion', 'tipo_habitacion_nombre', 'capacidad',
             'precio_noche', 'moneda', 'moneda_nombre', 'moneda_simbolo', 'servicios',
             'cupo', 'precio_calculado', 'activo', 'fecha_creacion', 'fecha_modificacion'
         ]
@@ -131,6 +140,16 @@ class HabitacionSerializer(serializers.ModelSerializer):
         else:
             # 1. Calcular precio por noche de esta habitación
             precio_noche = obj.precio_noche or Decimal('0')
+
+            # 1.1 Convertir precio_noche a la moneda de la salida si difieren
+            if obj.moneda != salida.moneda:
+                from apps.paquete.utils import convertir_entre_monedas
+                precio_noche = convertir_entre_monedas(
+                    monto=precio_noche,
+                    moneda_origen=obj.moneda,
+                    moneda_destino=salida.moneda,
+                    fecha=salida.fecha_salida
+                )
 
             # 2. Precio base de la habitación por toda la estadía
             precio_habitacion_total = precio_noche * noches

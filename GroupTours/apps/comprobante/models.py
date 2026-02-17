@@ -1203,9 +1203,9 @@ class Voucher(models.Model):
                 y -= 18
 
             y -= 5
-            c.drawString(50, y, f"Tipo de Habitación: {habitacion.get_tipo_display()}")
+            c.drawString(50, y, f"Tipo de Habitación: {habitacion.tipo_habitacion.nombre}")
             y -= 18
-            c.drawString(50, y, f"Capacidad: {habitacion.capacidad} persona(s)")
+            c.drawString(50, y, f"Capacidad: {habitacion.tipo_habitacion.capacidad} persona(s)")
 
             y -= 25
 

@@ -649,7 +649,7 @@ class HistorialPrecioHabitacion(models.Model):
         ordering = ["-fecha_inicio"]
 
     def __str__(self):
-        return f"{self.habitacion.hotel.nombre} - {self.habitacion.numero} - {self.precio}"
+        return f"{self.habitacion.hotel.nombre} - {self.habitacion.tipo_habitacion.nombre} - {self.precio}"
 
 
 # ---------------------------------------------------------------------

@@ -698,8 +698,8 @@ class ReservaReporteSerializer(serializers.ModelSerializer):
         return "N/A"
     
     def get_habitacion_numero(self, obj):
-        if obj.habitacion:
-            return obj.habitacion.numero or "N/A"
+        if obj.habitacion and obj.habitacion.tipo_habitacion:
+            return obj.habitacion.tipo_habitacion.nombre
         return "N/A"
     
     def get_hotel_nombre(self, obj):
