@@ -99,7 +99,7 @@ class Command(BaseCommand):
                 habitaciones_precios.append({
                     'hotel': hab.hotel.nombre,
                     'habitacion_id': hab.id,
-                    'tipo': hab.tipo,
+                    'tipo': hab.tipo_habitacion.nombre,
                     'precio_noche': precio_noche,
                     'precio_hab_total': precio_hab_total,
                     'costo_base': costo_base,
@@ -109,7 +109,7 @@ class Command(BaseCommand):
                 })
 
                 self.stdout.write(f'\nHotel: {hab.hotel.nombre}')
-                self.stdout.write(f'  Habitacion ID: {hab.id} - Tipo: {hab.tipo}')
+                self.stdout.write(f'  Habitacion ID: {hab.id} - Tipo: {hab.tipo_habitacion.nombre}')
                 self.stdout.write(f'  Precio por noche: ${precio_noche}')
                 self.stdout.write(f'  Precio habitacion ({noches} noches): ${precio_hab_total}')
                 self.stdout.write(f'  + Servicios: ${total_servicios}')
@@ -141,7 +141,7 @@ class Command(BaseCommand):
                 habitaciones_precios.append({
                     'hotel': hab.hotel.nombre,
                     'habitacion_id': hab.id,
-                    'tipo': hab.tipo,
+                    'tipo': hab.tipo_habitacion.nombre,
                     'precio_noche': None,
                     'precio_hab_total': None,
                     'costo_base': costo_base_distribuidora,
@@ -151,7 +151,7 @@ class Command(BaseCommand):
                 })
 
                 self.stdout.write(f'\nHotel: {hab.hotel.nombre}')
-                self.stdout.write(f'  Habitacion ID: {hab.id} - Tipo: {hab.tipo}')
+                self.stdout.write(f'  Habitacion ID: {hab.id} - Tipo: {hab.tipo_habitacion.nombre}')
                 self.stdout.write(f'  Precio por noche: (No aplica - paquete de distribuidora)')
                 self.stdout.write(f'  Costo base (desde distribuidora): ${costo_base_distribuidora}')
                 self.stdout.write(f'  Factor aplicado: {factor} (comision {comision}%)')

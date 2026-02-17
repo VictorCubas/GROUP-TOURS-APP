@@ -82,7 +82,7 @@ for hotel_id, precios in sorted(por_hotel.items()):
     hotel_nombre = precios[0].habitacion.hotel.nombre
     print(f"  Hotel: {hotel_nombre} (ID:{hotel_id}) - {len(precios)} habitaciones")
     for pc in precios[:5]:  # Mostrar solo las primeras 5
-        print(f"    - Hab ID:{pc.habitacion.id} ({pc.habitacion.tipo}): ${pc.precio_catalogo}")
+        print(f"    - Hab ID:{pc.habitacion.id} ({pc.habitacion.tipo_habitacion.nombre}): ${pc.precio_catalogo}")
     if len(precios) > 5:
         print(f"    ... y {len(precios) - 5} habitaciones más")
     print()

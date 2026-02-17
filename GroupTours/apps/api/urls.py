@@ -19,6 +19,7 @@ urlpatterns = [
     path('paquete/', include('apps.paquete.urls')),
     path('servicio/', include('apps.servicio.urls')),
     path('hotel/', include('apps.hotel.urls')),
+    path('tipo_habitacion/', include('apps.hotel.tipo_habitacion_urls')),
     path('moneda/', include('apps.moneda.urls')),
     path('reservas/', include('apps.reserva.urls')),
     path('ciudad/', include('apps.ciudad.urls')),

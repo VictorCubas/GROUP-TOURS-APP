@@ -61,27 +61,43 @@ class Hotel(models.Model):
         return f"{self.nombre} ({self.ciudad.nombre}, {self.ciudad.pais.nombre})"
 
 
+class TipoHabitacion(models.Model):
+    """
+    Catálogo de tipos de habitación gestionable por el usuario.
+    Ejemplos: "Doble Standard", "Suite Presidencial", "Triple Vista Mar".
+    """
+    nombre = models.CharField(max_length=80, unique=True)
+    capacidad = models.PositiveSmallIntegerField(default=1)
+    activo = models.BooleanField(default=True)
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_modificacion = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Tipo de Habitación"
+        verbose_name_plural = "Tipos de Habitación"
+        ordering = ["nombre"]
+        db_table = "tipo_habitacion"
+
+    def __str__(self):
+        return f"{self.nombre} (Cap: {self.capacidad})"
+
+
 class Habitacion(models.Model):
     """
-    Habitaciones del hotel con tipo, precio y moneda.
+    Relación entre un hotel y un tipo de habitación con su precio.
     """
-    TIPO_CHOICES = [
-        ("single", "Single"),
-        ("doble", "Doble"),
-        ("triple", "Triple"),
-        ("suite", "Suite"),
-        ("premium", "Premium"),
-    ]
-
     hotel = models.ForeignKey(
         Hotel,
         on_delete=models.CASCADE,
         related_name="habitaciones"
     )
-    numero = models.CharField(max_length=20)
-    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES)
-    capacidad = models.PositiveSmallIntegerField(default=1)
-    precio_noche = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True )
+    tipo_habitacion = models.ForeignKey(
+        TipoHabitacion,
+        on_delete=models.PROTECT,
+        related_name="habitaciones",
+        help_text="Tipo de habitación"
+    )
+    precio_noche = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     moneda = models.ForeignKey(Moneda, on_delete=models.PROTECT, related_name="habitaciones")
     servicios = models.ManyToManyField(Servicio, blank=True, related_name="habitaciones")
     activo = models.BooleanField(default=True)
@@ -91,8 +107,8 @@ class Habitacion(models.Model):
     class Meta:
         verbose_name = "Habitación"
         verbose_name_plural = "Habitaciones"
-        unique_together = ("hotel", "numero")
-        ordering = ["hotel", "numero"]
+        unique_together = ("hotel", "tipo_habitacion")
+        ordering = ["hotel"]
 
     def __str__(self):
-        return f"{self.hotel.nombre} - Hab. {self.numero} ({self.get_tipo_display()})"
+        return f"{self.hotel.nombre} - {self.tipo_habitacion.nombre}"
