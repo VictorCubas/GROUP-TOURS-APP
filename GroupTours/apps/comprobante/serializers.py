@@ -289,8 +289,7 @@ class VoucherSerializer(serializers.ModelSerializer):
 
     # Información de hotel y habitación
     hotel_nombre = serializers.SerializerMethodField()
-    habitacion_numero = serializers.CharField(source='pasajero.reserva.habitacion.numero', read_only=True)
-    habitacion_tipo = serializers.CharField(source='pasajero.reserva.habitacion.get_tipo_display', read_only=True)
+    habitacion_tipo = serializers.CharField(source='pasajero.reserva.habitacion.tipo_habitacion.nombre', read_only=True)
 
     # Información financiera del pasajero
     precio_asignado = serializers.DecimalField(source='pasajero.precio_asignado', max_digits=12, decimal_places=2, read_only=True)
@@ -313,7 +312,6 @@ class VoucherSerializer(serializers.ModelSerializer):
             'fecha_salida',
             'fecha_regreso',
             'hotel_nombre',
-            'habitacion_numero',
             'habitacion_tipo',
             'precio_asignado',
             'monto_pagado',

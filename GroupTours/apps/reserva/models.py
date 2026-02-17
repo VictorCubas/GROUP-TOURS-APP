@@ -165,7 +165,7 @@ class Reserva(models.Model):
 
         # Auto-completar cantidad_pasajeros si no se especificó
         if self.cantidad_pasajeros is None and self.habitacion:
-            self.cantidad_pasajeros = self.habitacion.capacidad
+            self.cantidad_pasajeros = self.habitacion.tipo_habitacion.capacidad
 
         # Generar código único si no existe
         if not self.codigo:
@@ -180,7 +180,7 @@ class Reserva(models.Model):
             cantidad_habitaciones = 1
 
             # 2. Determinar capacidad de pasajeros (de la habitación)
-            capacidad_pasajeros = self.habitacion.capacidad
+            capacidad_pasajeros = self.habitacion.tipo_habitacion.capacidad
 
             # 3. Actualizar CupoHabitacionSalida (descontar habitaciones disponibles)
             cupo_hab_salida = CupoHabitacionSalida.objects.filter(
@@ -192,7 +192,7 @@ class Reserva(models.Model):
                 # Verificar que hay cupo suficiente de habitaciones
                 if cupo_hab_salida.cupo < cantidad_habitaciones:
                     raise ValueError(
-                        f"No hay suficiente cupo disponible para la habitación '{self.habitacion.numero}'. "
+                        f"No hay suficiente cupo disponible para la habitación '{self.habitacion.tipo_habitacion.nombre}'. "
                         f"Disponibles: {cupo_hab_salida.cupo}, Solicitadas: {cantidad_habitaciones}"
                     )
                 # Decrementar el cupo de la habitación
@@ -200,7 +200,7 @@ class Reserva(models.Model):
                 cupo_hab_salida.save(update_fields=['cupo'])
             else:
                 raise ValueError(
-                    f"No se encontró configuración de cupo para la habitación '{self.habitacion.numero}' "
+                    f"No se encontró configuración de cupo para la habitación '{self.habitacion.tipo_habitacion.nombre}' "
                     f"en la salida seleccionada."
                 )
 
@@ -364,7 +364,7 @@ class Reserva(models.Model):
                 cupo_actualizado = True
 
             if self.salida.cupo is not None:
-                capacidad = self.habitacion.capacidad or self.cantidad_pasajeros or 0
+                capacidad = self.habitacion.tipo_habitacion.capacidad or self.cantidad_pasajeros or 0
                 if capacidad > 0:
                     self.salida.cupo += capacidad
                     self.salida.save(update_fields=['cupo'])
@@ -626,6 +626,16 @@ class Reserva(models.Model):
         else:
             # 1. Calcular precio de la habitación por noche
             precio_habitacion = self.habitacion.precio_noche or Decimal("0")
+
+            # 1.1 Convertir a la moneda de la salida si difieren
+            if self.habitacion.moneda != self.salida.moneda:
+                from apps.paquete.utils import convertir_entre_monedas
+                precio_habitacion = convertir_entre_monedas(
+                    monto=precio_habitacion,
+                    moneda_origen=self.habitacion.moneda,
+                    moneda_destino=self.salida.moneda,
+                    fecha=self.salida.fecha_salida
+                )
 
             # 2. Calcular cantidad de noches
             if self.salida.fecha_regreso and self.salida.fecha_salida:

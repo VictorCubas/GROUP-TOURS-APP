@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import CadenaHotelera, Hotel, Habitacion, Servicio
+from .models import CadenaHotelera, Hotel, Habitacion, TipoHabitacion, Servicio
 
 # -------------------- CADENA HOTELERA --------------------
 @admin.register(CadenaHotelera)
@@ -9,10 +9,10 @@ class CadenaHoteleraAdmin(admin.ModelAdmin):
     readonly_fields = ('fecha_creacion', 'fecha_modificacion')
 
 
-class HabitacionInline(admin.TabularInline):  # o admin.StackedInline
+class HabitacionInline(admin.TabularInline):
     model = Habitacion
-    extra = 1  # número de formularios extra vacíos
-    fields = ('numero', 'tipo', 'capacidad', 'precio_noche', 'moneda', 'activo')
+    extra = 1
+    fields = ('tipo_habitacion', 'precio_noche', 'moneda', 'activo')
 
 
 # -------------------- HOTEL --------------------
@@ -39,17 +39,25 @@ class HotelAdmin(admin.ModelAdmin):
         return super().formfield_for_manytomany(db_field, request, **kwargs)
 
 
+# -------------------- TIPO HABITACION --------------------
+@admin.register(TipoHabitacion)
+class TipoHabitacionAdmin(admin.ModelAdmin):
+    list_display = ('id', 'nombre', 'capacidad', 'activo', 'fecha_creacion')
+    list_filter = ('activo', 'capacidad')
+    search_fields = ('nombre',)
+    readonly_fields = ('fecha_creacion', 'fecha_modificacion')
+
+
 # -------------------- HABITACION --------------------
 @admin.register(Habitacion)
 class HabitacionAdmin(admin.ModelAdmin):
-    list_display = ('id', 'hotel', 'numero', 'tipo', 'capacidad', 'precio_noche', 'moneda', 'activo')
-    list_filter = ('activo', 'tipo', 'moneda', 'hotel__ciudad')
-    search_fields = ('numero', 'hotel__nombre', 'hotel__ciudad__nombre')
+    list_display = ('id', 'hotel', 'tipo_habitacion', 'precio_noche', 'moneda', 'activo')
+    list_filter = ('activo', 'tipo_habitacion', 'moneda', 'hotel__ciudad')
+    search_fields = ('tipo_habitacion__nombre', 'hotel__nombre', 'hotel__ciudad__nombre')
     readonly_fields = ('fecha_creacion', 'fecha_modificacion')
 
     def formfield_for_manytomany(self, db_field, request, **kwargs):
         if db_field.name == "servicios":
-            # Solo servicios de tipo 'habitacion' activos
             kwargs["queryset"] = Servicio.objects.filter(tipo='habitacion', activo=True)
         return super().formfield_for_manytomany(db_field, request, **kwargs)
 

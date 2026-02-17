@@ -1,6 +1,6 @@
 import django_filters
 from django.db.models import Q
-from .models import Hotel
+from .models import Hotel, TipoHabitacion
 from django.utils.timezone import make_aware
 from datetime import datetime, timedelta
 
@@ -11,8 +11,8 @@ class HotelFilter(django_filters.FilterSet):
     ciudad = django_filters.CharFilter(field_name='ciudad__nombre', lookup_expr='icontains')
     pais = django_filters.CharFilter(field_name='ciudad__pais__nombre', lookup_expr='icontains')
     cadena = django_filters.CharFilter(field_name='cadena__nombre', lookup_expr='icontains')
-    estrellas = django_filters.NumberFilter(field_name='estrellas', lookup_expr='exact')  # NUEVO
-
+    estrellas = django_filters.NumberFilter(field_name='estrellas', lookup_expr='exact')
+    destino_id = django_filters.NumberFilter(field_name='destinos__id', lookup_expr='exact')
 
     # Filtro unificado
     busqueda = django_filters.CharFilter(method='filter_busqueda')
@@ -34,7 +34,7 @@ class HotelFilter(django_filters.FilterSet):
             'nombre', 'activo', 'ciudad', 
             'pais', 'cadena', 'busqueda',
             'fecha_creacion_desde', 'fecha_creacion_hasta',
-            'estrellas'
+            'estrellas', 'destino_id'
         ]
 
     def filter_fecha_hasta(self, queryset, name, value):
@@ -54,3 +54,16 @@ class HotelFilter(django_filters.FilterSet):
             Q(ciudad__nombre__icontains=value) |
             Q(ciudad__pais__nombre__icontains=value)
         )
+
+
+class TipoHabitacionFilter(django_filters.FilterSet):
+    nombre = django_filters.CharFilter(field_name='nombre', lookup_expr='icontains')
+    activo = django_filters.BooleanFilter(field_name='activo')
+    busqueda = django_filters.CharFilter(method='filter_busqueda')
+
+    class Meta:
+        model = TipoHabitacion
+        fields = ['nombre', 'activo', 'busqueda']
+
+    def filter_busqueda(self, queryset, name, value):
+        return queryset.filter(Q(nombre__icontains=value))
