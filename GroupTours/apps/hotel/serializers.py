@@ -1,4 +1,4 @@
-from .models import CadenaHotelera, Hotel, Habitacion, Servicio
+from .models import CadenaHotelera, Hotel, Habitacion, TipoHabitacion, Servicio
 from rest_framework import serializers
 
 
@@ -15,10 +15,20 @@ class ServicioSimpleSerializer(serializers.ModelSerializer):
         fields = ['id', 'nombre']
 
 
+class TipoHabitacionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TipoHabitacion
+        fields = ['id', 'nombre', 'capacidad', 'activo', 'fecha_creacion', 'fecha_modificacion']
+        read_only_fields = ['id', 'fecha_creacion', 'fecha_modificacion']
+
+
 class HabitacionSerializer(serializers.ModelSerializer):
     moneda_nombre = serializers.CharField(source='moneda.nombre', read_only=True)
     moneda_simbolo = serializers.CharField(source='moneda.simbolo', read_only=True)
+    tipo_habitacion_nombre = serializers.CharField(source='tipo_habitacion.nombre', read_only=True)
+    capacidad = serializers.IntegerField(source='tipo_habitacion.capacidad', read_only=True)
     cupo = serializers.SerializerMethodField()
+    id = serializers.IntegerField(required=False, allow_null=True)
 
     # Campos adicionales para análisis de precios
     precio_calculado = serializers.SerializerMethodField(read_only=True)
@@ -29,7 +39,7 @@ class HabitacionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Habitacion
         fields = [
-            'id', 'hotel', 'numero', 'tipo', 'capacidad',
+            'id', 'hotel', 'tipo_habitacion', 'tipo_habitacion_nombre', 'capacidad',
             'precio_noche', 'moneda', 'moneda_nombre', 'moneda_simbolo', 'servicios',
             'cupo', 'precio_calculado', 'activo', 'fecha_creacion', 'fecha_modificacion'
         ]
@@ -262,15 +272,14 @@ class HotelSerializer(serializers.ModelSerializer):
 
         # === ACTUALIZACIÓN INTELIGENTE DE HABITACIONES ===
         # En lugar de eliminar y recrear, actualizamos/creamos/desactivamos según sea necesario
-        
         habitaciones_existentes = {hab.id: hab for hab in instance.habitaciones.all()}
         habitaciones_en_payload = []
-        
+
         # Procesar habitaciones del payload
         for hab_data in habitaciones_data:
             servicios_hab = hab_data.pop('servicios', [])
             hab_id = hab_data.pop('id', None)
-            
+
             if hab_id and hab_id in habitaciones_existentes:
                 # Actualizar habitación existente
                 habitacion = habitaciones_existentes[hab_id]
@@ -285,7 +294,7 @@ class HotelSerializer(serializers.ModelSerializer):
                 habitacion.servicios.set(servicios_hab)
                 if habitacion.id:
                     habitaciones_en_payload.append(habitacion.id)
-        
+
         # Manejar habitaciones que ya no están en el payload
         for hab_id, habitacion in habitaciones_existentes.items():
             if hab_id not in habitaciones_en_payload:

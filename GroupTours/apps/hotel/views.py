@@ -6,9 +6,9 @@ from django_filters.rest_framework import DjangoFilterBackend
 
 from apps.paquete.models import SalidaPaquete
 
-from .models import CadenaHotelera, Hotel, Habitacion, Servicio
-from .serializers import CadenaHoteleraSerializer, HotelSerializer, HabitacionSerializer, ServicioSimpleSerializer
-from .filters import HotelFilter
+from .models import CadenaHotelera, Hotel, Habitacion, TipoHabitacion, Servicio
+from .serializers import CadenaHoteleraSerializer, HotelSerializer, HabitacionSerializer, TipoHabitacionSerializer, ServicioSimpleSerializer
+from .filters import HotelFilter, TipoHabitacionFilter
 from apps.servicio.filters import ServicioFilter
 
 # -------------------- PAGINACIÓN --------------------
@@ -40,8 +40,36 @@ class CadenaHoteleraViewSet(viewsets.ModelViewSet):
         return Response(data)
 
 # -------------------- HABITACION --------------------
+class TipoHabitacionViewSet(viewsets.ModelViewSet):
+    queryset = TipoHabitacion.objects.order_by('-fecha_creacion').all()
+    serializer_class = TipoHabitacionSerializer
+    pagination_class = HotelPagination
+    permission_classes = []
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = TipoHabitacionFilter
+
+    @action(detail=False, methods=['get'], url_path='resumen')
+    def resumen(self, request):
+        total = TipoHabitacion.objects.count()
+        activos = TipoHabitacion.objects.filter(activo=True).count()
+        inactivos = TipoHabitacion.objects.filter(activo=False).count()
+        en_uso = TipoHabitacion.objects.filter(activo=True, habitaciones__isnull=False).distinct().count()
+        return Response([
+            {'texto': 'Total', 'valor': str(total)},
+            {'texto': 'Activos', 'valor': str(activos)},
+            {'texto': 'Inactivos', 'valor': str(inactivos)},
+            {'texto': 'En Uso', 'valor': str(en_uso)},
+        ])
+
+    @action(detail=False, methods=['get'], url_path='todos', pagination_class=None)
+    def todos(self, request):
+        queryset = self.get_queryset().filter(activo=True)
+        data = list(queryset.values('id', 'nombre', 'capacidad'))
+        return Response(data)
+
+
 class HabitacionViewSet(viewsets.ModelViewSet):
-    queryset = Habitacion.objects.select_related('hotel', 'moneda').prefetch_related('servicios')
+    queryset = Habitacion.objects.select_related('hotel', 'moneda', 'tipo_habitacion').prefetch_related('servicios')
     serializer_class = HabitacionSerializer
     permission_classes = []
 
@@ -113,6 +141,7 @@ class HotelViewSet(viewsets.ModelViewSet):
 
         # Hoteles asociados
         hoteles = salida.hoteles.prefetch_related(
+            "habitaciones__tipo_habitacion",
             "habitaciones__servicios",
             "habitaciones__moneda",
             "servicios",
@@ -190,9 +219,8 @@ class HotelViewSet(viewsets.ModelViewSet):
                         'habitacion_id': habitacion.id,
                         'hotel_id': hotel.id,
                         'hotel_nombre': hotel.nombre,
-                        'habitacion_numero': habitacion.numero,
-                        'habitacion_tipo': habitacion.tipo,
-                        'capacidad': habitacion.capacidad,
+                        'tipo_habitacion': habitacion.tipo_habitacion.nombre,
+                        'capacidad': habitacion.tipo_habitacion.capacidad,
                         'precio_noche': None,  # No aplica para distribuidora
                         'precio_catalogo': str(precio_catalogo),
                         'precio_venta_final': str(precio_venta_final),
@@ -227,31 +255,18 @@ class HotelViewSet(viewsets.ModelViewSet):
                     except CupoHabitacionSalida.DoesNotExist:
                         cupo = 0
 
-                    # Calcular precio de la habitación
+                    # Calcular precio (convertir a moneda de la salida si difieren)
                     precio_noche = habitacion.precio_noche or Decimal('0')
-                    precio_habitacion_total = precio_noche * noches
-
-                    # Convertir precio de habitación a la moneda del paquete si es necesario
                     if habitacion.moneda and salida.moneda and habitacion.moneda != salida.moneda:
-                        try:
-                            precio_habitacion_total_convertido = convertir_entre_monedas(
-                                monto=precio_habitacion_total,
-                                moneda_origen=habitacion.moneda,
-                                moneda_destino=salida.moneda,
-                                fecha=salida.fecha_salida
-                            )
-                            precio_noche_convertido = precio_habitacion_total_convertido / noches if noches > 0 else Decimal('0')
-                        except ValidationError:
-                            # Si falla la conversión, usar el precio original (fallback)
-                            precio_habitacion_total_convertido = precio_habitacion_total
-                            precio_noche_convertido = precio_noche
-                    else:
-                        # Misma moneda o no hay moneda definida, usar directo
-                        precio_habitacion_total_convertido = precio_habitacion_total
-                        precio_noche_convertido = precio_noche
-
-                    # Calcular costo base y precio final
-                    costo_base = precio_habitacion_total_convertido + total_servicios
+                        from apps.paquete.utils import convertir_entre_monedas
+                        precio_noche = convertir_entre_monedas(
+                            monto=precio_noche,
+                            moneda_origen=habitacion.moneda,
+                            moneda_destino=salida.moneda,
+                            fecha=salida.fecha_salida
+                        )
+                    precio_habitacion_total = precio_noche * noches
+                    costo_base = precio_habitacion_total + total_servicios
                     precio_venta_final = costo_base * factor
 
                     # Calcular precio en moneda alternativa
@@ -264,10 +279,9 @@ class HotelViewSet(viewsets.ModelViewSet):
                         'habitacion_id': habitacion.id,
                         'hotel_id': hotel.id,
                         'hotel_nombre': hotel.nombre,
-                        'habitacion_numero': habitacion.numero,
-                        'habitacion_tipo': habitacion.tipo,
-                        'capacidad': habitacion.capacidad,
-                        'precio_noche': str(precio_noche_convertido),
+                        'tipo_habitacion': habitacion.tipo_habitacion.nombre,
+                        'capacidad': habitacion.tipo_habitacion.capacidad,
+                        'precio_noche': str(precio_noche),
                         'precio_venta_final': str(precio_venta_final),
                         'precio_moneda_alternativa': precio_moneda_alternativa,
                         'cupo': cupo,

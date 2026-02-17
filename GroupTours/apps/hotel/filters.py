@@ -1,6 +1,6 @@
 import django_filters
 from django.db.models import Q
-from .models import Hotel
+from .models import Hotel, TipoHabitacion
 from django.utils.timezone import make_aware
 from datetime import datetime, timedelta
 
@@ -32,7 +32,7 @@ class HotelFilter(django_filters.FilterSet):
     class Meta:
         model = Hotel
         fields = [
-            'nombre', 'activo', 'ciudad_id', 'ciudad', 
+            'nombre', 'activo', 'ciudad_id', 'ciudad',
             'pais', 'cadena', 'busqueda',
             'fecha_creacion_desde', 'fecha_creacion_hasta',
             'estrellas', 'destino_id'
@@ -55,10 +55,23 @@ class HotelFilter(django_filters.FilterSet):
             Q(ciudad__nombre__icontains=value) |
             Q(ciudad__pais__nombre__icontains=value)
         )
-    
+
     def filter_by_destino(self, queryset, name, value):
         """
         Filtra hoteles que pertenecen a un destino específico.
         Los destinos tienen una relación ManyToMany con hoteles.
         """
         return queryset.filter(destinos__id=value).distinct()
+
+
+class TipoHabitacionFilter(django_filters.FilterSet):
+    nombre = django_filters.CharFilter(field_name='nombre', lookup_expr='icontains')
+    activo = django_filters.BooleanFilter(field_name='activo')
+    busqueda = django_filters.CharFilter(method='filter_busqueda')
+
+    class Meta:
+        model = TipoHabitacion
+        fields = ['nombre', 'activo', 'busqueda']
+
+    def filter_busqueda(self, queryset, name, value):
+        return queryset.filter(Q(nombre__icontains=value))

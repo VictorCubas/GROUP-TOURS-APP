@@ -34,7 +34,7 @@ class HabitacionSimpleSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Habitacion
-        fields = ["id", "numero", "tipo", "capacidad", "precio_noche", "hotel_nombre"]
+        fields = ["id", "tipo_habitacion", "precio_noche", "hotel_nombre"]
 
 
 class PasajeroSerializer(serializers.ModelSerializer):
@@ -1466,10 +1466,8 @@ class ReservaDetalleSerializer(serializers.ModelSerializer):
         habitacion = obj.habitacion
         return {
             'id': habitacion.id,
-            'numero': habitacion.numero,
-            'tipo': habitacion.tipo,
-            'tipo_display': habitacion.get_tipo_display(),
-            'capacidad': habitacion.capacidad,
+            'tipo_habitacion': habitacion.tipo_habitacion.nombre,
+            'capacidad': habitacion.tipo_habitacion.capacidad,
             'precio_noche': habitacion.precio_noche,
             'moneda': {
                 'id': habitacion.moneda.id,
