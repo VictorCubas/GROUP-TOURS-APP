@@ -27,3 +27,7 @@ typing_extensions==4.14.1
 tzdata==2023.3
 uvicorn==0.35.0
 whitenoise==6.9.0
+
+# Testing y datos dummy
+factory-boy==3.3.3
+faker==38.2.0

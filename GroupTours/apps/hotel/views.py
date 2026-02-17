@@ -241,6 +241,8 @@ class HotelViewSet(viewsets.ModelViewSet):
 
         else:
             # Para paquetes propios: calcular normalmente
+            from apps.paquete.utils import convertir_entre_monedas
+            
             for hotel in hoteles:
                 for habitacion in hotel.habitaciones.all():
                     # Obtener cupo

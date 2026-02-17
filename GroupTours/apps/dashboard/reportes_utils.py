@@ -71,11 +71,11 @@ def generar_pdf_movimientos_cajas(data, filtros, resumen):
     
     # Resumen
     resumen_text = f"""
-    <b>Total Ingresos:</b> ₲ {format_money(resumen['total_ingresos'])} 
-    ({format_usd(resumen.get('total_ingresos_usd'))} USD) | 
-    <b>Total Egresos:</b> ₲ {format_money(resumen['total_egresos'])} 
-    ({format_usd(resumen.get('total_egresos_usd'))} USD) | 
-    <b>Balance:</b> ₲ {format_money(resumen['balance'])} 
+    <b>Total Débitos:</b> ₲ {format_money(resumen['total_ingresos'])}
+    ({format_usd(resumen.get('total_ingresos_usd'))} USD) |
+    <b>Total Créditos:</b> ₲ {format_money(resumen['total_egresos'])}
+    ({format_usd(resumen.get('total_egresos_usd'))} USD) |
+    <b>Balance:</b> ₲ {format_money(resumen['balance'])}
     ({format_usd(resumen.get('balance_usd'))} USD)
     """
     story.append(Paragraph(resumen_text, styles['Normal']))
@@ -387,19 +387,19 @@ def generar_excel_movimientos_cajas(data, filtros, resumen):
     ws_resumen['B3'] = f"{filtros['fecha_desde']} a {filtros['fecha_hasta']}"
     
     # Resumen
-    ws_resumen['A5'] = "Total Ingresos (PYG):"
+    ws_resumen['A5'] = "Total Débitos (PYG):"
     ws_resumen['B5'] = float(resumen['total_ingresos'])
     ws_resumen['B5'].number_format = '#,##0.00'
-    
-    ws_resumen['A6'] = "Total Ingresos (USD):"
+
+    ws_resumen['A6'] = "Total Débitos (USD):"
     ws_resumen['B6'] = float(resumen.get('total_ingresos_usd') or 0)
     ws_resumen['B6'].number_format = '#,##0.00'
-    
-    ws_resumen['A7'] = "Total Egresos (PYG):"
+
+    ws_resumen['A7'] = "Total Créditos (PYG):"
     ws_resumen['B7'] = float(resumen['total_egresos'])
     ws_resumen['B7'].number_format = '#,##0.00'
-    
-    ws_resumen['A8'] = "Total Egresos (USD):"
+
+    ws_resumen['A8'] = "Total Créditos (USD):"
     ws_resumen['B8'] = float(resumen.get('total_egresos_usd') or 0)
     ws_resumen['B8'].number_format = '#,##0.00'
     

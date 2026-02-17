@@ -29,6 +29,10 @@ urlpatterns = [
     # Endpoint de cancelación
     path('<int:pk>/cancelar/', ReservaViewSet.as_view({'post': 'cancelar_reserva'}), name='reserva-cancelar'),
     
+    # Endpoints de activar/desactivar (soft delete)
+    path('<int:pk>/desactivar/', ReservaViewSet.as_view({'post': 'desactivar'}), name='reserva-desactivar'),
+    path('<int:pk>/activar/', ReservaViewSet.as_view({'post': 'activar'}), name='reserva-activar'),
+    
     # Endpoint de cancelación automática (sin ID de reserva)
     path('cancelacion-automatica/', ReservaViewSet.as_view({'get': 'cancelacion_automatica', 'post': 'cancelacion_automatica'}), name='reserva-cancelacion-automatica'),
 

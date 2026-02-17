@@ -342,6 +342,42 @@ class ComprobantePago(models.Model):
             # Si no existe la moneda USD, continuamos (caso excepcional)
             pass
 
+        # ========================================
+        # CONVERSIÓN AUTOMÁTICA DE MONEDAS
+        # ========================================
+        # Detectar la moneda del paquete y convertir a PYG si es necesario
+        monto_en_pyg = self.monto  # Por defecto, asumir que ya está en PYG
+        
+        if self.reserva and self.reserva.paquete:
+            paquete = self.reserva.paquete
+            
+            # Si el paquete tiene moneda definida y NO es Guaraníes
+            if paquete.moneda and paquete.moneda.codigo != 'PYG':
+                # Convertir el monto a Guaraníes
+                from apps.paquete.utils import convertir_entre_monedas
+                from apps.moneda.models import Moneda
+                
+                try:
+                    # Obtener la moneda Guaraníes
+                    moneda_pyg = Moneda.objects.get(codigo='PYG')
+                    
+                    # Convertir monto desde la moneda del paquete a Guaraníes
+                    monto_en_pyg = convertir_entre_monedas(
+                        monto=self.monto,
+                        moneda_origen=paquete.moneda,
+                        moneda_destino=moneda_pyg,
+                        fecha=self.fecha_pago.date()
+                    )
+                    
+                    # Log informativo para auditoría
+                    print(f"💱 Conversión automática: {self.monto} {paquete.moneda.codigo} → {monto_en_pyg} PYG")
+                    
+                except Exception as e:
+                    # Si falla la conversión, usar el monto original y registrar warning
+                    print(f"⚠️ Error en conversión de moneda para {self.numero_comprobante}: {str(e)}")
+                    print(f"   Usando monto original: {self.monto}")
+                    # monto_en_pyg ya tiene el valor por defecto (self.monto)
+
         # Determinar tipo de movimiento
         tipo_movimiento = 'egreso' if self.tipo == 'devolucion' else 'ingreso'
 
@@ -353,13 +389,13 @@ class ComprobantePago(models.Model):
         if self.observaciones:
             descripcion += f"\nObs: {self.observaciones}"
 
-        # Crear el movimiento de caja
+        # Crear el movimiento de caja con el monto convertido a PYG
         movimiento = MovimientoCaja.objects.create(
             apertura_caja=apertura,
             comprobante=self,
             tipo_movimiento=tipo_movimiento,
             concepto=concepto,
-            monto=self.monto,
+            monto=monto_en_pyg,  # ← Monto convertido a PYG
             metodo_pago=self.metodo_pago,
             referencia=self.numero_comprobante,
             descripcion=descripcion,
@@ -1376,6 +1412,133 @@ class Voucher(models.Model):
                 c.setFont(normal_font, 10)
             c.drawString(60, y, line)
             y -= 14
+
+        y -= 20
+
+        # ============================================================
+        # CONDICIONES DE CANCELACIÓN
+        # ============================================================
+        if y < 320:
+            c.showPage()
+            y = height - 50
+
+        c.setFont(subtitle_font, 12)
+        c.setFillColor(colors.HexColor("#e67e22"))
+        c.drawString(50, y, "CONDICIONES DE CANCELACIÓN")
+        c.setLineWidth(2)
+        c.setStrokeColor(colors.HexColor("#e67e22"))
+        c.line(50, y - 5, 260, y - 5)
+
+        y -= 25
+        c.setFont(normal_font, 9)
+        c.setFillColor(colors.black)
+
+        # Sección: Forma de devolución
+        c.setFont(title_font, 10)
+        c.drawString(50, y, "Forma de devolución:")
+        y -= 14
+        c.setFont(normal_font, 9)
+        
+        forma_devolucion_lines = [
+            "En caso de cancelación, el reintegro se gestiona exclusivamente mediante una Nota de",
+            "Crédito (NC) aplicable a futuras reservas. No se realizan devoluciones en efectivo."
+        ]
+        for line in forma_devolucion_lines:
+            if y < 100:
+                c.showPage()
+                y = height - 50
+                c.setFont(normal_font, 9)
+            c.drawString(55, y, line)
+            y -= 12
+
+        y -= 8
+
+        # Sección: Monto de la NC
+        c.setFont(title_font, 10)
+        c.setFillColor(colors.black)
+        c.drawString(50, y, "Monto de la NC:")
+        y -= 14
+        c.setFont(normal_font, 9)
+        
+        monto_nc_lines = [
+            "• La seña no es reembolsable, pero se convierte en una Nota de Crédito (NC) para ser",
+            "  utilizada en una próxima reserva.",
+            "• Los pagos posteriores a la seña también se acreditan en forma de NC.",
+            "",
+            "Ejemplo: Total abonado Gs. 4.000.000 → Seña Gs. 2.000.000 (NC) → Pagos adicionales",
+            "         Gs. 2.000.000 (NC)."
+        ]
+        for line in monto_nc_lines:
+            if y < 100:
+                c.showPage()
+                y = height - 50
+                c.setFont(normal_font, 9)
+            c.drawString(55, y, line)
+            y -= 12
+
+        y -= 8
+
+        # Sección: Vigencia
+        c.setFont(title_font, 10)
+        c.setFillColor(colors.black)
+        c.drawString(50, y, "Vigencia:")
+        y -= 14
+        c.setFont(normal_font, 9)
+        
+        vigencia_lines = [
+            "La NC posee un plazo de utilización. Para conocer la vigencia correspondiente, favor",
+            "comunicarse con nuestro equipo comercial."
+        ]
+        for line in vigencia_lines:
+            if y < 100:
+                c.showPage()
+                y = height - 50
+                c.setFont(normal_font, 9)
+            c.drawString(55, y, line)
+            y -= 12
+
+        y -= 8
+
+        # Sección: Proceso de cancelación
+        c.setFont(title_font, 10)
+        c.setFillColor(colors.black)
+        c.drawString(50, y, "Proceso de cancelación:")
+        y -= 14
+        c.setFont(normal_font, 9)
+        
+        c.drawString(55, y, f"• WhatsApp/Teléfono: {self.contacto_emergencia}")
+        y -= 12
+        c.drawString(55, y, "• Correo: reservas@grouptours.com.py")
+        y -= 12
+
+        y -= 10
+
+        # Sección: Disposición adicional (recuadro destacado)
+        if y < 120:
+            c.showPage()
+            y = height - 50
+
+        # Recuadro de fondo amarillo claro
+        c.setFillColor(colors.HexColor("#fff3cd"))
+        c.setStrokeColor(colors.HexColor("#e67e22"))
+        c.setLineWidth(1.5)
+        c.roundRect(50, y - 60, width - 100, 60, 5, fill=1, stroke=1)
+
+        c.setFont(title_font, 9)
+        c.setFillColor(colors.HexColor("#856404"))
+        c.drawString(60, y - 15, "Disposición adicional:")
+        y -= 15
+        
+        c.setFont(normal_font, 8)
+        c.setFillColor(colors.HexColor("#856404"))
+        disposicion_lines = [
+            "Si faltan menos de 15 días para la fecha del viaje y la reserva no se encuentra totalmente",
+            "abonada, los cupos podrán ser liberados. En todos los casos, los importes abonados se",
+            "aplicarán mediante NC."
+        ]
+        for line in disposicion_lines:
+            c.drawString(60, y - 15, line)
+            y -= 11
 
         y -= 20
 

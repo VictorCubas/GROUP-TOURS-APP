@@ -57,6 +57,10 @@ class HotelFilter(django_filters.FilterSet):
         )
 
     def filter_by_destino(self, queryset, name, value):
+        """
+        Filtra hoteles que pertenecen a un destino específico.
+        Los destinos tienen una relación ManyToMany con hoteles.
+        """
         return queryset.filter(destinos__id=value).distinct()
 
 

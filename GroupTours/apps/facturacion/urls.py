@@ -12,7 +12,7 @@ from .views import (
     # Endpoints para facturación dual
     generar_factura_total, generar_factura_pasajero,
     generar_todas_facturas_pasajeros_view, facturas_reserva,
-    facturas_pasajero,
+    facturas_pasajero, generar_factura_cancelacion,
     # Endpoints para Notas de Crédito
     generar_nota_credito_total_view, generar_nota_credito_parcial_view,
     notas_credito_de_factura,
@@ -49,6 +49,7 @@ urlpatterns = [
     path('generar-factura-total/<int:reserva_id>/', generar_factura_total, name='generar-factura-total'),
     path('generar-factura-pasajero/<int:pasajero_id>/', generar_factura_pasajero, name='generar-factura-pasajero'),
     path('generar-todas-facturas-pasajeros/<int:reserva_id>/', generar_todas_facturas_pasajeros_view, name='generar-todas-facturas-pasajeros'),
+    path('generar-factura-cancelacion/<int:reserva_id>/', generar_factura_cancelacion, name='generar-factura-cancelacion'),
 
     # Consultas de facturas por reserva/pasajero
     path('facturas-reserva/<int:reserva_id>/', facturas_reserva, name='facturas-reserva'),

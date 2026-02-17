@@ -28,81 +28,81 @@ def crear_usuarios_operativos(apps, schema_editor):
     TipoRemuneracion = apps.get_model('tipo_remuneracion', 'TipoRemuneracion')
     
     print("\n" + "="*80)
-    print("CREACIÓN DE USUARIOS OPERATIVOS: CAJERO Y CONTADOR")
+    print("CREACION DE USUARIOS OPERATIVOS: CAJERO Y CONTADOR")
     print("="*80 + "\n")
     
     # ===================================================================
     # 1. VERIFICAR DATOS MAESTROS NECESARIOS
     # ===================================================================
-    print("--- VERIFICACIÓN DE DATOS MAESTROS ---")
+    print("--- VERIFICACION DE DATOS MAESTROS ---")
     
     try:
         tipo_doc_ci = TipoDocumento.objects.get(nombre='CI')
-        print(f"✓ Tipo Documento 'CI' encontrado (ID: {tipo_doc_ci.id})")
+        print(f"[OK] Tipo Documento 'CI' encontrado (ID: {tipo_doc_ci.id})")
     except TipoDocumento.DoesNotExist:
-        print("✗ ERROR: No existe el Tipo Documento 'CI'")
-        print("  Crea primero el tipo de documento CI antes de ejecutar esta migración")
+        print("[ERROR] No existe el Tipo Documento 'CI'")
+        print("  Crea primero el tipo de documento CI antes de ejecutar esta migracion")
         return
     
     try:
         nacionalidad_py = Nacionalidad.objects.get(nombre='Paraguaya')
-        print(f"✓ Nacionalidad 'Paraguaya' encontrada (ID: {nacionalidad_py.id})")
+        print(f"[OK] Nacionalidad 'Paraguaya' encontrada (ID: {nacionalidad_py.id})")
     except Nacionalidad.DoesNotExist:
-        print("✗ ERROR: No existe la Nacionalidad 'Paraguaya'")
-        print("  Crea primero la nacionalidad antes de ejecutar esta migración")
+        print("[ERROR] No existe la Nacionalidad 'Paraguaya'")
+        print("  Crea primero la nacionalidad antes de ejecutar esta migracion")
         return
     
     try:
         puesto_cajero = Puesto.objects.get(nombre='Cajero')
-        print(f"✓ Puesto 'Cajero' encontrado (ID: {puesto_cajero.id})")
+        print(f"[OK] Puesto 'Cajero' encontrado (ID: {puesto_cajero.id})")
     except Puesto.DoesNotExist:
-        print("⚠ ADVERTENCIA: No existe el Puesto 'Cajero', creándolo...")
+        print("[AVISO] No existe el Puesto 'Cajero', creandolo...")
         puesto_cajero = Puesto.objects.create(
             nombre='Cajero',
-            descripcion='Responsable de la gestión de caja y operaciones de efectivo',
+            descripcion='Responsable de la gestion de caja y operaciones de efectivo',
             activo=True
         )
-        print(f"✓ Puesto 'Cajero' creado (ID: {puesto_cajero.id})")
+        print(f"[OK] Puesto 'Cajero' creado (ID: {puesto_cajero.id})")
     
     try:
         puesto_contador = Puesto.objects.get(nombre='Contador')
-        print(f"✓ Puesto 'Contador' encontrado (ID: {puesto_contador.id})")
+        print(f"[OK] Puesto 'Contador' encontrado (ID: {puesto_contador.id})")
     except Puesto.DoesNotExist:
-        print("⚠ ADVERTENCIA: No existe el Puesto 'Contador', creándolo...")
+        print("[AVISO] No existe el Puesto 'Contador', creandolo...")
         puesto_contador = Puesto.objects.create(
             nombre='Contador',
-            descripcion='Responsable de gestión financiera y contable',
+            descripcion='Responsable de gestion financiera y contable',
             activo=True
         )
-        print(f"✓ Puesto 'Contador' creado (ID: {puesto_contador.id})")
+        print(f"[OK] Puesto 'Contador' creado (ID: {puesto_contador.id})")
     
     try:
         tipo_rem_fijo = TipoRemuneracion.objects.get(nombre='Salario Fijo')
-        print(f"✓ Tipo Remuneración 'Salario Fijo' encontrado (ID: {tipo_rem_fijo.id})")
+        print(f"[OK] Tipo Remuneracion 'Salario Fijo' encontrado (ID: {tipo_rem_fijo.id})")
     except TipoRemuneracion.DoesNotExist:
-        print("⚠ ADVERTENCIA: No existe 'Salario Fijo', creándolo...")
+        print("[AVISO] No existe 'Salario Fijo', creandolo...")
         tipo_rem_fijo = TipoRemuneracion.objects.create(
             nombre='Salario Fijo',
-            descripcion='Remuneración fija mensual',
+            descripcion='Remuneracion fija mensual',
             activo=True
         )
-        print(f"✓ Tipo Remuneración 'Salario Fijo' creado (ID: {tipo_rem_fijo.id})")
+        print(f"[OK] Tipo Remuneracion 'Salario Fijo' creado (ID: {tipo_rem_fijo.id})")
     
     # Verificar roles
     try:
         rol_cajero = Rol.objects.get(nombre='Cajero')
-        print(f"✓ Rol 'Cajero' encontrado (ID: {rol_cajero.id})")
+        print(f"[OK] Rol 'Cajero' encontrado (ID: {rol_cajero.id})")
     except Rol.DoesNotExist:
-        print("✗ ERROR: No existe el Rol 'Cajero'")
-        print("  Ejecuta primero las migraciones de módulo para crear los roles")
+        print("[ERROR] No existe el Rol 'Cajero'")
+        print("  Ejecuta primero las migraciones de modulo para crear los roles")
         return
     
     try:
         rol_contador = Rol.objects.get(nombre='Contador')
-        print(f"✓ Rol 'Contador' encontrado (ID: {rol_contador.id})")
+        print(f"[OK] Rol 'Contador' encontrado (ID: {rol_contador.id})")
     except Rol.DoesNotExist:
-        print("✗ ERROR: No existe el Rol 'Contador'")
-        print("  Ejecuta primero las migraciones de módulo para crear los roles")
+        print("[ERROR] No existe el Rol 'Contador'")
+        print("  Ejecuta primero las migraciones de modulo para crear los roles")
         return
     
     # ===================================================================
@@ -112,7 +112,7 @@ def crear_usuarios_operativos(apps, schema_editor):
     
     # Verificar si ya existe
     if Usuario.objects.filter(username='gissellescurra').exists():
-        print("⚠ El usuario 'gissellescurra' ya existe, saltando creación...")
+        print("[AVISO] El usuario 'gissellescurra' ya existe, saltando creacion...")
     else:
         # Crear PersonaFisica
         persona_gisselle, created = PersonaFisica.objects.get_or_create(
@@ -123,7 +123,7 @@ def crear_usuarios_operativos(apps, schema_editor):
                 'apellido': 'Scurra',
                 'email': 'gisselle.scurra@grouptours.com',
                 'telefono': '0981234567',
-                'direccion': 'Asunción, Paraguay',
+                'direccion': 'Asuncion, Paraguay',
                 'fecha_nacimiento': date(1995, 3, 15),
                 'sexo': 'F',
                 'nacionalidad': nacionalidad_py,
@@ -132,9 +132,9 @@ def crear_usuarios_operativos(apps, schema_editor):
         )
         
         if created:
-            print(f"✓ Persona creada: {persona_gisselle.nombre} {persona_gisselle.apellido}")
+            print(f"[OK] Persona creada: {persona_gisselle.nombre} {persona_gisselle.apellido}")
         else:
-            print(f"✓ Persona ya existía: {persona_gisselle.nombre} {persona_gisselle.apellido}")
+            print(f"[OK] Persona ya existia: {persona_gisselle.nombre} {persona_gisselle.apellido}")
         
         # Crear Empleado
         empleado_gisselle, created = Empleado.objects.get_or_create(
@@ -150,9 +150,9 @@ def crear_usuarios_operativos(apps, schema_editor):
         )
         
         if created:
-            print(f"✓ Empleado creado: {empleado_gisselle.persona.nombre} - {empleado_gisselle.puesto.nombre}")
+            print(f"[OK] Empleado creado: {empleado_gisselle.persona.nombre} - {empleado_gisselle.puesto.nombre}")
         else:
-            print(f"✓ Empleado ya existía: {empleado_gisselle.persona.nombre} - {empleado_gisselle.puesto.nombre}")
+            print(f"[OK] Empleado ya existia: {empleado_gisselle.persona.nombre} - {empleado_gisselle.puesto.nombre}")
         
         # Crear Usuario
         usuario_gisselle = Usuario.objects.create(
@@ -175,31 +175,31 @@ def crear_usuarios_operativos(apps, schema_editor):
         # Asignar rol
         usuario_gisselle.roles.add(rol_cajero)
         
-        print(f"✓ Usuario creado: '{usuario_gisselle.username}' (ID: {usuario_gisselle.id})")
+        print(f"[OK] Usuario creado: '{usuario_gisselle.username}' (ID: {usuario_gisselle.id})")
         print(f"  - Email: {usuario_gisselle.email}")
-        print(f"  - Contraseña temporal: Cajero2025!")
+        print(f"  - Contrasena temporal: Cajero2025!")
         print(f"  - Rol asignado: {rol_cajero.nombre}")
-        print(f"  - Debe cambiar contraseña: Sí")
+        print(f"  - Debe cambiar contrasena: Si")
     
     # ===================================================================
-    # 3. CREAR USUARIO NICOLÁS LÓPEZ (CONTADOR)
+    # 3. CREAR USUARIO NICOLAS LOPEZ (CONTADOR)
     # ===================================================================
-    print("\n--- CREANDO USUARIO: NICOLÁS LÓPEZ (CONTADOR) ---")
+    print("\n--- CREANDO USUARIO: NICOLAS LOPEZ (CONTADOR) ---")
     
     # Verificar si ya existe
     if Usuario.objects.filter(username='nicolaslopez').exists():
-        print("⚠ El usuario 'nicolaslopez' ya existe, saltando creación...")
+        print("[AVISO] El usuario 'nicolaslopez' ya existe, saltando creacion...")
     else:
         # Crear PersonaFisica
         persona_nicolas, created = PersonaFisica.objects.get_or_create(
             documento='6789012',
             defaults={
                 'tipo_documento': tipo_doc_ci,
-                'nombre': 'Nicolás',
-                'apellido': 'López',
+                'nombre': 'Nicolas',
+                'apellido': 'Lopez',
                 'email': 'nicolas.lopez@grouptours.com',
                 'telefono': '0981234568',
-                'direccion': 'Asunción, Paraguay',
+                'direccion': 'Asuncion, Paraguay',
                 'fecha_nacimiento': date(1988, 7, 22),
                 'sexo': 'M',
                 'nacionalidad': nacionalidad_py,
@@ -208,9 +208,9 @@ def crear_usuarios_operativos(apps, schema_editor):
         )
         
         if created:
-            print(f"✓ Persona creada: {persona_nicolas.nombre} {persona_nicolas.apellido}")
+            print(f"[OK] Persona creada: {persona_nicolas.nombre} {persona_nicolas.apellido}")
         else:
-            print(f"✓ Persona ya existía: {persona_nicolas.nombre} {persona_nicolas.apellido}")
+            print(f"[OK] Persona ya existia: {persona_nicolas.nombre} {persona_nicolas.apellido}")
         
         # Crear Empleado
         empleado_nicolas, created = Empleado.objects.get_or_create(
@@ -226,15 +226,15 @@ def crear_usuarios_operativos(apps, schema_editor):
         )
         
         if created:
-            print(f"✓ Empleado creado: {empleado_nicolas.persona.nombre} - {empleado_nicolas.puesto.nombre}")
+            print(f"[OK] Empleado creado: {empleado_nicolas.persona.nombre} - {empleado_nicolas.puesto.nombre}")
         else:
-            print(f"✓ Empleado ya existía: {empleado_nicolas.persona.nombre} - {empleado_nicolas.puesto.nombre}")
+            print(f"[OK] Empleado ya existia: {empleado_nicolas.persona.nombre} - {empleado_nicolas.puesto.nombre}")
         
         # Crear Usuario
         usuario_nicolas = Usuario.objects.create(
             username='nicolaslopez',
-            first_name='Nicolás',
-            last_name='López',
+            first_name='Nicolas',
+            last_name='Lopez',
             email='nicolas.lopez@grouptours.com',
             empleado=empleado_nicolas,
             activo=True,
@@ -251,11 +251,11 @@ def crear_usuarios_operativos(apps, schema_editor):
         # Asignar rol
         usuario_nicolas.roles.add(rol_contador)
         
-        print(f"✓ Usuario creado: '{usuario_nicolas.username}' (ID: {usuario_nicolas.id})")
+        print(f"[OK] Usuario creado: '{usuario_nicolas.username}' (ID: {usuario_nicolas.id})")
         print(f"  - Email: {usuario_nicolas.email}")
-        print(f"  - Contraseña temporal: Contador2025!")
+        print(f"  - Contrasena temporal: Contador2025!")
         print(f"  - Rol asignado: {rol_contador.nombre}")
-        print(f"  - Debe cambiar contraseña: Sí")
+        print(f"  - Debe cambiar contrasena: Si")
     
     # ===================================================================
     # 4. RESUMEN FINAL
@@ -274,29 +274,29 @@ def crear_usuarios_operativos(apps, schema_editor):
         print(f"  - Empleado: {usuario.empleado.persona.nombre} {usuario.empleado.persona.apellido}")
         print(f"  - Puesto: {usuario.empleado.puesto.nombre}")
         print(f"  - Roles: {roles_nombres}")
-        print(f"  - Activo: {'Sí' if usuario.activo else 'No'}")
+        print(f"  - Activo: {'Si' if usuario.activo else 'No'}")
     
     print("\n" + "="*80)
-    print("✓ MIGRACIÓN COMPLETADA EXITOSAMENTE")
+    print("[OK] MIGRACION COMPLETADA EXITOSAMENTE")
     print("="*80 + "\n")
     
-    print("⚠ IMPORTANTE: Las contraseñas temporales son:")
+    print("[IMPORTANTE] Las contrasenas temporales son:")
     print("  - gissellescurra: Cajero2025!")
     print("  - nicolaslopez: Contador2025!")
-    print("  Ambos usuarios deberán cambiar su contraseña en el primer inicio de sesión.")
+    print("  Ambos usuarios deberan cambiar su contrasena en el primer inicio de sesion.")
     print()
 
 
 def revertir_usuarios_operativos(apps, schema_editor):
     """
-    Revierte la creación de usuarios operativos
+    Revierte la creacion de usuarios operativos
     """
     Usuario = apps.get_model('usuario', 'Usuario')
     Empleado = apps.get_model('empleado', 'Empleado')
     PersonaFisica = apps.get_model('persona', 'PersonaFisica')
     
     print("\n" + "="*80)
-    print("REVERSIÓN: ELIMINANDO USUARIOS OPERATIVOS")
+    print("REVERSION: ELIMINANDO USUARIOS OPERATIVOS")
     print("="*80 + "\n")
     
     usuarios_a_eliminar = ['gissellescurra', 'nicolaslopez']
@@ -310,21 +310,21 @@ def revertir_usuarios_operativos(apps, schema_editor):
             
             # Eliminar en orden inverso
             usuario.delete()
-            print(f"✓ Usuario '{username}' eliminado")
+            print(f"[OK] Usuario '{username}' eliminado")
             
             if empleado:
                 empleado.delete()
-                print(f"✓ Empleado asociado eliminado")
+                print(f"[OK] Empleado asociado eliminado")
             
             if persona:
                 persona.delete()
-                print(f"✓ Persona asociada eliminada")
+                print(f"[OK] Persona asociada eliminada")
                 
         except Usuario.DoesNotExist:
-            print(f"⚠ Usuario '{username}' no existe")
+            print(f"[AVISO] Usuario '{username}' no existe")
     
     print("\n" + "="*80)
-    print("✓ REVERSIÓN COMPLETADA")
+    print("[OK] REVERSION COMPLETADA")
     print("="*80 + "\n")
 
 

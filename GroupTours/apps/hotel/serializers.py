@@ -32,6 +32,9 @@ class HabitacionSerializer(serializers.ModelSerializer):
 
     # Campos adicionales para análisis de precios
     precio_calculado = serializers.SerializerMethodField(read_only=True)
+    
+    # Permitir id opcional para actualizaciones (no obligatorio para creación)
+    id = serializers.IntegerField(required=False, allow_null=True)
 
     class Meta:
         model = Habitacion
@@ -142,20 +145,34 @@ class HabitacionSerializer(serializers.ModelSerializer):
             # 1. Calcular precio por noche de esta habitación
             precio_noche = obj.precio_noche or Decimal('0')
 
-            # 1.1 Convertir precio_noche a la moneda de la salida si difieren
-            if obj.moneda != salida.moneda:
-                from apps.paquete.utils import convertir_entre_monedas
-                precio_noche = convertir_entre_monedas(
-                    monto=precio_noche,
-                    moneda_origen=obj.moneda,
-                    moneda_destino=salida.moneda,
-                    fecha=salida.fecha_salida
-                )
-
-            # 2. Precio base de la habitación por toda la estadía
+            # 2. Precio base de la habitación por toda la estadía (en su moneda original)
             precio_habitacion_total = precio_noche * noches
 
-            # 3. Sumar servicios incluidos en el paquete
+            # 3. Convertir precio de habitación a la moneda del paquete si es necesario
+            if obj.moneda and salida.moneda and obj.moneda != salida.moneda:
+                # Las monedas son diferentes, debemos convertir
+                from apps.paquete.utils import convertir_entre_monedas
+                from django.core.exceptions import ValidationError as DjangoValidationError
+                
+                try:
+                    precio_habitacion_total_convertido = convertir_entre_monedas(
+                        monto=precio_habitacion_total,
+                        moneda_origen=obj.moneda,
+                        moneda_destino=salida.moneda,
+                        fecha=salida.fecha_salida
+                    )
+                    # Actualizar también precio_noche convertido para mostrar
+                    precio_noche_convertido = precio_habitacion_total_convertido / noches if noches > 0 else Decimal('0')
+                except DjangoValidationError:
+                    # Si falla la conversión, usar el precio original (fallback)
+                    precio_habitacion_total_convertido = precio_habitacion_total
+                    precio_noche_convertido = precio_noche
+            else:
+                # Misma moneda o no hay moneda definida, usar directo
+                precio_habitacion_total_convertido = precio_habitacion_total
+                precio_noche_convertido = precio_noche
+
+            # 4. Sumar servicios incluidos en el paquete
             total_servicios = Decimal('0')
             for ps in salida.paquete.paquete_servicios.all():
                 if ps.precio and ps.precio > 0:
@@ -163,23 +180,23 @@ class HabitacionSerializer(serializers.ModelSerializer):
                 elif hasattr(ps.servicio, 'precio') and ps.servicio.precio:
                     total_servicios += ps.servicio.precio
 
-            # 4. Calcular costo base total (habitación + servicios)
-            costo_base_total = precio_habitacion_total + total_servicios
+            # 5. Calcular costo base total (habitación convertida + servicios)
+            costo_base_total = precio_habitacion_total_convertido + total_servicios
 
-            # 5. Aplicar ganancia sobre el costo total
+            # 6. Aplicar ganancia sobre el costo total
             ganancia = salida.ganancia or Decimal('0')
             if ganancia > 0:
                 factor = Decimal('1') + (ganancia / Decimal('100'))
             else:
                 factor = Decimal('1')
 
-            # 6. Precio de venta final
+            # 7. Precio de venta final
             precio_venta_final = costo_base_total * factor
 
             return {
                 'noches': noches,
-                'precio_noche': str(precio_noche),
-                'precio_habitacion_total': str(precio_habitacion_total),
+                'precio_noche': str(precio_noche_convertido),
+                'precio_habitacion_total': str(precio_habitacion_total_convertido),
                 'servicios_paquete': str(total_servicios),
                 'costo_base': str(costo_base_total),
                 'ganancia_porcentaje': str(ganancia),
@@ -254,10 +271,11 @@ class HotelSerializer(serializers.ModelSerializer):
         instance.servicios.set(servicios)
 
         # === ACTUALIZACIÓN INTELIGENTE DE HABITACIONES ===
-        # Actualiza/crea/desactiva según sea necesario (no elimina masivamente)
+        # En lugar de eliminar y recrear, actualizamos/creamos/desactivamos según sea necesario
         habitaciones_existentes = {hab.id: hab for hab in instance.habitaciones.all()}
         habitaciones_en_payload = []
 
+        # Procesar habitaciones del payload
         for hab_data in habitaciones_data:
             servicios_hab = hab_data.pop('servicios', [])
             hab_id = hab_data.pop('id', None)
@@ -277,17 +295,20 @@ class HotelSerializer(serializers.ModelSerializer):
                 if habitacion.id:
                     habitaciones_en_payload.append(habitacion.id)
 
-        # Habitaciones que ya no están en el payload
+        # Manejar habitaciones que ya no están en el payload
         for hab_id, habitacion in habitaciones_existentes.items():
             if hab_id not in habitaciones_en_payload:
+                # Verificar si tiene reservas asociadas
                 if habitacion.reservas.filter(activo=True).exists():
-                    # Soft delete: tiene reservas activas
+                    # Soft delete: marcar como inactiva en lugar de eliminar
                     habitacion.activo = False
                     habitacion.save()
                 else:
+                    # Sin reservas: eliminar físicamente
                     try:
                         habitacion.delete()
                     except Exception:
+                        # Si falla, hacer soft delete
                         habitacion.activo = False
                         habitacion.save()
 

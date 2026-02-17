@@ -153,6 +153,34 @@ class PrecioCatalogoHabitacionSerializer(serializers.ModelSerializer):
 # ---------------------------------------------------------------------
 # SalidaPaquete Serializer
 # ---------------------------------------------------------------------
+# ---------------------------------------------------------------------
+# Serializer simple para actualización de fechas de salida
+# ---------------------------------------------------------------------
+class SalidaPaqueteActualizarFechasSerializer(serializers.ModelSerializer):
+    """
+    Serializer específico para actualizar solo las fechas de una salida.
+    Útil para adelantar o retrasar fechas sin tener que actualizar todo el paquete.
+    """
+    class Meta:
+        model = SalidaPaquete
+        fields = ['id', 'fecha_salida', 'fecha_regreso']
+        read_only_fields = ['id']
+
+    def validate(self, attrs):
+        """
+        Valida que si hay fecha_regreso, sea posterior a fecha_salida
+        """
+        fecha_salida = attrs.get('fecha_salida', self.instance.fecha_salida if self.instance else None)
+        fecha_regreso = attrs.get('fecha_regreso', self.instance.fecha_regreso if self.instance else None)
+
+        if fecha_salida and fecha_regreso and fecha_regreso <= fecha_salida:
+            raise serializers.ValidationError({
+                "fecha_regreso": "La fecha de regreso debe ser posterior a la fecha de salida."
+            })
+
+        return attrs
+
+
 class SalidaPaqueteSerializer(serializers.ModelSerializer):
     id = serializers.IntegerField(read_only=True)
 
@@ -595,18 +623,73 @@ class PaqueteSerializer(serializers.ModelSerializer):
         Calcula el precio de venta mínimo para mostrar al cliente:
         Obtiene el menor precio_venta_total_min de todas las salidas activas.
         Este es el precio completo final (habitación + ganancia/comisión + servicios).
+        
+        IMPORTANTE: Los precios de servicios se asumen en USD y se convierten 
+        automáticamente a la moneda del paquete usando la cotización vigente.
         """
+        from apps.paquete.utils import convertir_entre_monedas
+        
         salidas = obj.salidas.filter(activo=True)
         if not salidas.exists():
             return Decimal("0")
 
-        # Calcular total de servicios del paquete
+        # Obtener la moneda USD para conversión de servicios
+        try:
+            moneda_usd = Moneda.objects.get(codigo='USD')
+        except Moneda.DoesNotExist:
+            logger.warning("⚠️ Moneda USD no encontrada. Los servicios no se convertirán.")
+            moneda_usd = None
+
+        # Calcular total de servicios del paquete (asumiendo que están en USD)
         total_servicios = Decimal("0")
         for ps in obj.paquete_servicios.all():
+            precio_servicio = Decimal("0")
+            
+            # Obtener el precio del servicio (prioridad: precio override > precio base)
             if ps.precio and ps.precio > 0:
-                total_servicios += ps.precio
+                precio_servicio = ps.precio
             elif hasattr(ps.servicio, "precio") and ps.servicio.precio:
-                total_servicios += ps.servicio.precio
+                precio_servicio = ps.servicio.precio
+            
+            # ✨ CONVERSIÓN USD → Moneda del paquete
+            if precio_servicio > 0 and moneda_usd:
+                # Si el paquete NO está en USD, convertir el servicio
+                if obj.moneda.codigo != 'USD':
+                    # Usar la fecha de la primera salida para la cotización
+                    salida_ref = salidas.first()
+                    if salida_ref and salida_ref.fecha_salida:
+                        try:
+                            precio_convertido = convertir_entre_monedas(
+                                precio_servicio,
+                                moneda_usd,      # FROM: USD (servicios)
+                                obj.moneda,      # TO: Moneda del paquete (ej: PYG)
+                                salida_ref.fecha_salida
+                            )
+                            total_servicios += precio_convertido
+                            logger.debug(
+                                f"💱 Servicio '{ps.servicio.nombre}': {precio_servicio} USD "
+                                f"→ {precio_convertido} {obj.moneda.codigo}"
+                            )
+                        except Exception as e:
+                            # Si falla la conversión, no sumar el servicio
+                            logger.warning(
+                                f"⚠️ Error convirtiendo servicio '{ps.servicio.nombre}' "
+                                f"({precio_servicio} USD → {obj.moneda.codigo}): {e}. "
+                                f"Servicio no incluido en el precio."
+                            )
+                    else:
+                        # Sin fecha de salida, sumar sin conversión como fallback
+                        total_servicios += precio_servicio
+                        logger.warning(
+                            f"⚠️ Sin fecha de salida para conversión de servicio '{ps.servicio.nombre}'. "
+                            f"Usando precio sin convertir: {precio_servicio}"
+                        )
+                else:
+                    # Si el paquete ya está en USD, sumar directamente
+                    total_servicios += precio_servicio
+            elif precio_servicio > 0:
+                # Si no hay moneda USD configurada, sumar sin conversión
+                total_servicios += precio_servicio
 
         # Obtener todos los precio_venta_sugerido_min y sumarles los servicios
         precios_venta_totales = []
