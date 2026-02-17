@@ -8,11 +8,12 @@ class HotelFilter(django_filters.FilterSet):
     # Filtros directos
     nombre = django_filters.CharFilter(field_name='nombre', lookup_expr='icontains')
     activo = django_filters.BooleanFilter(field_name='activo')
+    ciudad_id = django_filters.NumberFilter(field_name='ciudad__id', lookup_expr='exact')
     ciudad = django_filters.CharFilter(field_name='ciudad__nombre', lookup_expr='icontains')
     pais = django_filters.CharFilter(field_name='ciudad__pais__nombre', lookup_expr='icontains')
     cadena = django_filters.CharFilter(field_name='cadena__nombre', lookup_expr='icontains')
     estrellas = django_filters.NumberFilter(field_name='estrellas', lookup_expr='exact')
-    destino_id = django_filters.NumberFilter(field_name='destinos__id', lookup_expr='exact')
+    destino_id = django_filters.NumberFilter(method='filter_by_destino')
 
     # Filtro unificado
     busqueda = django_filters.CharFilter(method='filter_busqueda')
@@ -31,7 +32,7 @@ class HotelFilter(django_filters.FilterSet):
     class Meta:
         model = Hotel
         fields = [
-            'nombre', 'activo', 'ciudad', 
+            'nombre', 'activo', 'ciudad_id', 'ciudad',
             'pais', 'cadena', 'busqueda',
             'fecha_creacion_desde', 'fecha_creacion_hasta',
             'estrellas', 'destino_id'
@@ -54,6 +55,9 @@ class HotelFilter(django_filters.FilterSet):
             Q(ciudad__nombre__icontains=value) |
             Q(ciudad__pais__nombre__icontains=value)
         )
+
+    def filter_by_destino(self, queryset, name, value):
+        return queryset.filter(destinos__id=value).distinct()
 
 
 class TipoHabitacionFilter(django_filters.FilterSet):

@@ -255,7 +255,7 @@ class HotelViewSet(viewsets.ModelViewSet):
 
                     # Calcular precio (convertir a moneda de la salida si difieren)
                     precio_noche = habitacion.precio_noche or Decimal('0')
-                    if habitacion.moneda != salida.moneda:
+                    if habitacion.moneda and salida.moneda and habitacion.moneda != salida.moneda:
                         from apps.paquete.utils import convertir_entre_monedas
                         precio_noche = convertir_entre_monedas(
                             monto=precio_noche,
