@@ -32,7 +32,7 @@ class Migration(migrations.Migration):
                             WHERE table_name = 'usuario' AND column_name = 'rol_id'
                         ) THEN
                             ALTER TABLE usuario ADD COLUMN rol_id bigint NULL
-                                REFERENCES rol(id) DEFERRABLE INITIALLY DEFERRED;
+                                REFERENCES "Rol"(id) DEFERRABLE INITIALLY DEFERRED;
                         ELSE
                             ALTER TABLE usuario ALTER COLUMN rol_id DROP NOT NULL;
                         END IF;
