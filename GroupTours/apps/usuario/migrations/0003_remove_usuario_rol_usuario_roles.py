@@ -11,13 +11,50 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RemoveField(
-            model_name='usuario',
-            name='rol',
-        ),
-        migrations.AddField(
-            model_name='usuario',
-            name='roles',
-            field=models.ManyToManyField(help_text='Roles asignado al usuario', related_name='usuarios', to='rol.rol'),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunSQL(
+                    sql="""
+                    DO $$
+                    BEGIN
+                        -- Eliminar rol_id si existe
+                        IF EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name = 'usuario' AND column_name = 'rol_id'
+                        ) THEN
+                            ALTER TABLE usuario DROP COLUMN rol_id;
+                        END IF;
+
+                        -- Crear tabla usuario_roles solo si no existe
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.tables
+                            WHERE table_name = 'usuario_roles'
+                        ) THEN
+                            CREATE TABLE usuario_roles (
+                                id bigserial NOT NULL PRIMARY KEY,
+                                usuario_id bigint NOT NULL
+                                    REFERENCES usuario(id) DEFERRABLE INITIALLY DEFERRED,
+                                rol_id bigint NOT NULL
+                                    REFERENCES "Rol"(id) DEFERRABLE INITIALLY DEFERRED
+                            );
+                            CREATE UNIQUE INDEX usuario_roles_usuario_id_rol_id
+                                ON usuario_roles (usuario_id, rol_id);
+                        END IF;
+                    END $$;
+                    """,
+                    reverse_sql=migrations.RunSQL.noop,
+                ),
+            ],
+            state_operations=[
+                migrations.RemoveField(
+                    model_name='usuario',
+                    name='rol',
+                ),
+                migrations.AddField(
+                    model_name='usuario',
+                    name='roles',
+                    field=models.ManyToManyField(help_text='Roles asignado al usuario', related_name='usuarios', to='rol.rol'),
+                ),
+            ],
         ),
     ]
