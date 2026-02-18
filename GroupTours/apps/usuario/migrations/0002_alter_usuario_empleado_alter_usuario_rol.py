@@ -18,9 +18,35 @@ class Migration(migrations.Migration):
             name='empleado',
             field=models.OneToOneField(blank=True, help_text='Empleado asociado a este usuario del sistema', null=True, on_delete=django.db.models.deletion.CASCADE, related_name='usuario', to='empleado.empleado'),
         ),
-        migrations.AlterField(
-            model_name='usuario',
-            name='rol',
-            field=models.ForeignKey(blank=True, help_text='Rol asignado al usuario', null=True, on_delete=django.db.models.deletion.PROTECT, related_name='usuarios', to='rol.rol'),
+        # Usamos SeparateDatabaseAndState porque en algunos entornos (ej. Render) la columna
+        # rol_id puede no existir si 0001_initial fue aplicada antes de que se agregara el campo.
+        # El SQL condicional crea la columna si no existe, o la hace nullable si ya existe.
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunSQL(
+                    sql="""
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name = 'usuario' AND column_name = 'rol_id'
+                        ) THEN
+                            ALTER TABLE usuario ADD COLUMN rol_id bigint NULL
+                                REFERENCES rol(id) DEFERRABLE INITIALLY DEFERRED;
+                        ELSE
+                            ALTER TABLE usuario ALTER COLUMN rol_id DROP NOT NULL;
+                        END IF;
+                    END $$;
+                    """,
+                    reverse_sql=migrations.RunSQL.noop,
+                ),
+            ],
+            state_operations=[
+                migrations.AlterField(
+                    model_name='usuario',
+                    name='rol',
+                    field=models.ForeignKey(blank=True, help_text='Rol asignado al usuario', null=True, on_delete=django.db.models.deletion.PROTECT, related_name='usuarios', to='rol.rol'),
+                ),
+            ],
         ),
     ]
