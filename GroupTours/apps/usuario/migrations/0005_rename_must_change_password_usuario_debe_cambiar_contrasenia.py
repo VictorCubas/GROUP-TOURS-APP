@@ -10,9 +10,43 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RenameField(
-            model_name='usuario',
-            old_name='must_change_password',
-            new_name='debe_cambiar_contrasenia',
+        # Maneja tres casos posibles en la DB:
+        # 1. Solo must_change_password existe → renombrar a debe_cambiar_contrasenia (flujo normal)
+        # 2. Ambas columnas existen → eliminar must_change_password (debe_cambiar_contrasenia ya es la target)
+        # 3. Solo debe_cambiar_contrasenia existe → no hacer nada (ya está en estado final)
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunSQL(
+                    sql="""
+                    DO $$
+                    BEGIN
+                        IF EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name = 'usuario' AND column_name = 'must_change_password'
+                        ) THEN
+                            IF EXISTS (
+                                SELECT 1 FROM information_schema.columns
+                                WHERE table_name = 'usuario' AND column_name = 'debe_cambiar_contrasenia'
+                            ) THEN
+                                -- Ambas existen: eliminar la temporal
+                                ALTER TABLE usuario DROP COLUMN must_change_password;
+                            ELSE
+                                -- Solo existe must_change_password: renombrar
+                                ALTER TABLE usuario RENAME COLUMN must_change_password TO debe_cambiar_contrasenia;
+                            END IF;
+                        END IF;
+                        -- Si solo debe_cambiar_contrasenia existe: no hacer nada
+                    END $$;
+                    """,
+                    reverse_sql=migrations.RunSQL.noop,
+                ),
+            ],
+            state_operations=[
+                migrations.RenameField(
+                    model_name='usuario',
+                    old_name='must_change_password',
+                    new_name='debe_cambiar_contrasenia',
+                ),
+            ],
         ),
     ]

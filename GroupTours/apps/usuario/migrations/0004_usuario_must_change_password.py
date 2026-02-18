@@ -10,9 +10,34 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AddField(
-            model_name='usuario',
-            name='must_change_password',
-            field=models.BooleanField(default=False),
+        # Agrega must_change_password solo si ni ella ni debe_cambiar_contrasenia existen.
+        # Si debe_cambiar_contrasenia ya existe en la DB, se omite (0005 lo manejará).
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunSQL(
+                    sql="""
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name = 'usuario' AND column_name = 'must_change_password'
+                        ) AND NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name = 'usuario' AND column_name = 'debe_cambiar_contrasenia'
+                        ) THEN
+                            ALTER TABLE usuario ADD COLUMN must_change_password boolean NOT NULL DEFAULT false;
+                        END IF;
+                    END $$;
+                    """,
+                    reverse_sql=migrations.RunSQL.noop,
+                ),
+            ],
+            state_operations=[
+                migrations.AddField(
+                    model_name='usuario',
+                    name='must_change_password',
+                    field=models.BooleanField(default=False),
+                ),
+            ],
         ),
     ]
