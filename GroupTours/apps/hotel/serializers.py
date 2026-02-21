@@ -25,6 +25,7 @@ class TipoHabitacionSerializer(serializers.ModelSerializer):
 class HabitacionSerializer(serializers.ModelSerializer):
     moneda_nombre = serializers.CharField(source='moneda.nombre', read_only=True)
     moneda_simbolo = serializers.CharField(source='moneda.simbolo', read_only=True)
+    moneda_codigo = serializers.CharField(source='moneda.codigo', read_only=True)
     tipo_habitacion_nombre = serializers.CharField(source='tipo_habitacion.nombre', read_only=True)
     capacidad = serializers.IntegerField(source='tipo_habitacion.capacidad', read_only=True)
     cupo = serializers.SerializerMethodField()
@@ -40,7 +41,7 @@ class HabitacionSerializer(serializers.ModelSerializer):
         model = Habitacion
         fields = [
             'id', 'hotel', 'tipo_habitacion', 'tipo_habitacion_nombre', 'capacidad',
-            'precio_noche', 'moneda', 'moneda_nombre', 'moneda_simbolo', 'servicios',
+            'precio_noche', 'moneda', 'moneda_nombre', 'moneda_simbolo', 'moneda_codigo', 'servicios',
             'cupo', 'precio_calculado', 'activo', 'fecha_creacion', 'fecha_modificacion'
         ]
         read_only_fields = ['fecha_creacion', 'fecha_modificacion', 'hotel']
