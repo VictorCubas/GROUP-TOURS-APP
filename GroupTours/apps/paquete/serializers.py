@@ -153,15 +153,35 @@ class PrecioCatalogoHabitacionSerializer(serializers.ModelSerializer):
 # ---------------------------------------------------------------------
 # SalidaPaquete Serializer
 # ---------------------------------------------------------------------
+class SalidaPaqueteActualizarFechasSerializer(serializers.ModelSerializer):
+    """
+    Serializer específico para actualizar solo las fechas de una salida.
+    """
+    class Meta:
+        model = SalidaPaquete
+        fields = ['id', 'fecha_salida', 'fecha_regreso']
+        read_only_fields = ['id']
+
+    def validate(self, attrs):
+        fecha_salida = attrs.get('fecha_salida', self.instance.fecha_salida if self.instance else None)
+        fecha_regreso = attrs.get('fecha_regreso', self.instance.fecha_regreso if self.instance else None)
+        if fecha_salida and fecha_regreso and fecha_regreso <= fecha_salida:
+            raise serializers.ValidationError({
+                "fecha_regreso": "La fecha de regreso debe ser posterior a la fecha de salida."
+            })
+        return attrs
+
+
 class SalidaPaqueteSerializer(serializers.ModelSerializer):
     id = serializers.IntegerField(read_only=True)
 
-    moneda_id = serializers.PrimaryKeyRelatedField(
-        queryset=Moneda.objects.all(),
-        source="moneda",
+    paquete_id = serializers.PrimaryKeyRelatedField(
+        queryset=Paquete.objects.all(),
+        source="paquete",
         write_only=True,
         required=True
     )
+
     temporada_id = serializers.PrimaryKeyRelatedField(
         queryset=Temporada.objects.all(),
         source="temporada",
@@ -205,10 +225,11 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
         model = SalidaPaquete
         fields = [
             "id",
+            "paquete_id",
+            "codigo",
             "fecha_salida",
             "fecha_regreso",
             "moneda",
-            "moneda_id",
             "temporada",
             "temporada_id",
             "precio_actual",
@@ -323,6 +344,264 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
             }
         except Exception:
             return None
+
+    # ========== CREATE ==========
+
+    def create(self, validated_data):
+        from .models import create_salida_paquete
+
+        paquete = validated_data.pop("paquete")
+        hoteles = validated_data.pop("hoteles", [])
+        temporada = validated_data.pop("temporada", None)
+        habitacion_fija = validated_data.pop("habitacion_fija", None)
+        activo = validated_data.get("activo", True)
+
+        # Estos campos son read_only en el serializer, se leen del raw data
+        raw = self.initial_data
+        cupos_habitaciones_data = raw.get("cupos_habitaciones", [])
+        precios_catalogo_hoteles_data = raw.get("precios_catalogo_hoteles", [])
+        precios_catalogo_data = raw.get("precios_catalogo", [])
+
+        data = {
+            "paquete_id": paquete.id,
+            "moneda_id": paquete.moneda_id,
+            "hoteles_ids": [h.id for h in hoteles],
+            "fecha_salida": validated_data["fecha_salida"],
+            "fecha_regreso": validated_data.get("fecha_regreso"),
+            "cupo": validated_data.get("cupo", 0),
+            "senia": validated_data.get("senia"),
+            "ganancia": validated_data.get("ganancia"),
+            "comision": validated_data.get("comision"),
+        }
+
+        salida = create_salida_paquete(data)
+
+        # Cupos por habitación (solo paquetes propios)
+        if paquete.propio:
+            for cupo_item in cupos_habitaciones_data:
+                habitacion_obj = self._resolve_fk_instance(
+                    cupo_item.get("habitacion") or cupo_item.get("habitacion_id"), Habitacion
+                )
+                if habitacion_obj:
+                    CupoHabitacionSalida.objects.create(
+                        salida=salida,
+                        habitacion=habitacion_obj,
+                        cupo=cupo_item.get("cupo", 0)
+                    )
+
+        # Precios de catálogo por hotel (paquetes de distribuidora)
+        for precio_item in precios_catalogo_hoteles_data:
+            hotel_obj = self._resolve_fk_instance(
+                precio_item.get("hotel") or precio_item.get("hotel_id"), Hotel
+            )
+            if hotel_obj:
+                precio_catalogo_hotel = Decimal(precio_item.get("precio_catalogo", 0) or 0)
+                PrecioCatalogoHotel.objects.create(
+                    salida=salida,
+                    hotel=hotel_obj,
+                    precio_catalogo=precio_catalogo_hotel
+                )
+                # Crear precio individual para cada habitación activa del hotel
+                for habitacion in Habitacion.objects.filter(hotel=hotel_obj, activo=True):
+                    PrecioCatalogoHabitacion.objects.get_or_create(
+                        salida=salida,
+                        habitacion=habitacion,
+                        defaults={"precio_catalogo": precio_catalogo_hotel}
+                    )
+
+        # Precios de catálogo por habitación (pueden sobrescribir los del hotel)
+        for precio_item in precios_catalogo_data:
+            habitacion_obj = self._resolve_fk_instance(
+                precio_item.get("habitacion") or precio_item.get("habitacion_id"), Habitacion
+            )
+            if habitacion_obj:
+                PrecioCatalogoHabitacion.objects.update_or_create(
+                    salida=salida,
+                    habitacion=habitacion_obj,
+                    defaults={"precio_catalogo": Decimal(precio_item.get("precio_catalogo", 0) or 0)}
+                )
+
+        update_fields = []
+        if temporada:
+            salida.temporada = temporada
+            update_fields.append("temporada")
+        if habitacion_fija:
+            salida.habitacion_fija = habitacion_fija
+            update_fields.append("habitacion_fija")
+        if not activo:
+            salida.activo = False
+            update_fields.append("activo")
+        if update_fields:
+            salida.save(update_fields=update_fields)
+
+        return salida
+
+    def _resolve_fk_instance(self, pk, model_class):
+        if pk is None:
+            return None
+        if isinstance(pk, model_class):
+            return pk
+        try:
+            return model_class.objects.get(pk=pk)
+        except model_class.DoesNotExist:
+            return None
+
+
+# ---------------------------------------------------------------------
+# SalidaPaquete - Serializer liviano para LISTADO
+# ---------------------------------------------------------------------
+class SalidaPaqueteListSerializer(serializers.ModelSerializer):
+    """
+    Serializer liviano para el listado de salidas.
+    Incluye datos de paquete, moneda, cupos y stats de reservas.
+    Los campos cupo_total y cupo_disponible se toman de anotaciones en el queryset.
+    """
+    paquete_id = serializers.IntegerField(source="paquete.id", read_only=True)
+    paquete_nombre = serializers.CharField(source="paquete.nombre", read_only=True)
+    paquete_propio = serializers.BooleanField(source="paquete.propio", read_only=True)
+    destino = serializers.SerializerMethodField()
+    moneda = MonedaSimpleSerializer(read_only=True)
+
+    cupo_disponible = serializers.IntegerField(source="cupo", read_only=True)
+    cupo_total = serializers.SerializerMethodField()
+    total_reservas = serializers.SerializerMethodField()
+    dias_hasta_salida = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SalidaPaquete
+        fields = [
+            "id",
+            "codigo",
+            "paquete_id",
+            "paquete_nombre",
+            "paquete_propio",
+            "destino",
+            "moneda",
+            "fecha_salida",
+            "fecha_regreso",
+            "dias_hasta_salida",
+            "precio_actual",
+            "precio_final",
+            "precio_venta_sugerido_min",
+            "precio_venta_sugerido_max",
+            "senia",
+            "cupo_disponible",
+            "cupo_total",
+            "total_reservas",
+            "activo",
+        ]
+
+    def get_destino(self, obj):
+        try:
+            destino = obj.paquete.destino
+            return {
+                "id": destino.id,
+                "ciudad": destino.ciudad.nombre if destino.ciudad else None,
+                "pais": destino.ciudad.pais.nombre if destino.ciudad and destino.ciudad.pais else None,
+            }
+        except Exception:
+            return None
+
+    def get_cupo_total(self, obj):
+        """Cupo original = cupo disponible + pasajeros de reservas activas no canceladas."""
+        cupo_disponible = obj.cupo or 0
+        cupo_ocupado = sum(
+            r.cantidad_pasajeros or 0
+            for r in obj.reservas.filter(activo=True).exclude(estado="cancelada")
+        )
+        return cupo_disponible + cupo_ocupado
+
+    def get_total_reservas(self, obj):
+        return obj.reservas.filter(activo=True).exclude(estado="cancelada").count()
+
+    def get_dias_hasta_salida(self, obj):
+        if not obj.fecha_salida:
+            return None
+        from django.utils.timezone import now
+        return (obj.fecha_salida - now().date()).days
+
+
+# ---------------------------------------------------------------------
+# SalidaPaquete - Serializer completo para DETALLE (con reservas + pasajeros)
+# ---------------------------------------------------------------------
+class ReservaPasajeroDetalleSerializer(serializers.Serializer):
+    """Serializer liviano para pasajero dentro del detalle de salida."""
+    id = serializers.IntegerField()
+    nombre = serializers.CharField(source="persona.nombre")
+    apellido = serializers.CharField(source="persona.apellido")
+    documento = serializers.CharField(source="persona.documento")
+    tipo_documento = serializers.CharField(
+        source="persona.tipo_documento.nombre", default=None
+    )
+    fecha_nacimiento = serializers.DateField(source="persona.fecha_nacimiento", default=None)
+    es_titular = serializers.BooleanField()
+    por_asignar = serializers.BooleanField()
+    precio_asignado = serializers.DecimalField(max_digits=12, decimal_places=2, allow_null=True)
+    monto_pagado = serializers.DecimalField(max_digits=12, decimal_places=2)
+    saldo_pendiente = serializers.DecimalField(max_digits=12, decimal_places=2)
+    tiene_sena_pagada = serializers.BooleanField()
+    esta_totalmente_pagado = serializers.BooleanField()
+    ticket_numero = serializers.CharField(allow_null=True)
+    voucher_codigo = serializers.CharField(allow_null=True)
+
+
+class ReservaDetalleEnSalidaSerializer(serializers.Serializer):
+    """Serializer para reserva dentro del detalle de salida, incluye pasajeros."""
+    id = serializers.IntegerField()
+    codigo = serializers.CharField()
+    estado = serializers.CharField()
+    estado_display = serializers.CharField()
+    cantidad_pasajeros = serializers.IntegerField(allow_null=True)
+    fecha_reserva = serializers.DateTimeField()
+    precio_unitario = serializers.DecimalField(max_digits=12, decimal_places=2, allow_null=True)
+    monto_pagado = serializers.DecimalField(max_digits=12, decimal_places=2)
+    saldo_pendiente = serializers.DecimalField(max_digits=12, decimal_places=2)
+    costo_total_estimado = serializers.DecimalField(max_digits=12, decimal_places=2)
+    modalidad_facturacion = serializers.CharField(allow_null=True)
+    condicion_pago = serializers.CharField(allow_null=True)
+    observacion = serializers.CharField(allow_null=True)
+    titular = serializers.SerializerMethodField()
+    pasajeros = serializers.SerializerMethodField()
+
+    def get_titular(self, obj):
+        if not obj.titular:
+            return None
+        t = obj.titular
+        return {
+            "id": t.id,
+            "nombre": t.nombre,
+            "apellido": t.apellido,
+            "documento": t.documento,
+            "email": t.email,
+            "telefono": t.telefono,
+        }
+
+    def get_pasajeros(self, obj):
+        pasajeros = obj.pasajeros.select_related(
+            "persona", "persona__tipo_documento"
+        ).all()
+        return ReservaPasajeroDetalleSerializer(pasajeros, many=True).data
+
+
+class SalidaPaqueteDetalleSerializer(SalidaPaqueteSerializer):
+    """
+    Extiende SalidaPaqueteSerializer con el listado completo de reservas activas
+    (con titular y pasajeros). Solo se usa en el endpoint de detalle (retrieve).
+    """
+    reservas = serializers.SerializerMethodField()
+
+    class Meta(SalidaPaqueteSerializer.Meta):
+        fields = SalidaPaqueteSerializer.Meta.fields + ["codigo", "reservas"]
+
+    def get_reservas(self, obj):
+        reservas_activas = obj.reservas.filter(activo=True).exclude(
+            estado="cancelada"
+        ).select_related(
+            "titular", "habitacion", "habitacion__tipo_habitacion"
+        ).prefetch_related(
+            "pasajeros__persona__tipo_documento"
+        ).order_by("fecha_reserva")
+        return ReservaDetalleEnSalidaSerializer(reservas_activas, many=True).data
 
 
 # ---------------------------------------------------------------------
