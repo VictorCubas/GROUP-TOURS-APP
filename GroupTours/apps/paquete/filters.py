@@ -1,6 +1,6 @@
 import django_filters
 from django.db.models import Q
-from .models import Paquete
+from .models import Paquete, SalidaPaquete
 from django.utils.timezone import make_aware
 from datetime import datetime, timedelta
 
@@ -108,5 +108,63 @@ class PaqueteFilter(django_filters.FilterSet):
         # Si detectamos un ID de paquete, agregarlo a la búsqueda
         if paquete_id is not None:
             q_filters |= Q(id=paquete_id)
-        
+
         return queryset.filter(q_filters)
+
+
+# ---------------------------------------------------------------------
+# FILTRO DE SALIDAS DE PAQUETE
+# ---------------------------------------------------------------------
+class SalidaFilter(django_filters.FilterSet):
+    # Filtros directos
+    paquete_id = django_filters.NumberFilter(field_name="paquete_id")
+    paquete = django_filters.CharFilter(
+        field_name="paquete__nombre",
+        lookup_expr="icontains",
+        help_text="Filtrar por nombre del paquete"
+    )
+    activo = django_filters.BooleanFilter(field_name="activo")
+
+    # Filtro por código de reserva (salidas que tienen esa reserva)
+    reserva_codigo = django_filters.CharFilter(
+        field_name="reservas__codigo",
+        lookup_expr="icontains",
+        help_text="Filtrar por código de reserva asociada"
+    )
+
+    # Rango de fechas de salida
+    fecha_salida_desde = django_filters.DateFilter(
+        field_name="fecha_salida",
+        lookup_expr="gte",
+        help_text="Fecha de salida desde (YYYY-MM-DD)"
+    )
+    fecha_salida_hasta = django_filters.DateFilter(
+        field_name="fecha_salida",
+        lookup_expr="lte",
+        help_text="Fecha de salida hasta (YYYY-MM-DD)"
+    )
+
+    # Búsqueda unificada: nombre de paquete, código de salida o código de reserva
+    busqueda = django_filters.CharFilter(method="filter_busqueda")
+
+    class Meta:
+        model = SalidaPaquete
+        fields = [
+            "paquete_id",
+            "paquete",
+            "activo",
+            "reserva_codigo",
+            "fecha_salida_desde",
+            "fecha_salida_hasta",
+            "busqueda",
+        ]
+
+    def filter_busqueda(self, queryset, name, value):
+        """
+        Busca por nombre del paquete, código de salida o código de reserva.
+        """
+        return queryset.filter(
+            Q(paquete__nombre__icontains=value) |
+            Q(codigo__icontains=value) |
+            Q(reservas__codigo__icontains=value)
+        ).distinct()
