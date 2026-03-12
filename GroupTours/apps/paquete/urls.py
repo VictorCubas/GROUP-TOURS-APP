@@ -3,7 +3,6 @@ from rest_framework.urlpatterns import format_suffix_patterns
 from .views import PaqueteViewSet, SalidaPaqueteViewSet
 
 urlpatterns = [
-    # Paquetes
     path('', PaqueteViewSet.as_view({'get': 'list', 'post': 'create'}), name='paquete'),
     path('<int:pk>/', PaqueteViewSet.as_view({'get': 'retrieve', 'put': 'update', 'patch': 'partial_update'}), name='paquete-detail'),
     path('resumen/', PaqueteViewSet.as_view({'get': 'resumen'}), name='paquete-resumen'),   
@@ -11,8 +10,11 @@ urlpatterns = [
     
     # Salidas de Paquete
     path('salidas/', SalidaPaqueteViewSet.as_view({'get': 'list', 'post': 'create'}), name='salida-paquete-list'),
+    path('salidas/resumen/', SalidaPaqueteViewSet.as_view({'get': 'resumen'}), name='salida-paquete-resumen'),
     path('salidas/<int:pk>/', SalidaPaqueteViewSet.as_view({'get': 'retrieve', 'put': 'update', 'patch': 'partial_update', 'delete': 'destroy'}), name='salida-paquete-detail'),
     path('salidas/<int:pk>/actualizar-fechas/', SalidaPaqueteViewSet.as_view({'patch': 'actualizar_fechas'}), name='salida-paquete-actualizar-fechas'),
+    path('salidas/<int:pk>/pasajeros/', SalidaPaqueteViewSet.as_view({'get': 'pasajeros'}), name='salida-paquete-pasajeros'),
+    path('salidas/<int:pk>/pasajeros/exportar-excel/', SalidaPaqueteViewSet.as_view({'get': 'pasajeros_exportar_excel'}), name='salida-paquete-pasajeros-excel'),
 ]
 
 urlpatterns = format_suffix_patterns(urlpatterns)
