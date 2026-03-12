@@ -178,6 +178,14 @@ class SalidaPaquete(models.Model):
         on_delete=models.CASCADE,
         related_name="salidas"
     )
+    codigo = models.CharField(
+        max_length=20,
+        unique=True,
+        editable=False,
+        null=True,
+        blank=True,
+        help_text="Código único de la salida (ej: SAL-2026-0001)"
+    )
     fecha_salida = models.DateField()
     fecha_regreso = models.DateField(null=True, blank=True)
 
@@ -228,6 +236,16 @@ class SalidaPaquete(models.Model):
 
     def __str__(self):
         return f"{self.paquete.nombre} - {self.fecha_salida}"
+
+    def save(self, *args, **kwargs):
+        if not self.codigo:
+            from django.utils.timezone import now as tz_now
+            year = tz_now().year
+            last_num = SalidaPaquete.objects.filter(
+                fecha_creacion__year=year
+            ).count() + 1
+            self.codigo = f"SAL-{year}-{last_num:04d}"
+        super().save(*args, **kwargs)
 
     # -----------------------------
     # CÁLCULO DE PRECIO DE VENTA
