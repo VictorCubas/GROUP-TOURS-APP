@@ -20,7 +20,7 @@ class PersonaFisicaSimpleSerializer(serializers.ModelSerializer):
 class SalidaPaqueteSimpleSerializer(serializers.ModelSerializer):
     class Meta:
         model = SalidaPaquete
-        fields = ["id", "fecha_salida", "fecha_regreso", "precio_actual", "precio_final", "senia"]
+        fields = ["id", "fecha_salida", "fecha_regreso", "costo_base_desde", "costo_base_hasta", "senia"]
 
 
 class HotelSimpleSerializer(serializers.ModelSerializer):
@@ -1414,8 +1414,8 @@ class ReservaDetalleSerializer(serializers.ModelSerializer):
             'id': salida.id,
             'fecha_salida': salida.fecha_salida,
             'fecha_regreso': salida.fecha_regreso,
-            'precio_actual': salida.precio_actual,
-            'precio_final': salida.precio_final,
+            'costo_base_desde': salida.costo_base_desde,
+            'costo_base_hasta': salida.costo_base_hasta,
             'precio_venta_sugerido_min': salida.precio_venta_sugerido_min,
             'precio_venta_sugerido_max': salida.precio_venta_sugerido_max,
             'senia': salida.senia,

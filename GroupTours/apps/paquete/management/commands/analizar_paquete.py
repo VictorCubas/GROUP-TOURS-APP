@@ -35,8 +35,8 @@ class Command(BaseCommand):
         self.stdout.write(f'Fecha regreso: {salida.fecha_regreso}')
         self.stdout.write(f'Ganancia: {salida.ganancia}%')
         self.stdout.write(f'Comision: {salida.comision}%')
-        self.stdout.write(f'Precio actual (min): {salida.precio_actual}')
-        self.stdout.write(f'Precio final (max): {salida.precio_final}')
+        self.stdout.write(f'Precio actual (min): {salida.costo_base_desde}')
+        self.stdout.write(f'Precio final (max): {salida.costo_base_hasta}')
         self.stdout.write(f'Precio venta sugerido min: {salida.precio_venta_sugerido_min}')
         self.stdout.write(f'Precio venta sugerido max: {salida.precio_venta_sugerido_max}')
         self.stdout.write('')
@@ -119,7 +119,7 @@ class Command(BaseCommand):
                 self.stdout.write(f'  Cupo disponible: {cupo.cupo}')
 
             else:
-                # PAQUETE DE DISTRIBUIDORA: Usar precio_actual/precio_final de la salida
+                # PAQUETE DE DISTRIBUIDORA: Usar costo_base_desde/costo_base_hasta de la salida
                 # Cada habitacion toma el precio base de la salida (sin desglose)
                 # El precio_noche no se usa porque viene de distribuidora
 
@@ -127,8 +127,8 @@ class Command(BaseCommand):
                 # Esto es una simplificacion: asumimos que el tipo de habitacion determina el precio
                 # En realidad, deberiamos tener un campo que indique cual habitacion es min/max
 
-                # Por ahora, usaremos precio_actual como base para todas
-                costo_base_distribuidora = salida.precio_actual
+                # Por ahora, usaremos costo_base_desde como base para todas
+                costo_base_distribuidora = salida.costo_base_desde
 
                 # Aplicar comision
                 if comision > 0:
@@ -213,7 +213,7 @@ class Command(BaseCommand):
                 self.stdout.write('=' * 80)
                 self.stdout.write('NOTA: En paquetes de distribuidora, todas las habitaciones')
                 self.stdout.write('      tienen el mismo costo base desde la distribuidora.')
-                self.stdout.write(f'      Costo base: ${salida.precio_actual}')
+                self.stdout.write(f'      Costo base: ${salida.costo_base_desde}')
                 self.stdout.write(f'      Comision aplicada: {comision}%')
                 if habitaciones_precios:
                     self.stdout.write(f'      Precio de venta final: ${habitaciones_precios[0]["precio_venta"]}')

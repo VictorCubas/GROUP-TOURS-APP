@@ -90,8 +90,8 @@ for hotel_id, precios in sorted(por_hotel.items()):
 print("=" * 70)
 print("=== CÁLCULOS DE PRECIOS ===")
 print("=" * 70)
-print(f"precio_actual (mínimo): ${salida.precio_actual}")
-print(f"precio_final (máximo): ${salida.precio_final}")
+print(f"costo_base_desde (mínimo): ${salida.costo_base_desde}")
+print(f"costo_base_hasta (máximo): ${salida.costo_base_hasta}")
 print()
 print(f"precio_venta_sugerido_min: ${salida.precio_venta_sugerido_min}")
 print(f"precio_venta_sugerido_max: ${salida.precio_venta_sugerido_max}")
@@ -113,15 +113,15 @@ if todos_precios:
     print()
 
     # Verificar si coinciden
-    if salida.precio_actual == min_precio:
-        print(f"✅ precio_actual CORRECTO: ${salida.precio_actual} = ${min_precio}")
+    if salida.costo_base_desde == min_precio:
+        print(f"✅ costo_base_desde CORRECTO: ${salida.costo_base_desde} = ${min_precio}")
     else:
-        print(f"❌ precio_actual INCORRECTO: ${salida.precio_actual} ≠ ${min_precio}")
+        print(f"❌ costo_base_desde INCORRECTO: ${salida.costo_base_desde} ≠ ${min_precio}")
 
-    if salida.precio_final == max_precio:
-        print(f"✅ precio_final CORRECTO: ${salida.precio_final} = ${max_precio}")
+    if salida.costo_base_hasta == max_precio:
+        print(f"✅ costo_base_hasta CORRECTO: ${salida.costo_base_hasta} = ${max_precio}")
     else:
-        print(f"❌ precio_final INCORRECTO: ${salida.precio_final} ≠ ${max_precio}")
+        print(f"❌ costo_base_hasta INCORRECTO: ${salida.costo_base_hasta} ≠ ${max_precio}")
     print()
 
     # Verificar precio de venta (con comisión)

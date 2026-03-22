@@ -232,8 +232,8 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
             "moneda",
             "temporada",
             "temporada_id",
-            "precio_actual",
-            "precio_final",
+            "costo_base_desde",
+            "costo_base_hasta",
             "ganancia",
             "comision",
             "precio_venta_sugerido_min",
@@ -256,8 +256,8 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
             "id",
             "moneda",
             "temporada",
-            "precio_actual",
-            "precio_final",
+            "costo_base_desde",
+            "costo_base_hasta",
             "precio_venta_sugerido_min",
             "precio_venta_sugerido_max",
             "habitacion_fija",
@@ -293,7 +293,7 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
         Retorna el precio de venta total mínimo por pasajero.
 
         Este valor ya está calculado en precio_venta_sugerido_min e incluye:
-        - Precio de habitación (precio_actual)
+        - Precio de habitación (costo_base_desde)
         - Servicios del paquete
         - Ganancia/comisión aplicada
 
@@ -307,7 +307,7 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
         Retorna el precio de venta total máximo por pasajero.
 
         Este valor ya está calculado en precio_venta_sugerido_max e incluye:
-        - Precio de habitación (precio_final)
+        - Precio de habitación (costo_base_hasta)
         - Servicios del paquete
         - Ganancia/comisión aplicada
 
@@ -334,8 +334,8 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
             datos = obj.obtener_precio_en_moneda_alternativa()
             return {
                 'moneda': datos['moneda_alternativa'],
-                'precio_actual': datos['precio_min'],
-                'precio_final': datos['precio_max'],
+                'costo_base_desde': datos['precio_min'],
+                'costo_base_hasta': datos['precio_max'],
                 'precio_venta_min': datos['precio_venta_min'],
                 'precio_venta_max': datos['precio_venta_max'],
                 'senia': datos['senia'],
@@ -480,8 +480,8 @@ class SalidaPaqueteListSerializer(serializers.ModelSerializer):
             "fecha_salida",
             "fecha_regreso",
             "dias_hasta_salida",
-            "precio_actual",
-            "precio_final",
+            "costo_base_desde",
+            "costo_base_hasta",
             "precio_venta_sugerido_min",
             "precio_venta_sugerido_max",
             "senia",
@@ -840,9 +840,9 @@ class PaqueteSerializer(serializers.ModelSerializer):
     def get_precio(self, obj):
         """
         Calcula dinámicamente el precio total del paquete:
-        - Siempre busca el menor precio_actual y el mayor precio_final de las salidas activas.
+        - Siempre busca el menor costo_base_desde y el mayor costo_base_hasta de las salidas activas.
         - Si el paquete es propio, suma también el total de los servicios.
-        - Si no es propio, devuelve solo el menor precio_actual (sin sumar servicios).
+        - Si no es propio, devuelve solo el menor costo_base_desde (sin sumar servicios).
         """
 
         total_servicios = Decimal("0")
@@ -856,18 +856,18 @@ class PaqueteSerializer(serializers.ModelSerializer):
         if not salidas.exists():
             return total_servicios if getattr(obj, "propio", False) else Decimal("0")
 
-        precios_actual = [s.precio_actual for s in salidas if s.precio_actual is not None]
-        precios_final = [s.precio_final for s in salidas if s.precio_final is not None]
+        precios_actual = [s.costo_base_desde for s in salidas if s.costo_base_desde is not None]
+        precios_final = [s.costo_base_hasta for s in salidas if s.costo_base_hasta is not None]
 
-        menor_precio_actual = min(precios_actual) if precios_actual else Decimal("0")
-        mayor_precio_final = max(precios_final) if precios_final else Decimal("0")
+        menor_costo_base_desde = min(precios_actual) if precios_actual else Decimal("0")
+        mayor_costo_base_hasta = max(precios_final) if precios_final else Decimal("0")
         
 
-        # ✅ Lógica: si es propio → suma servicios; si no → retorna solo menor_precio_actual
+        # ✅ Lógica: si es propio → suma servicios; si no → retorna solo menor_costo_base_desde
         if getattr(obj, "propio", False):
-            return menor_precio_actual + total_servicios
+            return menor_costo_base_desde + total_servicios
         else:
-            return menor_precio_actual
+            return menor_costo_base_desde
 
     def get_precio_venta_desde(self, obj):
         """
@@ -1060,7 +1060,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
                         defaults={"precio_catalogo": precio_catalogo_hab}
                     )
 
-            # Calcular precio_actual y precio_final si es paquete de distribuidora
+            # Calcular costo_base_desde y costo_base_hasta si es paquete de distribuidora
             if not paquete.propio:
                 # Validar que todos los hoteles tengan precios de catálogo
                 hoteles_en_salida = set(hoteles_ids)
@@ -1104,14 +1104,14 @@ class PaqueteSerializer(serializers.ModelSerializer):
 
                 if precios_habitacion_bd.exists():
                     precios_list = [pc.precio_catalogo for pc in precios_habitacion_bd]
-                    salida.precio_actual = min(precios_list)
-                    salida.precio_final = max(precios_list)
-                    salida.save(update_fields=["precio_actual", "precio_final"])
+                    salida.costo_base_desde = min(precios_list)
+                    salida.costo_base_hasta = max(precios_list)
+                    salida.save(update_fields=["costo_base_desde", "costo_base_hasta"])
 
             salida.calcular_precio_venta()
             HistorialPrecioPaquete.objects.create(
                 salida=salida,
-                precio=salida.precio_actual,
+                precio=salida.costo_base_desde,
                 vigente=True,
             )
 
@@ -1374,7 +1374,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
                         habitaciones_a_mantener = set(enviados_precios_habitaciones) | habitaciones_actualizadas_por_hotel
                         salida.precios_catalogo.exclude(habitacion__id__in=habitaciones_a_mantener).delete()
 
-                    # Recalcular precio_actual y precio_final si es paquete de distribuidora
+                    # Recalcular costo_base_desde y costo_base_hasta si es paquete de distribuidora
                     if not instance.propio:
                         # Validar que todos los hoteles tengan precios de catálogo
                         hoteles_en_salida = set(h.id if isinstance(h, Hotel) else h for h in hoteles_ids) if hoteles_ids else set()
@@ -1433,9 +1433,9 @@ class PaqueteSerializer(serializers.ModelSerializer):
 
                         if precios_habitacion_bd.exists():
                             precios_list = [pc.precio_catalogo for pc in precios_habitacion_bd]
-                            salida.precio_actual = min(precios_list)
-                            salida.precio_final = max(precios_list)
-                            salida.save(update_fields=["precio_actual", "precio_final"])
+                            salida.costo_base_desde = min(precios_list)
+                            salida.costo_base_hasta = max(precios_list)
+                            salida.save(update_fields=["costo_base_desde", "costo_base_hasta"])
 
                     # Recalcular precios de venta después de actualizar precios
                     salida.calcular_precio_venta()
@@ -1517,7 +1517,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
                             defaults={"precio_catalogo": precio_catalogo_hab}
                         )
 
-                    # Calcular precio_actual y precio_final si es paquete de distribuidora
+                    # Calcular costo_base_desde y costo_base_hasta si es paquete de distribuidora
                     if not instance.propio:
                         # Validar que todos los hoteles tengan precios de catálogo
                         hoteles_en_salida = set(h.id if isinstance(h, Hotel) else h for h in hoteles_ids) if hoteles_ids else set()
@@ -1563,14 +1563,14 @@ class PaqueteSerializer(serializers.ModelSerializer):
 
                         if precios_habitacion_bd.exists():
                             precios_list = [pc.precio_catalogo for pc in precios_habitacion_bd]
-                            salida.precio_actual = min(precios_list)
-                            salida.precio_final = max(precios_list)
-                            salida.save(update_fields=["precio_actual", "precio_final"])
+                            salida.costo_base_desde = min(precios_list)
+                            salida.costo_base_hasta = max(precios_list)
+                            salida.save(update_fields=["costo_base_desde", "costo_base_hasta"])
 
                     salida.calcular_precio_venta()
                     HistorialPrecioPaquete.objects.create(
                         salida=salida,
-                        precio=salida.precio_actual,
+                        precio=salida.costo_base_desde,
                         vigente=True,
                     )
 

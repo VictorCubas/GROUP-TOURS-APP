@@ -208,8 +208,8 @@ class SalidaPaquete(models.Model):
         related_name="salidas_fijas"
     )
 
-    precio_actual = models.DecimalField(max_digits=12, decimal_places=2)
-    precio_final = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    costo_base_desde = models.DecimalField(max_digits=12, decimal_places=2)
+    costo_base_hasta = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
 
     ganancia = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     comision = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
@@ -253,13 +253,13 @@ class SalidaPaquete(models.Model):
     def calcular_precio_venta(self):
         """
         Calcula los precios de venta mínimo y máximo considerando:
-        - Para paquetes PROPIOS: precio_actual/precio_final + servicios + ganancia%
+        - Para paquetes PROPIOS: costo_base_desde/costo_base_hasta + servicios + ganancia%
         - Para paquetes de DISTRIBUIDORA: precios de catálogo (hotel o habitación) + comisión%
 
         Prioridad de precios para distribuidoras:
         1. Si existe PrecioCatalogoHabitacion → usa esos
         2. Si existe PrecioCatalogoHotel → usa esos (aplica a todas las habitaciones del hotel)
-        3. Si no existe ninguno → fallback a precio_actual/precio_final
+        3. Si no existe ninguno → fallback a costo_base_desde/costo_base_hasta
         """
         ganancia = _to_decimal(self.ganancia)
         comision = _to_decimal(self.comision)
@@ -282,13 +282,13 @@ class SalidaPaquete(models.Model):
                     # Usar precios por hotel (todas las habitaciones al mismo precio)
                     precios_list = [_to_decimal(ph.precio_catalogo) for ph in precios_hotel]
                 else:
-                    # CASO C: Fallback - usar precio_actual/precio_final
+                    # CASO C: Fallback - usar costo_base_desde/costo_base_hasta
                     precios_list = []
 
-            # Si después de todo no hay precios, usar precio_actual/precio_final
+            # Si después de todo no hay precios, usar costo_base_desde/costo_base_hasta
             if not precios_list:
-                min_base = _to_decimal(self.precio_actual)
-                max_base = _to_decimal(self.precio_final) or min_base
+                min_base = _to_decimal(self.costo_base_desde)
+                max_base = _to_decimal(self.costo_base_hasta) or min_base
             else:
                 min_base = min(precios_list)
                 max_base = max(precios_list)
@@ -307,8 +307,8 @@ class SalidaPaquete(models.Model):
 
         # === CASO 2: Paquete PROPIO ===
         else:
-            min_base = _to_decimal(self.precio_actual)
-            max_base = _to_decimal(self.precio_final) or min_base
+            min_base = _to_decimal(self.costo_base_desde)
+            max_base = _to_decimal(self.costo_base_hasta) or min_base
 
             # Sumar servicios incluidos en el paquete
             total_servicios = Decimal("0")
@@ -356,8 +356,8 @@ class SalidaPaquete(models.Model):
         # Si la moneda es guaraníes, retornar directamente
         if self.moneda.codigo == 'PYG':
             return {
-                'precio_min': self.precio_actual,
-                'precio_max': self.precio_final or self.precio_actual,
+                'precio_min': self.costo_base_desde,
+                'precio_max': self.costo_base_hasta or self.costo_base_desde,
                 'moneda_original': self.moneda.codigo,
                 'cotizacion_aplicada': None,
                 'fecha_cotizacion': None
@@ -375,8 +375,8 @@ class SalidaPaquete(models.Model):
         valor_cotizacion = _to_decimal(cotizacion.valor_en_guaranies)
 
         return {
-            'precio_min': self.precio_actual * valor_cotizacion,
-            'precio_max': (self.precio_final or self.precio_actual) * valor_cotizacion,
+            'precio_min': self.costo_base_desde * valor_cotizacion,
+            'precio_max': (self.costo_base_hasta or self.costo_base_desde) * valor_cotizacion,
             'moneda_original': self.moneda.codigo,
             'cotizacion_aplicada': cotizacion.valor_en_guaranies,
             'fecha_cotizacion': cotizacion.fecha_vigencia
@@ -446,18 +446,18 @@ class SalidaPaquete(models.Model):
 
         # Convertir precios
         precio_min = convertir_entre_monedas(
-            self.precio_actual,
+            self.costo_base_desde,
             self.moneda,
             moneda_alternativa,
             fecha_referencia
         )
 
         precio_max = convertir_entre_monedas(
-            self.precio_final or self.precio_actual,
+            self.costo_base_hasta or self.costo_base_desde,
             self.moneda,
             moneda_alternativa,
             fecha_referencia
-        ) if self.precio_final else precio_min
+        ) if self.costo_base_hasta else precio_min
 
         precio_venta_min = convertir_entre_monedas(
             self.precio_venta_sugerido_min,
@@ -514,7 +514,7 @@ class SalidaPaquete(models.Model):
             vigente=True
         )
 
-        self.precio_actual = nuevo_precio
+        self.costo_base_desde = nuevo_precio
         self.save()
 
 
@@ -682,8 +682,8 @@ def create_salida_paquete(data):
         moneda_id=data["moneda_id"],
         cupo=data.get("cupo", 0),
         senia=data.get("senia"),
-        precio_actual=0,
-        precio_final=None,
+        costo_base_desde=0,
+        costo_base_hasta=None,
         ganancia=data.get("ganancia"),
         comision=data.get("comision")
     )
@@ -730,13 +730,13 @@ def create_salida_paquete(data):
                         f"({habitacion.moneda.codigo} → {salida.moneda.codigo}): {str(e)}"
                     )
 
-        salida.precio_actual = min(precios_convertidos)
-        salida.precio_final = max(precios_convertidos) if len(precios_convertidos) > 1 else None
-        salida.save(update_fields=["precio_actual", "precio_final"])
+        salida.costo_base_desde = min(precios_convertidos)
+        salida.costo_base_hasta = max(precios_convertidos) if len(precios_convertidos) > 1 else None
+        salida.save(update_fields=["costo_base_desde", "costo_base_hasta"])
     else:
-        salida.precio_actual = Decimal("0")
-        salida.precio_final = None
-        salida.save(update_fields=["precio_actual", "precio_final"])
+        salida.costo_base_desde = Decimal("0")
+        salida.costo_base_hasta = None
+        salida.save(update_fields=["costo_base_desde", "costo_base_hasta"])
 
     # Calcular venta sugerida
     salida.calcular_precio_venta()

@@ -56,8 +56,8 @@ class Command(BaseCommand):
                 precio_max_anterior = salida.precio_venta_sugerido_max
 
                 # Calcular nuevos valores (sin guardar aún)
-                min_base = Decimal(str(salida.precio_actual))
-                max_base = Decimal(str(salida.precio_final)) if salida.precio_final else min_base
+                min_base = Decimal(str(salida.costo_base_desde))
+                max_base = Decimal(str(salida.costo_base_hasta)) if salida.costo_base_hasta else min_base
                 comision = Decimal(str(salida.comision)) if salida.comision else Decimal('0')
 
                 # Para distribuidora NO se suman servicios

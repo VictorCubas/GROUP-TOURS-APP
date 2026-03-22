@@ -924,8 +924,8 @@ class Command(BaseCommand):
             fecha_regreso=date(2025, 3, 20),
             temporada=temporada,
             moneda=moneda,
-            precio_actual=Decimal('1900'),
-            precio_final=Decimal('4000'),
+            costo_base_desde=Decimal('1900'),
+            costo_base_hasta=Decimal('4000'),
             ganancia=Decimal('15.00'),
             cupo=30,
             senia=Decimal('300')
@@ -949,8 +949,8 @@ class Command(BaseCommand):
             fecha_regreso=date(2025, 6, 15),
             temporada=Temporada.objects.get(nombre='Otoño 2025'),
             moneda=moneda,
-            precio_actual=Decimal('1900'),
-            precio_final=Decimal('4000'),
+            costo_base_desde=Decimal('1900'),
+            costo_base_hasta=Decimal('4000'),
             ganancia=Decimal('15.00'),
             cupo=30,
             senia=Decimal('300')
@@ -1016,8 +1016,8 @@ class Command(BaseCommand):
             fecha_regreso=date(2025, 4, 24),
             temporada=temporada,
             moneda=moneda,
-            precio_actual=Decimal('1400'),
-            precio_final=Decimal('2400'),
+            costo_base_desde=Decimal('1400'),
+            costo_base_hasta=Decimal('2400'),
             ganancia=Decimal('18.00'),
             cupo=20,
             senia=Decimal('250')
@@ -1065,8 +1065,8 @@ class Command(BaseCommand):
             fecha_regreso=date(2025, 7, 8),
             temporada=temporada,
             moneda=moneda,
-            precio_actual=Decimal('3850'),
-            precio_final=Decimal('8400'),
+            costo_base_desde=Decimal('3850'),
+            costo_base_hasta=Decimal('8400'),
             comision=Decimal('12.00'),
             senia=Decimal('500')
         )
@@ -1113,8 +1113,8 @@ class Command(BaseCommand):
             fecha_regreso=date(2025, 8, 21),
             temporada=temporada,
             moneda=moneda,
-            precio_actual=Decimal('2400'),
-            precio_final=Decimal('4800'),
+            costo_base_desde=Decimal('2400'),
+            costo_base_hasta=Decimal('4800'),
             comision=Decimal('10.00'),
             senia=Decimal('400')
         )
@@ -1160,8 +1160,8 @@ class Command(BaseCommand):
             fecha_regreso=date(2025, 7, 25),
             temporada=temporada,
             moneda=moneda,
-            precio_actual=Decimal('900000'),
-            precio_final=Decimal('1400000'),
+            costo_base_desde=Decimal('900000'),
+            costo_base_hasta=Decimal('1400000'),
             ganancia=Decimal('20.00'),
             cupo=45,
             senia=Decimal('50000')
