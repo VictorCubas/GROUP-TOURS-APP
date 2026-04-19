@@ -23,9 +23,9 @@ class TipoHabitacionSerializer(serializers.ModelSerializer):
 
 
 class HabitacionSerializer(serializers.ModelSerializer):
-    moneda_nombre = serializers.CharField(source='moneda.nombre', read_only=True)
-    moneda_simbolo = serializers.CharField(source='moneda.simbolo', read_only=True)
-    moneda_codigo = serializers.CharField(source='moneda.codigo', read_only=True)
+    moneda_nombre = serializers.CharField(source='moneda.nombre', read_only=True, allow_null=True)
+    moneda_simbolo = serializers.CharField(source='moneda.simbolo', read_only=True, allow_null=True)
+    moneda_codigo = serializers.CharField(source='moneda.codigo', read_only=True, allow_null=True)
     tipo_habitacion_nombre = serializers.CharField(source='tipo_habitacion.nombre', read_only=True)
     capacidad = serializers.IntegerField(source='tipo_habitacion.capacidad', read_only=True)
     cupo = serializers.SerializerMethodField()
@@ -66,31 +66,63 @@ class HabitacionSerializer(serializers.ModelSerializer):
 
     def get_precio_calculado(self, obj):
         """
-        Calcula el precio de venta final de la habitación para una salida específica.
+        Calcula el precio de venta de la habitación para una salida específica.
 
-        Para PAQUETES PROPIOS:
-        - Usa precio_noche de la habitación × cantidad de noches
-        - Suma servicios del paquete
-        - Aplica ganancia %
+        Tanto propios como distribuidoras usan precio de catálogo:
+        - PrecioCatalogoHabitacion (prioridad alta)
+        - PrecioCatalogoHotel (fallback)
 
-        Para PAQUETES DE DISTRIBUIDORA:
-        - Usa precio_catalogo de PrecioCatalogoHabitacion (precio total, NO por noche)
-        - NO suma servicios (ya están incluidos en el catálogo)
-        - Aplica comisión %
-
+        Solo distribuidoras aplican comisión%. Propios no aplican ningún factor.
         Solo se calcula si hay salida_id en el contexto.
+
+        ── LÓGICA ANTERIOR (cálculo automático para propios) ──────────────────────────
+        Si en el futuro se quiere restaurar el cálculo automático para paquetes propios:
+
+        if salida.paquete.propio:
+            noches = (salida.fecha_regreso - salida.fecha_salida).days \
+                     if salida.fecha_regreso and salida.fecha_salida else 1
+            precio_noche = obj.precio_noche or Decimal('0')
+            precio_habitacion_total = precio_noche * noches
+            # Convertir a moneda de la salida si difieren:
+            if obj.moneda and salida.moneda and obj.moneda != salida.moneda:
+                from apps.paquete.utils import convertir_entre_monedas
+                precio_habitacion_total = convertir_entre_monedas(
+                    monto=precio_habitacion_total,
+                    moneda_origen=obj.moneda,
+                    moneda_destino=salida.moneda,
+                    fecha=salida.fecha_salida
+                )
+            # Sumar servicios del paquete (PaqueteServicio.precio o Servicio.precio)
+            total_servicios = Decimal('0')
+            for ps in salida.paquete.paquete_servicios.all():
+                if ps.precio and ps.precio > 0:
+                    total_servicios += ps.precio
+                elif hasattr(ps.servicio, 'precio') and ps.servicio.precio:
+                    total_servicios += ps.servicio.precio
+            # Aplicar ganancia%
+            ganancia = salida.ganancia or Decimal('0')
+            factor = Decimal('1') + (ganancia / Decimal('100')) if ganancia > 0 else Decimal('1')
+            precio_venta_final = (precio_habitacion_total + total_servicios) * factor
+            return {
+                'noches': noches,
+                'precio_noche': str(precio_noche),
+                'precio_habitacion_total': str(precio_habitacion_total),
+                'servicios_paquete': str(total_servicios),
+                'ganancia_porcentaje': str(ganancia),
+                'factor_aplicado': str(factor),
+                'precio_venta_final': str(precio_venta_final),
+            }
+        ────────────────────────────────────────────────────────────────────────────────
         """
         from decimal import Decimal
-        from apps.paquete.models import SalidaPaquete, PrecioCatalogoHabitacion
+        from apps.paquete.models import SalidaPaquete, PrecioCatalogoHabitacion, PrecioCatalogoHotel
 
         salida_id = self.context.get('salida_id')
         if not salida_id:
             return None
 
         try:
-            salida = SalidaPaquete.objects.select_related('paquete').prefetch_related(
-                'paquete__paquete_servicios__servicio'
-            ).get(pk=salida_id)
+            salida = SalidaPaquete.objects.select_related('paquete').get(pk=salida_id)
         except SalidaPaquete.DoesNotExist:
             return None
 
@@ -100,111 +132,43 @@ class HabitacionSerializer(serializers.ModelSerializer):
         else:
             noches = 1
 
-        # === CASO 1: PAQUETE DE DISTRIBUIDORA ===
-        if not salida.paquete.propio:
-            # Intentar obtener el precio de catálogo para esta habitación
-            try:
-                precio_catalogo_obj = PrecioCatalogoHabitacion.objects.get(
-                    salida_id=salida_id,
-                    habitacion_id=obj.id
-                )
-                precio_base_habitacion = precio_catalogo_obj.precio_catalogo
-                precio_origen = 'catalogo'
-            except PrecioCatalogoHabitacion.DoesNotExist:
-                # Fallback: usar precio_noche × noches si no hay precio de catálogo
-                precio_noche = obj.precio_noche or Decimal('0')
-                precio_base_habitacion = precio_noche * noches
-                precio_origen = 'precio_noche_fallback'
+        # Buscar precio de catálogo por habitación (mayor prioridad)
+        precio_catalogo_obj = PrecioCatalogoHabitacion.objects.filter(
+            salida_id=salida_id,
+            habitacion_id=obj.id
+        ).first()
 
-            # Para distribuidoras, NO se suman servicios (ya incluidos en catálogo)
-            total_servicios = Decimal('0')
-            costo_base_total = precio_base_habitacion
-
-            # Aplicar comisión
-            comision = salida.comision or Decimal('0')
-            if comision > 0:
-                factor = Decimal('1') + (comision / Decimal('100'))
-            else:
-                factor = Decimal('1')
-
-            precio_venta_final = costo_base_total * factor
-
-            return {
-                'noches': noches,
-                'precio_catalogo': str(precio_base_habitacion),
-                'precio_origen': precio_origen,
-                'servicios_paquete': None,  # No aplica para distribuidoras
-                'costo_base': str(costo_base_total),
-                'ganancia_porcentaje': None,
-                'comision_porcentaje': str(comision),
-                'factor_aplicado': str(factor),
-                'precio_venta_final': str(precio_venta_final)
-            }
-
-        # === CASO 2: PAQUETE PROPIO ===
+        if precio_catalogo_obj:
+            precio_base = precio_catalogo_obj.precio_catalogo
+            precio_origen = 'catalogo_habitacion'
         else:
-            # 1. Calcular precio por noche de esta habitación
-            precio_noche = obj.precio_noche or Decimal('0')
-
-            # 2. Precio base de la habitación por toda la estadía (en su moneda original)
-            precio_habitacion_total = precio_noche * noches
-
-            # 3. Convertir precio de habitación a la moneda del paquete si es necesario
-            if obj.moneda and salida.moneda and obj.moneda != salida.moneda:
-                # Las monedas son diferentes, debemos convertir
-                from apps.paquete.utils import convertir_entre_monedas
-                from django.core.exceptions import ValidationError as DjangoValidationError
-                
-                try:
-                    precio_habitacion_total_convertido = convertir_entre_monedas(
-                        monto=precio_habitacion_total,
-                        moneda_origen=obj.moneda,
-                        moneda_destino=salida.moneda,
-                        fecha=salida.fecha_salida
-                    )
-                    # Actualizar también precio_noche convertido para mostrar
-                    precio_noche_convertido = precio_habitacion_total_convertido / noches if noches > 0 else Decimal('0')
-                except DjangoValidationError:
-                    # Si falla la conversión, usar el precio original (fallback)
-                    precio_habitacion_total_convertido = precio_habitacion_total
-                    precio_noche_convertido = precio_noche
+            # Fallback al catálogo por hotel
+            precio_hotel_obj = PrecioCatalogoHotel.objects.filter(
+                salida_id=salida_id,
+                hotel_id=obj.hotel_id
+            ).first()
+            if precio_hotel_obj:
+                precio_base = precio_hotel_obj.precio_catalogo
+                precio_origen = 'catalogo_hotel'
             else:
-                # Misma moneda o no hay moneda definida, usar directo
-                precio_habitacion_total_convertido = precio_habitacion_total
-                precio_noche_convertido = precio_noche
+                return None
 
-            # 4. Sumar servicios incluidos en el paquete
-            total_servicios = Decimal('0')
-            for ps in salida.paquete.paquete_servicios.all():
-                if ps.precio and ps.precio > 0:
-                    total_servicios += ps.precio
-                elif hasattr(ps.servicio, 'precio') and ps.servicio.precio:
-                    total_servicios += ps.servicio.precio
+        # Solo distribuidoras aplican comisión
+        comision = Decimal('0')
+        if not salida.paquete.propio:
+            comision = salida.comision or Decimal('0')
 
-            # 5. Calcular costo base total (habitación convertida + servicios)
-            costo_base_total = precio_habitacion_total_convertido + total_servicios
+        factor = Decimal('1') + (comision / Decimal('100')) if comision > 0 else Decimal('1')
+        precio_venta_final = precio_base * factor
 
-            # 6. Aplicar ganancia sobre el costo total
-            ganancia = salida.ganancia or Decimal('0')
-            if ganancia > 0:
-                factor = Decimal('1') + (ganancia / Decimal('100'))
-            else:
-                factor = Decimal('1')
-
-            # 7. Precio de venta final
-            precio_venta_final = costo_base_total * factor
-
-            return {
-                'noches': noches,
-                'precio_noche': str(precio_noche_convertido),
-                'precio_habitacion_total': str(precio_habitacion_total_convertido),
-                'servicios_paquete': str(total_servicios),
-                'costo_base': str(costo_base_total),
-                'ganancia_porcentaje': str(ganancia),
-                'comision_porcentaje': None,
-                'factor_aplicado': str(factor),
-                'precio_venta_final': str(precio_venta_final)
-            }
+        return {
+            'noches': noches,
+            'precio_catalogo': str(precio_base),
+            'precio_origen': precio_origen,
+            'comision_porcentaje': str(comision) if not salida.paquete.propio else None,
+            'factor_aplicado': str(factor),
+            'precio_venta_final': str(precio_venta_final)
+        }
 
     def validate_servicios(self, value):
         for servicio in value:
