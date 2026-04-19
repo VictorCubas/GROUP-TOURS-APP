@@ -1,13 +1,16 @@
 from rest_framework import serializers
 from .models import (
     CupoHabitacionSalida,
+    ItemCostoPaquete,
+    ItemCostoSalida,
     Paquete,
     PaqueteServicio,
     PrecioCatalogoHotel,
     PrecioCatalogoHabitacion,
     SalidaPaquete,
     HistorialPrecioPaquete,
-    Temporada
+    Temporada,
+    TipoCostoSalida,
 )
 from apps.tipo_paquete.models import TipoPaquete
 from apps.destino.models import Destino
@@ -151,6 +154,54 @@ class PrecioCatalogoHabitacionSerializer(serializers.ModelSerializer):
 
 
 # ---------------------------------------------------------------------
+# TipoCostoSalida Serializer
+# ---------------------------------------------------------------------
+class TipoCostoSalidaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TipoCostoSalida
+        fields = ["id", "codigo", "nombre", "dividir_por_pasajeros", "activo"]
+
+
+# ---------------------------------------------------------------------
+# ItemCostoPaquete Serializer
+# ---------------------------------------------------------------------
+class ItemCostoPaqueteSerializer(serializers.ModelSerializer):
+    tipo_costo_id = serializers.PrimaryKeyRelatedField(
+        queryset=TipoCostoSalida.objects.all(),
+        source="tipo_costo",
+        write_only=True
+    )
+    tipo_costo = TipoCostoSalidaSerializer(read_only=True)
+
+    class Meta:
+        model = ItemCostoPaquete
+        fields = ["id", "tipo_costo", "tipo_costo_id", "monto", "activo"]
+
+
+# ---------------------------------------------------------------------
+# ItemCostoSalida Serializer (detalle en respuesta de salida)
+# ---------------------------------------------------------------------
+class ItemCostoSalidaDetalleSerializer(serializers.Serializer):
+    """
+    Serializer de lectura para ítems de costo en la respuesta de una salida.
+    Incluye el campo 'origen' para indicar si el monto viene del paquete o es un override.
+    """
+    tipo_costo_id = serializers.IntegerField(source="tipo_costo.id")
+    nombre = serializers.CharField(source="tipo_costo.nombre")
+    dividir_por_pasajeros = serializers.BooleanField(source="tipo_costo.dividir_por_pasajeros")
+    monto = serializers.DecimalField(max_digits=12, decimal_places=2)
+    monto_por_pasajero = serializers.SerializerMethodField()
+    origen = serializers.CharField()
+
+    def get_monto_por_pasajero(self, obj):
+        cupo = obj.get("cupo") or 1
+        monto = obj.get("monto") or Decimal("0")
+        if obj.get("dividir_por_pasajeros"):
+            return monto / Decimal(str(cupo))
+        return monto
+
+
+# ---------------------------------------------------------------------
 # SalidaPaquete Serializer
 # ---------------------------------------------------------------------
 class SalidaPaqueteActualizarFechasSerializer(serializers.ModelSerializer):
@@ -212,7 +263,7 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
 
     cupos_habitaciones = CupoHabitacionSalidaSerializer(many=True, read_only=True)
     precios_catalogo_hoteles = PrecioCatalogoHotelSerializer(many=True, read_only=True)
-    precios_catalogo = PrecioCatalogoHabitacionSerializer(many=True, read_only=True)
+    precios_catalogo_habitaciones = PrecioCatalogoHabitacionSerializer(many=True, read_only=True)
 
     # Campos calculados para precio total (hotel + ganancia/comisión + servicios)
     precio_venta_total_min = serializers.SerializerMethodField(read_only=True)
@@ -220,6 +271,9 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
 
     # Campo para mostrar en moneda alternativa (USD si está en PYG, o PYG si está en USD)
     precio_moneda_alternativa = serializers.SerializerMethodField(read_only=True)
+
+    # Ítems de costo operativo (bus, coordinador, tasas, etc.) — solo paquetes propios
+    items_costo = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = SalidaPaquete
@@ -243,6 +297,7 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
             "cupo",
             "senia",
             "precio_moneda_alternativa",
+            "items_costo",
             "activo",
             "hoteles",
             "hoteles_ids",
@@ -250,7 +305,7 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
             "habitacion_fija_id",
             "cupos_habitaciones",
             "precios_catalogo_hoteles",
-            "precios_catalogo",
+            "precios_catalogo_habitaciones",
         ]
         read_only_fields = [
             "id",
@@ -316,6 +371,47 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
         """
         return obj.precio_venta_sugerido_max or Decimal("0")
 
+    def get_items_costo(self, obj):
+        """
+        Devuelve los ítems de costo activos resolviendo la lógica template+override.
+        'origen': 'paquete' → viene del default del paquete (📦)
+        'origen': 'override' → fue personalizado para esta salida (✏️)
+        """
+        if not obj.paquete.propio:
+            return []
+
+        resultado = []
+        cupo = obj.cupo or 1
+
+        for item_default in obj.paquete.items_costo_default.filter(activo=True).select_related("tipo_costo"):
+            tipo_costo = item_default.tipo_costo
+            if not tipo_costo.activo:
+                continue
+
+            override = obj.items_costo.filter(tipo_costo=tipo_costo, activo=True).first()
+
+            if override:
+                monto = override.monto
+                origen = "override"
+            else:
+                monto = item_default.monto
+                origen = "paquete"
+
+            monto_por_pasajero = (
+                monto / Decimal(str(cupo)) if tipo_costo.dividir_por_pasajeros else monto
+            )
+
+            resultado.append({
+                "tipo_costo_id": tipo_costo.id,
+                "nombre": tipo_costo.nombre,
+                "dividir_por_pasajeros": tipo_costo.dividir_por_pasajeros,
+                "monto": monto,
+                "monto_por_pasajero": monto_por_pasajero,
+                "origen": origen,
+            })
+
+        return resultado
+
     # ========== MÉTODO PARA MOSTRAR EN MONEDA ALTERNATIVA ==========
 
     def get_precio_moneda_alternativa(self, obj):
@@ -360,7 +456,7 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
         raw = self.initial_data
         cupos_habitaciones_data = raw.get("cupos_habitaciones", [])
         precios_catalogo_hoteles_data = raw.get("precios_catalogo_hoteles", [])
-        precios_catalogo_data = raw.get("precios_catalogo", [])
+        precios_catalogo_habitaciones_data = raw.get("precios_catalogo_habitaciones", [])
 
         data = {
             "paquete_id": paquete.id,
@@ -389,7 +485,7 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
                         cupo=cupo_item.get("cupo", 0)
                     )
 
-        # Precios de catálogo por hotel (paquetes de distribuidora)
+        # Precios de catálogo por hotel (propios y distribuidoras)
         for precio_item in precios_catalogo_hoteles_data:
             hotel_obj = self._resolve_fk_instance(
                 precio_item.get("hotel") or precio_item.get("hotel_id"), Hotel
@@ -410,7 +506,7 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
                     )
 
         # Precios de catálogo por habitación (pueden sobrescribir los del hotel)
-        for precio_item in precios_catalogo_data:
+        for precio_item in precios_catalogo_habitaciones_data:
             habitacion_obj = self._resolve_fk_instance(
                 precio_item.get("habitacion") or precio_item.get("habitacion_id"), Habitacion
             )
@@ -667,6 +763,17 @@ class PaqueteSerializer(serializers.ModelSerializer):
         required=False
     )
 
+    items_costo_default = ItemCostoPaqueteSerializer(
+        many=True,
+        read_only=True
+    )
+
+    items_costo_data = ItemCostoPaqueteSerializer(
+        many=True,
+        write_only=True,
+        required=False
+    )
+
     tipo_paquete_id = serializers.PrimaryKeyRelatedField(
         queryset=TipoPaquete.objects.all(),
         write_only=True,
@@ -722,6 +829,8 @@ class PaqueteSerializer(serializers.ModelSerializer):
             "moneda_id",
             "servicios",
             "servicios_data",
+            "items_costo_default",
+            "items_costo_data",
             "modalidad",
             "precio",
             "precio_venta_desde",
@@ -743,6 +852,20 @@ class PaqueteSerializer(serializers.ModelSerializer):
     # ------------------
     # Parseo de servicios_data desde FormData (JSON string → lista)
     # ------------------
+    def _get_items_costo_from_initial(self):
+        raw = getattr(self, "initial_data", {}).get("items_costo_data")
+        if not raw:
+            return []
+        if isinstance(raw, str):
+            try:
+                data = json.loads(raw)
+                return data if isinstance(data, list) else []
+            except Exception:
+                return []
+        if isinstance(raw, list):
+            return raw
+        return []
+
     def _get_servicios_from_initial(self):
         raw = getattr(self, "initial_data", {}).get("servicios_data")
         if not raw:
@@ -760,9 +883,10 @@ class PaqueteSerializer(serializers.ModelSerializer):
 
     def to_internal_value(self, data):
         data = data.copy()
+
+        # Parsear servicios_data
         servicios_raw = data.get("servicios_data")
         parsed_list = []
-
         if servicios_raw:
             if isinstance(servicios_raw, str):
                 try:
@@ -775,17 +899,31 @@ class PaqueteSerializer(serializers.ModelSerializer):
                 parsed_list = servicios_raw
 
         servicios_cleaned = []
-        for item in parsed_list:    
+        for item in parsed_list:
             servicio_id = item.get("servicio_id")
             if not servicio_id:
                 continue
             servicios_cleaned.append({
-                "servicio": servicio_id,  # resolveremos en create/update
+                "servicio": servicio_id,
                 "precio": Decimal(item.get("precio", 0) or 0)
             })
-
-
         data["servicios_data"] = servicios_cleaned
+
+        # Parsear items_costo_data
+        items_costo_raw = data.get("items_costo_data")
+        items_costo_parsed = []
+        if items_costo_raw:
+            if isinstance(items_costo_raw, str):
+                try:
+                    parsed = json.loads(items_costo_raw)
+                    if isinstance(parsed, list):
+                        items_costo_parsed = parsed
+                except Exception:
+                    items_costo_parsed = []
+            elif isinstance(items_costo_raw, list):
+                items_costo_parsed = items_costo_raw
+        data["items_costo_data"] = items_costo_parsed
+
         return super().to_internal_value(data)
 
     # ------------------
@@ -807,6 +945,14 @@ class PaqueteSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({
                 "servicios_data": "Para paquetes propios es obligatorio enviar al menos un servicio."
             })
+
+        # Validar mínimo 2 ítems de costo para paquetes propios
+        if propio and "items_costo_data" in self.initial_data:
+            items_costo = attrs.get("items_costo_data") or self._get_items_costo_from_initial()
+            if len(items_costo) < 2:
+                raise serializers.ValidationError({
+                    "items_costo_data": "Para paquetes propios se requieren al menos 2 ítems de costo."
+                })
 
         # Validar que paquetes de distribuidora NO tengan cupos_habitaciones
         if not propio:
@@ -839,63 +985,35 @@ class PaqueteSerializer(serializers.ModelSerializer):
 
     def get_precio(self, obj):
         """
-        Calcula dinámicamente el precio total del paquete:
-        - Siempre busca el menor costo_base_desde y el mayor costo_base_hasta de las salidas activas.
-        - Si el paquete es propio, suma también el total de los servicios.
-        - Si no es propio, devuelve solo el menor costo_base_desde (sin sumar servicios).
-        """
+        Devuelve el menor costo_base_desde de todas las salidas activas del paquete.
 
-        total_servicios = Decimal("0")
-        for ps in obj.paquete_servicios.all():
-            if ps.precio and ps.precio > 0:
-                total_servicios += ps.precio
-            elif hasattr(ps.servicio, "precio") and ps.servicio.precio:
-                total_servicios += ps.servicio.precio
-
-        salidas = obj.salidas.filter(activo=True)
-        if not salidas.exists():
-            return total_servicios if getattr(obj, "propio", False) else Decimal("0")
-
-        precios_actual = [s.costo_base_desde for s in salidas if s.costo_base_desde is not None]
-        precios_final = [s.costo_base_hasta for s in salidas if s.costo_base_hasta is not None]
-
-        menor_costo_base_desde = min(precios_actual) if precios_actual else Decimal("0")
-        mayor_costo_base_hasta = max(precios_final) if precios_final else Decimal("0")
-        
-
-        # ✅ Lógica: si es propio → suma servicios; si no → retorna solo menor_costo_base_desde
-        if getattr(obj, "propio", False):
-            return menor_costo_base_desde + total_servicios
-        else:
-            return menor_costo_base_desde
-
-    def get_precio_venta_desde(self, obj):
-        """
-        Calcula el precio de venta mínimo para mostrar al cliente:
-        Obtiene el menor precio_venta_total_min de todas las salidas activas.
-        Este es el precio completo final (habitación + ganancia/comisión + servicios).
+        costo_base_desde ya es el precio de catálogo completo (sin sumar servicios),
+        tanto para propios como para distribuidoras.
         """
         salidas = obj.salidas.filter(activo=True)
         if not salidas.exists():
             return Decimal("0")
 
-        # Calcular total de servicios del paquete
-        total_servicios = Decimal("0")
-        for ps in obj.paquete_servicios.all():
-            if ps.precio and ps.precio > 0:
-                total_servicios += ps.precio
-            elif hasattr(ps.servicio, "precio") and ps.servicio.precio:
-                total_servicios += ps.servicio.precio
+        precios_actual = [s.costo_base_desde for s in salidas if s.costo_base_desde is not None]
+        return min(precios_actual) if precios_actual else Decimal("0")
 
-        # Obtener todos los precio_venta_sugerido_min y sumarles los servicios
-        precios_venta_totales = []
-        for salida in salidas:
-            if salida.precio_venta_sugerido_min:
-                precio_total = salida.precio_venta_sugerido_min + total_servicios
-                precios_venta_totales.append(precio_total)
+    def get_precio_venta_desde(self, obj):
+        """
+        Retorna el menor precio_venta_sugerido_min de todas las salidas activas.
+        Este campo ya incluye habitación + servicios + ganancia% para paquetes propios,
+        o precio_catalogo + comision% para distribuidoras.
+        No se suman servicios aquí para evitar doble conteo.
+        """
+        salidas = obj.salidas.filter(activo=True)
+        if not salidas.exists():
+            return Decimal("0")
 
-        # Retornar el menor precio de venta total
-        return min(precios_venta_totales) if precios_venta_totales else Decimal("0")
+        precios = [
+            s.precio_venta_sugerido_min
+            for s in salidas
+            if s.precio_venta_sugerido_min is not None
+        ]
+        return min(precios) if precios else Decimal("0")
 
     def get_senia(self, obj):
         salida = obj.salidas.filter(activo=True).order_by("fecha_salida").first()
@@ -937,6 +1055,131 @@ class PaqueteSerializer(serializers.ModelSerializer):
         except model_class.DoesNotExist:
             return None
 
+    def _recalcular_costo_base(self, salida, hoteles_ids, precios_catalogo_hoteles_data, precios_catalogo_habitaciones_data):
+        """
+        Valida cobertura de precios y recalcula costo_base_desde/hasta desde PrecioCatalogoHabitacion.
+        Aplica tanto a paquetes propios como a distribuidoras — ambos usan el mismo catálogo.
+        En UPDATE acepta precios previos en BD para hoteles no reenviados.
+        """
+        hoteles_en_salida = set(h.id if isinstance(h, Hotel) else h for h in hoteles_ids) if hoteles_ids else set()
+
+        if hoteles_en_salida:
+            hoteles_con_precio_hotel = set(
+                obj.id
+                for p in precios_catalogo_hoteles_data
+                for obj in [self._resolve_fk_instance("hotel", p.get("hotel") or p.get("hotel_id"), Hotel)]
+                if obj
+            )
+            hoteles_con_precio_habitacion = set()
+            for precio_item in precios_catalogo_habitaciones_data:
+                hab_obj = self._resolve_fk_instance(
+                    "habitacion",
+                    precio_item.get("habitacion") or precio_item.get("habitacion_id"),
+                    Habitacion
+                )
+                if hab_obj and hab_obj.hotel_id in hoteles_en_salida:
+                    hoteles_con_precio_habitacion.add(hab_obj.hotel_id)
+
+            # Incluir precios previos en BD (para UPDATE donde no se re-envían todos)
+            hoteles_con_precio_previo = set(
+                PrecioCatalogoHotel.objects.filter(salida=salida).values_list('hotel_id', flat=True)
+            ) | set(
+                PrecioCatalogoHabitacion.objects.filter(
+                    salida=salida,
+                    habitacion__hotel_id__in=hoteles_en_salida
+                ).values_list('habitacion__hotel_id', flat=True)
+            )
+
+            hoteles_con_precios = hoteles_con_precio_hotel | hoteles_con_precio_habitacion | hoteles_con_precio_previo
+            hoteles_sin_precios = hoteles_en_salida - hoteles_con_precios
+
+            if hoteles_sin_precios:
+                nombres = []
+                for hotel_id in hoteles_sin_precios:
+                    try:
+                        nombres.append(Hotel.objects.get(id=hotel_id).nombre)
+                    except Hotel.DoesNotExist:
+                        nombres.append(f"ID:{hotel_id}")
+                raise serializers.ValidationError({
+                    "precios_catalogo_habitaciones": f"Los siguientes hoteles no tienen precios de catálogo: {', '.join(nombres)}. Todos los hoteles deben tener precios (por hotel o por habitación)."
+                })
+
+        precios_habitacion_bd = salida.precios_catalogo_habitaciones.all()
+        if precios_habitacion_bd.exists():
+            precios_list = [pc.precio_catalogo for pc in precios_habitacion_bd]
+            salida.costo_base_desde = min(precios_list)
+            salida.costo_base_hasta = max(precios_list)
+            salida.save(update_fields=["costo_base_desde", "costo_base_hasta"])
+
+    def _sync_items_costo_paquete(self, paquete, items_costo_data):
+        """Sincroniza ItemCostoPaquete: crea, actualiza y elimina los no enviados."""
+        existentes = {icp.tipo_costo_id: icp for icp in paquete.items_costo_default.all()}
+        enviados_ids = []
+
+        for item in items_costo_data:
+            # Soporta tanto objeto resuelto por serializer (tipo_costo) como raw (tipo_costo_id)
+            tipo_costo_obj = item.get("tipo_costo")
+            if not tipo_costo_obj:
+                tipo_costo_id = item.get("tipo_costo_id")
+                if not tipo_costo_id:
+                    continue
+                try:
+                    tipo_costo_obj = TipoCostoSalida.objects.get(id=tipo_costo_id)
+                except TipoCostoSalida.DoesNotExist:
+                    continue
+            monto = Decimal(str(item.get("monto", 0) or 0))
+
+            if tipo_costo_obj.id in existentes:
+                icp = existentes[tipo_costo_obj.id]
+                if icp.monto != monto:
+                    icp.monto = monto
+                    icp.save()
+            else:
+                ItemCostoPaquete.objects.create(
+                    paquete=paquete,
+                    tipo_costo=tipo_costo_obj,
+                    monto=monto
+                )
+            enviados_ids.append(tipo_costo_obj.id)
+
+        if enviados_ids:
+            paquete.items_costo_default.exclude(tipo_costo_id__in=enviados_ids).delete()
+        else:
+            paquete.items_costo_default.all().delete()
+
+    def _sync_items_costo_salida(self, salida, items_costo_override_data):
+        """
+        Sincroniza ItemCostoSalida (overrides) para una salida específica.
+        Si la lista está vacía → elimina todos los overrides.
+        """
+        existentes = {ics.tipo_costo_id: ics for ics in salida.items_costo.all()}
+        enviados_ids = []
+
+        for item in items_costo_override_data:
+            tipo_costo_id = item.get("tipo_costo_id")
+            if not tipo_costo_id:
+                continue
+            try:
+                tipo_costo_obj = TipoCostoSalida.objects.get(id=tipo_costo_id, activo=True)
+            except TipoCostoSalida.DoesNotExist:
+                continue
+            monto = Decimal(str(item.get("monto", 0) or 0))
+
+            if tipo_costo_obj.id in existentes:
+                ics = existentes[tipo_costo_obj.id]
+                if ics.monto != monto:
+                    ics.monto = monto
+                    ics.save()
+            else:
+                ItemCostoSalida.objects.create(
+                    salida=salida,
+                    tipo_costo=tipo_costo_obj,
+                    monto=monto
+                )
+            enviados_ids.append(tipo_costo_obj.id)
+
+        salida.items_costo.exclude(tipo_costo_id__in=enviados_ids).delete()
+
     def _get_salidas_from_initial(self):
         raw = getattr(self, "initial_data", {}).get("salidas")
         if not raw:
@@ -955,14 +1198,16 @@ class PaqueteSerializer(serializers.ModelSerializer):
     # --------- Create & Update ---------
     def create(self, validated_data):
         servicios_data = validated_data.pop("servicios_data", None)
+        items_costo_data = validated_data.pop("items_costo_data", None)
         salidas_data = validated_data.pop("salidas", None)
 
         if servicios_data is None:
             servicios_data = self._get_servicios_from_initial() or []
+        if items_costo_data is None:
+            items_costo_data = self._get_items_costo_from_initial() or []
         if not salidas_data:
             salidas_data = self._get_salidas_from_initial() or []
-            
-            
+
         # 🧩 Resolver tipo_paquete (viene como tipo_paquete o tipo_paquete_id)
         tipo_paquete_val = validated_data.pop("tipo_paquete", None) or validated_data.pop("tipo_paquete_id", None)
         if tipo_paquete_val:
@@ -971,7 +1216,11 @@ class PaqueteSerializer(serializers.ModelSerializer):
                 validated_data["tipo_paquete"] = tipo_paquete_obj
 
         paquete = Paquete.objects.create(**validated_data)
-    
+
+        # Crear ítems de costo por defecto del paquete
+        if items_costo_data:
+            self._sync_items_costo_paquete(paquete, items_costo_data)
+
         # Crear servicios
         for servicio_item in servicios_data:
             servicio_obj = self._resolve_fk_instance("servicio", servicio_item.get("servicio") or servicio_item.get("servicio_id"), Servicio)
@@ -987,7 +1236,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
         for salida_data in salidas_data:
             cupos_habitaciones_data = salida_data.pop("cupos_habitaciones", [])
             precios_catalogo_hoteles_data = salida_data.pop("precios_catalogo_hoteles", [])
-            precios_catalogo_data = salida_data.pop("precios_catalogo", [])
+            precios_catalogo_habitaciones_data = salida_data.pop("precios_catalogo_habitaciones", [])
             hoteles_ids = salida_data.pop("hoteles", [])
             moneda_val = salida_data.pop("moneda", None) or salida_data.pop("moneda_id", None)
             temporada_val = salida_data.pop("temporada", None) or salida_data.pop("temporada_id", None)
@@ -1022,7 +1271,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
                             cupo=cupo_item.get("cupo", 0)
                         )
 
-            # Crear precios de catálogo por HOTEL (para paquetes de distribuidora)
+            # Crear precios de catálogo por HOTEL (propios y distribuidoras)
             # Y automáticamente crear precios individuales para cada habitación del hotel
             for precio_item in precios_catalogo_hoteles_data:
                 hotel_obj = self._resolve_fk_instance("hotel", precio_item.get("hotel") or precio_item.get("hotel_id"), Hotel)
@@ -1047,9 +1296,9 @@ class PaqueteSerializer(serializers.ModelSerializer):
                             defaults={"precio_catalogo": precio_catalogo_hotel}
                         )
 
-            # Crear precios de catálogo por HABITACIÓN (para paquetes de distribuidora)
+            # Crear precios de catálogo por HABITACIÓN (propios y distribuidoras)
             # Estos pueden sobrescribir los precios creados automáticamente por hotel
-            for precio_item in precios_catalogo_data:
+            for precio_item in precios_catalogo_habitaciones_data:
                 habitacion_obj = self._resolve_fk_instance("habitacion", precio_item.get("habitacion") or precio_item.get("habitacion_id"), Habitacion)
                 if habitacion_obj:
                     precio_catalogo_hab = Decimal(precio_item.get("precio_catalogo", 0) or 0)
@@ -1060,53 +1309,8 @@ class PaqueteSerializer(serializers.ModelSerializer):
                         defaults={"precio_catalogo": precio_catalogo_hab}
                     )
 
-            # Calcular costo_base_desde y costo_base_hasta si es paquete de distribuidora
-            if not paquete.propio:
-                # Validar que todos los hoteles tengan precios de catálogo
-                hoteles_en_salida = set(hoteles_ids)
-                hoteles_con_precio_hotel = set(
-                    self._resolve_fk_instance("hotel", p.get("hotel") or p.get("hotel_id"), Hotel).id
-                    for p in precios_catalogo_hoteles_data
-                    if self._resolve_fk_instance("hotel", p.get("hotel") or p.get("hotel_id"), Hotel)
-                )
-
-                # Obtener hoteles que tienen al menos una habitación con precio específico
-                hoteles_con_precio_habitacion = set()
-                for precio_item in precios_catalogo_data:
-                    habitacion_obj = self._resolve_fk_instance(
-                        "habitacion",
-                        precio_item.get("habitacion") or precio_item.get("habitacion_id"),
-                        Habitacion
-                    )
-                    if habitacion_obj and habitacion_obj.hotel_id in hoteles_en_salida:
-                        hoteles_con_precio_habitacion.add(habitacion_obj.hotel_id)
-
-                # Combinar ambos conjuntos
-                hoteles_con_precios = hoteles_con_precio_hotel | hoteles_con_precio_habitacion
-                hoteles_sin_precios = hoteles_en_salida - hoteles_con_precios
-
-                if hoteles_sin_precios:
-                    hoteles_sin_precio_nombres = []
-                    for hotel_id in hoteles_sin_precios:
-                        try:
-                            hotel = Hotel.objects.get(id=hotel_id)
-                            hoteles_sin_precio_nombres.append(hotel.nombre)
-                        except Hotel.DoesNotExist:
-                            hoteles_sin_precio_nombres.append(f"ID:{hotel_id}")
-
-                    raise serializers.ValidationError({
-                        "precios_catalogo": f"Los siguientes hoteles no tienen precios de catálogo definidos: {', '.join(hoteles_sin_precio_nombres)}. Todos los hoteles deben tener precios (por hotel o por habitación)."
-                    })
-
-                # Consultar TODOS los precios de habitación creados en la BD
-                # (incluye los automáticos desde hotel + los específicos)
-                precios_habitacion_bd = salida.precios_catalogo.all()
-
-                if precios_habitacion_bd.exists():
-                    precios_list = [pc.precio_catalogo for pc in precios_habitacion_bd]
-                    salida.costo_base_desde = min(precios_list)
-                    salida.costo_base_hasta = max(precios_list)
-                    salida.save(update_fields=["costo_base_desde", "costo_base_hasta"])
+            # Recalcular costo_base_desde y costo_base_hasta desde precios de catálogo
+            self._recalcular_costo_base(salida, hoteles_ids, precios_catalogo_hoteles_data, precios_catalogo_habitaciones_data)
 
             salida.calcular_precio_venta()
             HistorialPrecioPaquete.objects.create(
@@ -1121,6 +1325,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
         import json
 
         servicios_data = validated_data.pop("servicios_data", None)
+        items_costo_data = validated_data.pop("items_costo_data", None)
         salidas_data = validated_data.pop("salidas", None)
 
         # Si servicios_data viene como string (FormData) o ausencia en validated_data:
@@ -1202,8 +1407,16 @@ class PaqueteSerializer(serializers.ModelSerializer):
                 # si enviaste un array vacío explícito → eliminar todos
                 instance.paquete_servicios.all().delete()
 
-            # Recalcular precios de venta de todas las salidas si el paquete es propio
-            # (los servicios afectan el precio de venta en paquetes propios)
+            # Recalcular precios de venta de todas las salidas del paquete
+            # (los precios vienen del catálogo; el recálculo actualiza precio_venta_sugerido)
+            if instance.propio:
+                for salida in instance.salidas.all():
+                    salida.calcular_precio_venta()
+
+        # --- Actualizar ítems de costo por defecto del paquete ---
+        if items_costo_data is not None:
+            self._sync_items_costo_paquete(instance, items_costo_data)
+            # Recalcular precios de venta de todas las salidas
             if instance.propio:
                 for salida in instance.salidas.all():
                     salida.calcular_precio_venta()
@@ -1219,7 +1432,9 @@ class PaqueteSerializer(serializers.ModelSerializer):
                 hoteles_ids = salida_data.pop("hoteles", [])
                 cupos_habitaciones_data = salida_data.pop("cupos_habitaciones", []) or []
                 precios_catalogo_hoteles_data = salida_data.pop("precios_catalogo_hoteles", []) or []
-                precios_catalogo_data = salida_data.pop("precios_catalogo", []) or []
+                precios_catalogo_habitaciones_data = salida_data.pop("precios_catalogo_habitaciones", []) or []
+                # Sentinel: None = no enviado (no tocar overrides), [] = borrar todos
+                items_costo_override_data = salida_data.pop("items_costo_override_data", None)
                 moneda_val = salida_data.pop("moneda", None) or salida_data.pop("moneda_id", None)
                 temporada_val = salida_data.pop("temporada", None) or salida_data.pop("temporada_id", None)
                 habitacion_fija_val = salida_data.pop("habitacion_fija", None) or salida_data.pop("habitacion_fija_id", None)
@@ -1334,14 +1549,21 @@ class PaqueteSerializer(serializers.ModelSerializer):
                             habitaciones_actualizadas_por_hotel.add(habitacion.id)
 
                     if precios_catalogo_hoteles_data:
+                        # Obtener hoteles eliminados ANTES del delete (bug fix: antes se hacía después)
+                        hoteles_eliminados = list(
+                            salida.precios_catalogo_hoteles
+                            .exclude(hotel__id__in=enviados_precios_hoteles)
+                            .values_list('hotel_id', flat=True)
+                        )
+
                         # Eliminar precios por hotel que ya no están en el payload
                         salida.precios_catalogo_hoteles.exclude(hotel__id__in=enviados_precios_hoteles).delete()
 
-                        # También eliminar precios de habitaciones de hoteles que fueron removidos
-                        # PERO solo si no fueron actualizados explícitamente en precios_catalogo_data
-                        hoteles_eliminados = salida.precios_catalogo_hoteles.exclude(hotel__id__in=enviados_precios_hoteles).values_list('hotel_id', flat=True)
+                        # Eliminar precios de habitaciones de hoteles removidos
                         if hoteles_eliminados:
-                            habitaciones_a_eliminar = Habitacion.objects.filter(hotel_id__in=hoteles_eliminados).values_list('id', flat=True)
+                            habitaciones_a_eliminar = Habitacion.objects.filter(
+                                hotel_id__in=hoteles_eliminados
+                            ).values_list('id', flat=True)
                             PrecioCatalogoHabitacion.objects.filter(
                                 salida=salida,
                                 habitacion_id__in=habitaciones_a_eliminar
@@ -1350,7 +1572,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
                     # --- Precios de catálogo por HABITACIÓN: update_or_create y eliminación de los no enviados ---
                     # Estos pueden sobrescribir los precios creados automáticamente por hotel
                     enviados_precios_habitaciones = []
-                    for precio_item in precios_catalogo_data:
+                    for precio_item in precios_catalogo_habitaciones_data:
                         habitacion_id = precio_item.get("habitacion_id") or (precio_item.get("habitacion", {}).get("id") if isinstance(precio_item.get("habitacion"), dict) else None)
                         if not habitacion_id:
                             continue
@@ -1365,77 +1587,32 @@ class PaqueteSerializer(serializers.ModelSerializer):
                         )
                         enviados_precios_habitaciones.append(habitacion_obj.id)
 
-                    # Eliminar solo si se enviaron datos (evitar eliminar todo si viene vacío intencionalmente)
-                    # Mantener precios que:
-                    # 1. Fueron enviados explícitamente en precios_catalogo_data
-                    # 2. Fueron creados/actualizados automáticamente desde precios_catalogo_hoteles_data
-                    # 3. Si no se enviaron datos de precios, mantener todos los precios existentes
-                    if precios_catalogo_data or precios_catalogo_hoteles_data:
+                    # Eliminar solo habitaciones de hoteles que fueron explícitamente incluidos en el payload.
+                    # Hoteles no mencionados se dejan intactos para evitar pérdida de datos cuando
+                    # el frontend envía datos parciales (ej: solo un hotel en modo 'hotel').
+                    if precios_catalogo_habitaciones_data or precios_catalogo_hoteles_data:
                         habitaciones_a_mantener = set(enviados_precios_habitaciones) | habitaciones_actualizadas_por_hotel
-                        salida.precios_catalogo.exclude(habitacion__id__in=habitaciones_a_mantener).delete()
-
-                    # Recalcular costo_base_desde y costo_base_hasta si es paquete de distribuidora
-                    if not instance.propio:
-                        # Validar que todos los hoteles tengan precios de catálogo
-                        hoteles_en_salida = set(h.id if isinstance(h, Hotel) else h for h in hoteles_ids) if hoteles_ids else set()
-
-                        if hoteles_en_salida:
-                            hoteles_con_precio_hotel = set(
-                                self._resolve_fk_instance("hotel", p.get("hotel") or p.get("hotel_id"), Hotel).id
-                                for p in precios_catalogo_hoteles_data
-                                if self._resolve_fk_instance("hotel", p.get("hotel") or p.get("hotel_id"), Hotel)
+                        # Hoteles explícitamente mencionados en el payload (hotel-mode o room-mode)
+                        hoteles_en_payload = set(enviados_precios_hoteles)
+                        if enviados_precios_habitaciones:
+                            hoteles_en_payload |= set(
+                                Habitacion.objects.filter(id__in=enviados_precios_habitaciones)
+                                .values_list('hotel_id', flat=True)
                             )
+                        # Solo eliminar habitaciones de hoteles presentes en el payload
+                        salida.precios_catalogo_habitaciones.filter(
+                            habitacion__hotel_id__in=hoteles_en_payload
+                        ).exclude(habitacion__id__in=habitaciones_a_mantener).delete()
 
-                            # Obtener hoteles que tienen al menos una habitación con precio específico
-                            hoteles_con_precio_habitacion = set()
-                            for precio_item in precios_catalogo_data:
-                                habitacion_obj = self._resolve_fk_instance(
-                                    "habitacion",
-                                    precio_item.get("habitacion") or precio_item.get("habitacion_id"),
-                                    Habitacion
-                                )
-                                if habitacion_obj and habitacion_obj.hotel_id in hoteles_en_salida:
-                                    hoteles_con_precio_habitacion.add(habitacion_obj.hotel_id)
+                    # Recalcular costo_base_desde y costo_base_hasta desde precios de catálogo
+                    # Aplica tanto a propios como a distribuidoras
+                    self._recalcular_costo_base(salida, hoteles_ids, precios_catalogo_hoteles_data, precios_catalogo_habitaciones_data)
 
-                            # También verificar si hay precios previos en BD para hoteles sin precio nuevo
-                            # (en caso de UPDATE, puede que ya existan precios anteriores)
-                            hoteles_con_precio_previo = set(
-                                PrecioCatalogoHotel.objects.filter(
-                                    salida=salida
-                                ).values_list('hotel_id', flat=True)
-                            ) | set(
-                                PrecioCatalogoHabitacion.objects.filter(
-                                    salida=salida,
-                                    habitacion__hotel_id__in=hoteles_en_salida
-                                ).values_list('habitacion__hotel_id', flat=True)
-                            )
-
-                            # Combinar todos los conjuntos: precios nuevos + precios previos
-                            hoteles_con_precios = hoteles_con_precio_hotel | hoteles_con_precio_habitacion | hoteles_con_precio_previo
-                            hoteles_sin_precios = hoteles_en_salida - hoteles_con_precios
-
-                            if hoteles_sin_precios:
-                                hoteles_sin_precio_nombres = []
-                                for hotel_id in hoteles_sin_precios:
-                                    try:
-                                        hotel = Hotel.objects.get(id=hotel_id)
-                                        hoteles_sin_precio_nombres.append(hotel.nombre)
-                                    except Hotel.DoesNotExist:
-                                        hoteles_sin_precio_nombres.append(f"ID:{hotel_id}")
-
-                                raise serializers.ValidationError({
-                                    "precios_catalogo": f"Los siguientes hoteles no tienen precios de catálogo definidos: {', '.join(hoteles_sin_precio_nombres)}. Todos los hoteles deben tener precios (por hotel o por habitación)."
-                                })
-
-                        # Consultar TODOS los precios de habitación creados en la BD
-                        # (incluye los automáticos desde hotel + los específicos)
-                        precios_habitacion_bd = salida.precios_catalogo.all()
-
-                        if precios_habitacion_bd.exists():
-                            precios_list = [pc.precio_catalogo for pc in precios_habitacion_bd]
-                            salida.costo_base_desde = min(precios_list)
-                            salida.costo_base_hasta = max(precios_list)
-                            salida.save(update_fields=["costo_base_desde", "costo_base_hasta"])
+                    # --- Ítems de costo override por salida ---
+                    # None = no se envió → no tocar overrides existentes
+                    # [] o lista = sincronizar
+                    if items_costo_override_data is not None:
+                        self._sync_items_costo_salida(salida, items_costo_override_data)
 
                     # Recalcular precios de venta después de actualizar precios
                     salida.calcular_precio_venta()
@@ -1470,7 +1647,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
                                 cupo=cupo_item.get("cupo", 0),
                             )
 
-                    # Crear precios de catálogo por HOTEL (para paquetes de distribuidora)
+                    # Crear precios de catálogo por HOTEL (propios y distribuidoras)
                     # Y automáticamente crear precios individuales para cada habitación del hotel
                     for precio_item in precios_catalogo_hoteles_data:
                         hotel_id = precio_item.get("hotel_id") or (precio_item.get("hotel", {}).get("id") if isinstance(precio_item.get("hotel"), dict) else None)
@@ -1499,9 +1676,9 @@ class PaqueteSerializer(serializers.ModelSerializer):
                                 defaults={"precio_catalogo": precio_catalogo_hotel}
                             )
 
-                    # Crear precios de catálogo por HABITACIÓN (para paquetes de distribuidora)
+                    # Crear precios de catálogo por HABITACIÓN (propios y distribuidoras)
                     # Estos pueden sobrescribir los precios creados automáticamente por hotel
-                    for precio_item in precios_catalogo_data:
+                    for precio_item in precios_catalogo_habitaciones_data:
                         habitacion_id = precio_item.get("habitacion_id") or (precio_item.get("habitacion", {}).get("id") if isinstance(precio_item.get("habitacion"), dict) else None)
                         if not habitacion_id:
                             continue
@@ -1517,55 +1694,12 @@ class PaqueteSerializer(serializers.ModelSerializer):
                             defaults={"precio_catalogo": precio_catalogo_hab}
                         )
 
-                    # Calcular costo_base_desde y costo_base_hasta si es paquete de distribuidora
-                    if not instance.propio:
-                        # Validar que todos los hoteles tengan precios de catálogo
-                        hoteles_en_salida = set(h.id if isinstance(h, Hotel) else h for h in hoteles_ids) if hoteles_ids else set()
+                    # Recalcular costo_base_desde y costo_base_hasta desde precios de catálogo
+                    self._recalcular_costo_base(salida, hoteles_ids, precios_catalogo_hoteles_data, precios_catalogo_habitaciones_data)
 
-                        if hoteles_en_salida:
-                            hoteles_con_precio_hotel = set(
-                                self._resolve_fk_instance("hotel", p.get("hotel") or p.get("hotel_id"), Hotel).id
-                                for p in precios_catalogo_hoteles_data
-                                if self._resolve_fk_instance("hotel", p.get("hotel") or p.get("hotel_id"), Hotel)
-                            )
-
-                            # Obtener hoteles que tienen al menos una habitación con precio específico
-                            hoteles_con_precio_habitacion = set()
-                            for precio_item in precios_catalogo_data:
-                                habitacion_obj = self._resolve_fk_instance(
-                                    "habitacion",
-                                    precio_item.get("habitacion") or precio_item.get("habitacion_id"),
-                                    Habitacion
-                                )
-                                if habitacion_obj and habitacion_obj.hotel_id in hoteles_en_salida:
-                                    hoteles_con_precio_habitacion.add(habitacion_obj.hotel_id)
-
-                            # Combinar ambos conjuntos
-                            hoteles_con_precios = hoteles_con_precio_hotel | hoteles_con_precio_habitacion
-                            hoteles_sin_precios = hoteles_en_salida - hoteles_con_precios
-
-                            if hoteles_sin_precios:
-                                hoteles_sin_precio_nombres = []
-                                for hotel_id in hoteles_sin_precios:
-                                    try:
-                                        hotel = Hotel.objects.get(id=hotel_id)
-                                        hoteles_sin_precio_nombres.append(hotel.nombre)
-                                    except Hotel.DoesNotExist:
-                                        hoteles_sin_precio_nombres.append(f"ID:{hotel_id}")
-
-                                raise serializers.ValidationError({
-                                    "precios_catalogo": f"Los siguientes hoteles no tienen precios de catálogo definidos: {', '.join(hoteles_sin_precio_nombres)}. Todos los hoteles deben tener precios (por hotel o por habitación)."
-                                })
-
-                        # Consultar TODOS los precios de habitación creados en la BD
-                        # (incluye los automáticos desde hotel + los específicos)
-                        precios_habitacion_bd = salida.precios_catalogo.all()
-
-                        if precios_habitacion_bd.exists():
-                            precios_list = [pc.precio_catalogo for pc in precios_habitacion_bd]
-                            salida.costo_base_desde = min(precios_list)
-                            salida.costo_base_hasta = max(precios_list)
-                            salida.save(update_fields=["costo_base_desde", "costo_base_hasta"])
+                    # Ítems de costo override para la nueva salida
+                    if items_costo_override_data is not None:
+                        self._sync_items_costo_salida(salida, items_costo_override_data)
 
                     salida.calcular_precio_venta()
                     HistorialPrecioPaquete.objects.create(
