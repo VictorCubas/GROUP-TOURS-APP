@@ -168,9 +168,8 @@ class HotelViewSet(viewsets.ModelViewSet):
 
         es_distribuidora = not salida.paquete.propio
 
-        # Solo distribuidoras aplican comisión; propios usan factor 1
-        comision = salida.comision or Decimal('0') if es_distribuidora else Decimal('0')
-        factor = Decimal('1') + (comision / Decimal('100')) if comision > 0 else Decimal('1')
+        # El precio de catálogo es el precio final — sin aplicar ningún factor.
+        # ganancia% y comision% son informativos y no afectan el precio.
 
         # ── LÓGICA ANTERIOR (cálculo automático para propios en el resumen) ──────────
         # Si en el futuro se quiere restaurar el cálculo automático para paquetes propios,
@@ -227,7 +226,7 @@ class HotelViewSet(viewsets.ModelViewSet):
                     precio_catalogo = precios_catalogo_hotel.get(hotel.id, Decimal('0'))
                     precio_origen = 'catalogo_hotel'
 
-                precio_venta_final = precio_catalogo * factor
+                precio_venta_final = precio_catalogo
 
                 precio_moneda_alternativa = self._calcular_precio_moneda_alternativa(
                     salida=salida,
@@ -277,8 +276,8 @@ class HotelViewSet(viewsets.ModelViewSet):
             'es_distribuidora': es_distribuidora,
             'resumen_precios': {
                 'noches': noches,
-                'comision_porcentaje': str(comision) if es_distribuidora else None,
-                'factor_aplicado': str(factor),
+                'comision_porcentaje': None,
+                'factor_aplicado': '1',
                 'habitacion_mas_barata': habitacion_mas_barata,
                 'habitacion_mas_cara': habitacion_mas_cara,
                 'habitaciones_ordenadas': resumen_habitaciones_ordenado,

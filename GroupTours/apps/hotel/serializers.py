@@ -153,21 +153,15 @@ class HabitacionSerializer(serializers.ModelSerializer):
             else:
                 return None
 
-        # Solo distribuidoras aplican comisión
-        comision = Decimal('0')
-        if not salida.paquete.propio:
-            comision = salida.comision or Decimal('0')
-
-        factor = Decimal('1') + (comision / Decimal('100')) if comision > 0 else Decimal('1')
-        precio_venta_final = precio_base * factor
-
+        # El precio de catálogo es el precio final — sin aplicar ningún factor.
+        # ganancia% y comision% son informativos y no afectan el precio.
         return {
             'noches': noches,
             'precio_catalogo': str(precio_base),
             'precio_origen': precio_origen,
-            'comision_porcentaje': str(comision) if not salida.paquete.propio else None,
-            'factor_aplicado': str(factor),
-            'precio_venta_final': str(precio_venta_final)
+            'comision_porcentaje': None,
+            'factor_aplicado': '1',
+            'precio_venta_final': str(precio_base)
         }
 
     def validate_servicios(self, value):

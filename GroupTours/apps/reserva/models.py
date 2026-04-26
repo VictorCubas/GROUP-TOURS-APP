@@ -653,13 +653,8 @@ class Reserva(models.Model):
             else:
                 return Decimal("0")
 
-        # Distribuidoras aplican comision%; propios no aplican ningún factor
-        if not self.paquete.propio:
-            comision = self.salida.comision or Decimal("0")
-            if comision > 0:
-                factor = Decimal("1") + (comision / Decimal("100"))
-                return precio_base * factor
-
+        # El precio de catálogo es el precio final — sin aplicar ningún factor.
+        # ganancia% y comision% son informativos y no afectan el precio unitario.
         return precio_base
 
     def clean(self):
