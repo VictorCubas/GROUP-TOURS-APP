@@ -225,6 +225,7 @@ class SalidaPaqueteActualizarFechasSerializer(serializers.ModelSerializer):
 
 class SalidaPaqueteSerializer(serializers.ModelSerializer):
     id = serializers.IntegerField(read_only=True)
+    paquete_propio = serializers.BooleanField(source="paquete.propio", read_only=True)
 
     paquete_id = serializers.PrimaryKeyRelatedField(
         queryset=Paquete.objects.all(),
@@ -280,6 +281,7 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "paquete_id",
+            "paquete_propio",
             "codigo",
             "fecha_salida",
             "fecha_regreso",
