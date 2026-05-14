@@ -82,7 +82,6 @@ class PaqueteViewSet(viewsets.ModelViewSet):
             "paquete_servicios__servicio",
             "salidas__moneda",
             "salidas__hoteles",
-            "salidas__habitacion_fija__hotel",
         )
         .order_by("-fecha_creacion")
     )
@@ -188,8 +187,6 @@ class SalidaPaqueteViewSet(viewsets.ModelViewSet):
             "paquete__destino__ciudad__pais",
             "moneda",
             "temporada",
-            "habitacion_fija__tipo_habitacion",
-            "habitacion_fija__hotel",
         ).prefetch_related(
             "hoteles",
             "cupos_habitaciones__habitacion__tipo_habitacion",
