@@ -41,19 +41,6 @@ class Paquete(models.Model):
         related_name="paquetes"
     )
 
-    FLEXIBLE = "flexible"
-    FIJO = "fijo"
-    TIPO_SELECCION = [
-        (FLEXIBLE, "Flexible"),
-        (FIJO, "Fijo"),
-    ]
-    modalidad = models.CharField(
-        max_length=10,
-        choices=TIPO_SELECCION,
-        default=FLEXIBLE,
-        help_text="Define si el paquete es flexible o fijo."
-    )
-
     distribuidora = models.ForeignKey(
         Distribuidora,
         on_delete=models.PROTECT,
@@ -270,14 +257,6 @@ class SalidaPaquete(models.Model):
     moneda = models.ForeignKey(Moneda, on_delete=models.PROTECT, related_name="salidas")
     hoteles = models.ManyToManyField(Hotel, related_name="salidas_paquete")
 
-    habitacion_fija = models.ForeignKey(
-        Habitacion,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="salidas_fijas"
-    )
-
     costo_base_desde = models.DecimalField(max_digits=12, decimal_places=2)
     costo_base_hasta = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
 
@@ -352,6 +331,7 @@ class SalidaPaquete(models.Model):
     def calcular_precio_venta(self):
         """
         Calcula los precios de venta mínimo y máximo desde los precios de catálogo.
+        docs/REFACTOR_PRECIO_PAQUETE_PROPIO.md | docs/ANALISIS_PAQUETE_PERSONALIZADO.md
 
         Tanto propios como distribuidoras usan PrecioCatalogoHabitacion como fuente de precio.
         La diferencia es que distribuidoras aplican comision% y propios no aplican ningún factor.
@@ -789,6 +769,9 @@ def create_salida_paquete(data):
     Crea una SalidaPaquete con precio base en 0.
     Los precios reales (costo_base_desde/hasta y precio_venta_sugerido) se calculan
     después de que el serializer asigne los PrecioCatalogoHabitacion correspondientes.
+
+    Lógica de precios: docs/REFACTOR_PRECIO_PAQUETE_PROPIO.md
+    Paquetes personalizados: docs/ANALISIS_PAQUETE_PERSONALIZADO.md
 
     ── LÓGICA ANTERIOR (cálculo automático desde habitaciones para propios) ──────────
     Si en el futuro se quiere restaurar el cálculo automático al crear la salida,
