@@ -574,6 +574,7 @@ class Reserva(models.Model):
         Calcula el precio unitario por pasajero basado en:
         - Para paquetes de distribuidora: precio de catálogo + comisión
         - Para paquetes propios: precio de catálogo (sin factor)
+        docs/REFACTOR_PRECIO_PAQUETE_PROPIO.md
 
         Retorna Decimal con el precio total por pasajero.
         """

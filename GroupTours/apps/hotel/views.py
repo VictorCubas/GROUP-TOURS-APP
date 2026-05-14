@@ -128,6 +128,7 @@ class HotelViewSet(viewsets.ModelViewSet):
         Devuelve los hoteles y habitaciones asociados a una salida de paquete.
         Incluye el cupo de cada habitación según CupoHabitacionSalida (solo propios).
         Además, incluye un resumen ordenado de habitaciones por precio.
+        docs/REFACTOR_PRECIO_PAQUETE_PROPIO.md
         """
         from decimal import Decimal
         from apps.paquete.models import CupoHabitacionSalida, PrecioCatalogoHabitacion, PrecioCatalogoHotel

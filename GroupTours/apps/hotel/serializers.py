@@ -69,6 +69,7 @@ class HabitacionSerializer(serializers.ModelSerializer):
         Calcula el precio de venta de la habitación para una salida específica.
 
         Tanto propios como distribuidoras usan precio de catálogo:
+        docs/REFACTOR_PRECIO_PAQUETE_PROPIO.md
         - PrecioCatalogoHabitacion (prioridad alta)
         - PrecioCatalogoHotel (fallback)
 
