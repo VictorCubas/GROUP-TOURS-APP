@@ -1393,7 +1393,6 @@ class ReservaDetalleSerializer(serializers.ModelSerializer):
                 'simbolo': paquete.moneda.simbolo,
                 'codigo': paquete.moneda.codigo
             } if paquete.moneda else None,
-            'modalidad': paquete.modalidad,
             'propio': paquete.propio,
             'personalizado': paquete.personalizado,
             'cantidad_pasajeros': paquete.cantidad_pasajeros,
