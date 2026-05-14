@@ -1153,8 +1153,6 @@ class Voucher(models.Model):
                 tipo_paquete = paquete.get_tipo_paquete_display()
 
         c.drawString(50, y, f"Tipo de Paquete: {tipo_paquete}")
-        y -= 18
-        c.drawString(50, y, f"Modalidad: {paquete.get_modalidad_display()}")
 
         y -= 25
 
