@@ -250,14 +250,7 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
     )
     hoteles = serializers.SerializerMethodField(read_only=True)
 
-    habitacion_fija_id = serializers.PrimaryKeyRelatedField(
-        queryset=Habitacion.objects.all(),
-        source="habitacion_fija",
-        write_only=True,
-        required=False,
-        allow_null=True
-    )
-    habitacion_fija = serializers.SerializerMethodField(read_only=True)
+
 
     moneda = MonedaSimpleSerializer(read_only=True, allow_null=True)
     temporada = serializers.SerializerMethodField(read_only=True)
@@ -303,8 +296,6 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
             "activo",
             "hoteles",
             "hoteles_ids",
-            "habitacion_fija",
-            "habitacion_fija_id",
             "cupos_habitaciones",
             "precios_catalogo_hoteles",
             "precios_catalogo_habitaciones",
@@ -317,7 +308,6 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
             "costo_base_hasta",
             "precio_venta_sugerido_min",
             "precio_venta_sugerido_max",
-            "habitacion_fija",
         ]
 
     def get_moneda(self, obj):
@@ -334,16 +324,6 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
 
     def get_hoteles(self, obj):
         return [{"id": h.id, "nombre": h.nombre} for h in obj.hoteles.all()]
-
-    def get_habitacion_fija(self, obj):
-        return (
-            {
-                "id": obj.habitacion_fija.id,
-                "hotel": obj.habitacion_fija.hotel.nombre,
-                "tipo_habitacion": obj.habitacion_fija.tipo_habitacion.nombre,
-            }
-            if obj.habitacion_fija else None
-        )
 
     def get_precio_venta_total_min(self, obj):
         """
@@ -446,6 +426,8 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
     # ========== CREATE ==========
 
     def create(self, validated_data):
+        # Lógica de precios: docs/REFACTOR_PRECIO_PAQUETE_PROPIO.md
+        # Paquetes personalizados: docs/ANALISIS_PAQUETE_PERSONALIZADO.md
         from .models import create_salida_paquete
 
         paquete = validated_data.pop("paquete")
@@ -575,7 +557,6 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
         raw = self.initial_data
         hoteles = validated_data.pop("hoteles", [])
         temporada = validated_data.pop("temporada", None)
-        habitacion_fija = validated_data.pop("habitacion_fija", None)
 
         cupos_habitaciones_data       = raw.get("cupos_habitaciones", []) or []
         precios_catalogo_hoteles_data = raw.get("precios_catalogo_hoteles", []) or []
@@ -587,8 +568,6 @@ class SalidaPaqueteSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
         if temporada is not None:
             instance.temporada = temporada
-        if habitacion_fija is not None:
-            instance.habitacion_fija = habitacion_fija
         instance.save()
 
         # --- Hoteles ---
@@ -996,11 +975,6 @@ class PaqueteSerializer(serializers.ModelSerializer):
         required=False
     )
 
-    modalidad = serializers.ChoiceField(
-        choices=Paquete.TIPO_SELECCION,
-        default=Paquete.FLEXIBLE,
-        required=False
-    )
     salidas = SalidaPaqueteSerializer(many=True, required=False)
 
     fecha_inicio = serializers.SerializerMethodField()
@@ -1029,7 +1003,6 @@ class PaqueteSerializer(serializers.ModelSerializer):
             "servicios_data",
             "items_costo_default",
             "items_costo_data",
-            "modalidad",
             "precio",
             "precio_venta_desde",
             "senia",
@@ -1395,6 +1368,8 @@ class PaqueteSerializer(serializers.ModelSerializer):
 
     # --------- Create & Update ---------
     def create(self, validated_data):
+        # Lógica de precios: docs/REFACTOR_PRECIO_PAQUETE_PROPIO.md
+        # Paquetes personalizados: docs/ANALISIS_PAQUETE_PERSONALIZADO.md
         servicios_data = validated_data.pop("servicios_data", None)
         items_costo_data = validated_data.pop("items_costo_data", None)
         salidas_data = validated_data.pop("salidas", None)
@@ -1435,23 +1410,24 @@ class PaqueteSerializer(serializers.ModelSerializer):
             cupos_habitaciones_data = salida_data.pop("cupos_habitaciones", [])
             precios_catalogo_hoteles_data = salida_data.pop("precios_catalogo_hoteles", [])
             precios_catalogo_habitaciones_data = salida_data.pop("precios_catalogo_habitaciones", [])
+            items_costo_override_data = salida_data.pop("items_costo_override_data", None)
             hoteles_ids = salida_data.pop("hoteles", [])
             moneda_val = salida_data.pop("moneda", None) or salida_data.pop("moneda_id", None)
             temporada_val = salida_data.pop("temporada", None) or salida_data.pop("temporada_id", None)
-            habitacion_fija_val = salida_data.pop("habitacion_fija", None) or salida_data.pop("habitacion_fija_id", None)
-
+            # Campos calculados enviados por el front — se recalculan después, ignorar aquí
+            salida_data.pop("costo_base_desde", None)
+            salida_data.pop("costo_base_hasta", None)
             moneda_obj = self._resolve_fk_instance("moneda", moneda_val, Moneda)
             if not moneda_obj:
                 raise serializers.ValidationError({"salidas": "Cada salida debe incluir un 'moneda_id' válido."})
 
             temporada_obj = self._resolve_fk_instance("temporada", temporada_val, Temporada)
-            habitacion_obj = self._resolve_fk_instance("habitacion_fija", habitacion_fija_val, Habitacion)
 
             salida = SalidaPaquete.objects.create(
                 paquete=paquete,
                 moneda=moneda_obj,
                 temporada=temporada_obj,
-                habitacion_fija=habitacion_obj,
+                costo_base_desde=0,
                 **{k: v for k, v in salida_data.items() if k not in ["hoteles"]}
             )
 
@@ -1510,6 +1486,9 @@ class PaqueteSerializer(serializers.ModelSerializer):
             # Recalcular costo_base_desde y costo_base_hasta desde precios de catálogo
             self._recalcular_costo_base(salida, hoteles_ids, precios_catalogo_hoteles_data, precios_catalogo_habitaciones_data)
 
+            if items_costo_override_data is not None and paquete.propio:
+                self._sync_items_costo_salida(salida, items_costo_override_data)
+
             salida.calcular_precio_venta()
             HistorialPrecioPaquete.objects.create(
                 salida=salida,
@@ -1526,8 +1505,8 @@ class PaqueteSerializer(serializers.ModelSerializer):
         items_costo_data = validated_data.pop("items_costo_data", None)
         salidas_data = validated_data.pop("salidas", None)
 
-        # Si servicios_data viene como string (FormData) o ausencia en validated_data:
-        if servicios_data is None:
+        # Fallback para FormData: solo procesar si el campo fue enviado explícitamente.
+        if servicios_data is None and "servicios_data" in getattr(self, "initial_data", {}):
             raw_servicios = getattr(self, "initial_data", {}).get("servicios_data")
             if isinstance(raw_servicios, str):
                 try:
@@ -1536,8 +1515,11 @@ class PaqueteSerializer(serializers.ModelSerializer):
                     servicios_data = []
             elif isinstance(raw_servicios, list):
                 servicios_data = raw_servicios
-            else:
-                servicios_data = []
+
+        # Fallback para FormData: ListSerializer + QueryDict descarta el campo.
+        # Solo se procesa si el campo fue enviado explícitamente.
+        if items_costo_data is None and "items_costo_data" in getattr(self, "initial_data", {}):
+            items_costo_data = self._get_items_costo_from_initial()
 
         # Si salidas viene como string (FormData)
         if salidas_data is None:
@@ -1551,9 +1533,6 @@ class PaqueteSerializer(serializers.ModelSerializer):
                 salidas_data = raw_salidas
             else:
                 salidas_data = []
-
-        # Modalidad se mantiene (no se puede cambiar desde el front)
-        modalidad_actual = instance.modalidad
 
         # --- Actualizar atributos base del paquete ---
         for attr, value in validated_data.items():
@@ -1635,11 +1614,11 @@ class PaqueteSerializer(serializers.ModelSerializer):
                 items_costo_override_data = salida_data.pop("items_costo_override_data", None)
                 moneda_val = salida_data.pop("moneda", None) or salida_data.pop("moneda_id", None)
                 temporada_val = salida_data.pop("temporada", None) or salida_data.pop("temporada_id", None)
-                habitacion_fija_val = salida_data.pop("habitacion_fija", None) or salida_data.pop("habitacion_fija_id", None)
-
+                # Campos calculados enviados por el front — se recalculan después, ignorar aquí
+                salida_data.pop("costo_base_desde", None)
+                salida_data.pop("costo_base_hasta", None)
                 moneda_obj = self._resolve_fk_instance("moneda", moneda_val, Moneda)
                 temporada_obj = self._resolve_fk_instance("temporada", temporada_val, Temporada)
-                habitacion_fija_obj = self._resolve_fk_instance("habitacion_fija", habitacion_fija_val, Habitacion)
 
                 if not moneda_obj:
                     raise serializers.ValidationError({"salidas": "Cada salida debe incluir un 'moneda_id' válido."})
@@ -1650,11 +1629,6 @@ class PaqueteSerializer(serializers.ModelSerializer):
                         "salidas": "Los paquetes de distribuidora NO pueden tener cupos de habitación. Están sujetos a disponibilidad de la distribuidora."
                     })
 
-                # Validación: si el paquete es fijo, solo puede tener 1 cupo_habitacion
-                if modalidad_actual == Paquete.FIJO and len(cupos_habitaciones_data) > 1:
-                    raise serializers.ValidationError({
-                        "salidas": "Los paquetes en modalidad 'fijo' solo pueden tener un 'cupo_habitacion'."
-                    })
 
                 # Si la salida tiene ID, intentar actualizar; si no, buscar por fechas para evitar duplicados
                 salida = None
@@ -1685,7 +1659,6 @@ class PaqueteSerializer(serializers.ModelSerializer):
 
                     salida.moneda = moneda_obj
                     salida.temporada = temporada_obj
-                    salida.habitacion_fija = habitacion_fija_obj
                     salida.save()
 
                     if hoteles_ids:
@@ -1822,7 +1795,7 @@ class PaqueteSerializer(serializers.ModelSerializer):
                         paquete=instance,
                         moneda=moneda_obj,
                         temporada=temporada_obj,
-                        habitacion_fija=habitacion_fija_obj,
+                        costo_base_desde=0,
                         **{k: v for k, v in salida_data.items() if k not in ["hoteles"]}
                     )
 
