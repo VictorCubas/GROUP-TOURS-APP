@@ -573,7 +573,8 @@ class Reserva(models.Model):
         """
         Calcula el precio unitario por pasajero basado en:
         - Para paquetes de distribuidora: precio de catálogo + comisión
-        - Para paquetes propios: habitación + servicios + ganancia
+        - Para paquetes propios: precio de catálogo (sin factor)
+        docs/REFACTOR_PRECIO_PAQUETE_PROPIO.md
 
         Retorna Decimal con el precio total por pasajero.
         """
@@ -583,105 +584,79 @@ class Reserva(models.Model):
         if not self.salida or not self.habitacion:
             return Decimal("0")
 
-        # === PAQUETES DE DISTRIBUIDORA ===
-        # Usar precios de catálogo de la distribuidora
-        if not self.paquete.propio:
-            # 1. Buscar precio específico de la habitación (prioridad)
-            precio_catalogo_hab = PrecioCatalogoHabitacion.objects.filter(
+        # === PROPIOS Y DISTRIBUIDORAS — precio desde catálogo ===
+        # Ambos usan PrecioCatalogoHabitacion/Hotel como fuente de precio.
+        # La diferencia es que distribuidoras aplican comision%; propios no aplican factor.
+        #
+        # ── LÓGICA ANTERIOR (cálculo automático para propios) ──────────────────────────
+        # Si en el futuro se quiere volver al cálculo automático para paquetes propios:
+        #
+        # if self.paquete.propio:
+        #     # 1. Calcular cantidad de noches
+        #     noches = (self.salida.fecha_regreso - self.salida.fecha_salida).days \
+        #              if self.salida.fecha_regreso and self.salida.fecha_salida else 1
+        #
+        #     # 2. Precio de la habitación por noche × cantidad de noches
+        #     precio_noche = self.habitacion.precio_noche or Decimal("0")
+        #
+        #     # 3. Convertir a la moneda de la salida si difieren
+        #     if self.habitacion.moneda and self.salida.moneda \
+        #            and self.habitacion.moneda != self.salida.moneda:
+        #         from apps.paquete.utils import convertir_entre_monedas
+        #         precio_noche = convertir_entre_monedas(
+        #             monto=precio_noche,
+        #             moneda_origen=self.habitacion.moneda,
+        #             moneda_destino=self.salida.moneda,
+        #             fecha=self.salida.fecha_salida
+        #         )
+        #     costo_habitacion = precio_noche * noches
+        #
+        #     # 4. Sumar servicios incluidos en el paquete
+        #     total_servicios = Decimal("0")
+        #     for ps in self.paquete.paquete_servicios.all():
+        #         if ps.precio and ps.precio > 0:
+        #             total_servicios += ps.precio
+        #         elif hasattr(ps.servicio, 'precio') and ps.servicio.precio:
+        #             total_servicios += ps.servicio.precio
+        #
+        #     # 5. Sumar ítems de costo de la salida (bus, coordinador, etc.)
+        #     total_items_costo = Decimal("0")
+        #     for item in self.salida.items_costo.filter(activo=True):
+        #         if item.tipo_costo.dividir_por_pasajeros and self.salida.cupo:
+        #             total_items_costo += item.monto / Decimal(self.salida.cupo)
+        #         else:
+        #             total_items_costo += item.monto
+        #
+        #     # 6. Aplicar ganancia%
+        #     ganancia = self.salida.ganancia or Decimal("0")
+        #     factor = Decimal("1") + (ganancia / Decimal("100")) if ganancia > 0 else Decimal("1")
+        #
+        #     return (costo_habitacion + total_servicios + total_items_costo) * factor
+        # ───────────────────────────────────────────────────────────────────────────────
+
+        # 1. Buscar precio específico de la habitación (prioridad)
+        precio_catalogo_hab = PrecioCatalogoHabitacion.objects.filter(
+            salida=self.salida,
+            habitacion=self.habitacion
+        ).first()
+
+        if precio_catalogo_hab:
+            precio_base = precio_catalogo_hab.precio_catalogo
+        else:
+            # 2. Buscar precio a nivel de hotel
+            precio_catalogo_hotel = PrecioCatalogoHotel.objects.filter(
                 salida=self.salida,
-                habitacion=self.habitacion
+                hotel=self.habitacion.hotel
             ).first()
 
-            if precio_catalogo_hab:
-                precio_base = precio_catalogo_hab.precio_catalogo
+            if precio_catalogo_hotel:
+                precio_base = precio_catalogo_hotel.precio_catalogo
             else:
-                # 2. Buscar precio a nivel de hotel
-                precio_catalogo_hotel = PrecioCatalogoHotel.objects.filter(
-                    salida=self.salida,
-                    hotel=self.habitacion.hotel
-                ).first()
+                return Decimal("0")
 
-                if precio_catalogo_hotel:
-                    precio_base = precio_catalogo_hotel.precio_catalogo
-                else:
-                    # 3. Fallback: usar precio_noche de la habitación × noches
-                    precio_habitacion = self.habitacion.precio_noche or Decimal("0")
-                    if self.salida.fecha_regreso and self.salida.fecha_salida:
-                        noches = (self.salida.fecha_regreso - self.salida.fecha_salida).days
-                    else:
-                        noches = 1
-                    precio_base = precio_habitacion * noches
-
-            # 4. Aplicar comisión sobre el precio base del catálogo
-            comision = self.salida.comision or Decimal("0")
-            if comision > 0:
-                factor = Decimal("1") + (comision / Decimal("100"))
-                return precio_base * factor
-            else:
-                return precio_base
-
-        # === PAQUETES PROPIOS ===
-        # Calcular desde habitación + servicios + ganancia
-        else:
-            # 1. Calcular precio de la habitación por noche
-            precio_habitacion = self.habitacion.precio_noche or Decimal("0")
-
-            # 1.1 Convertir a la moneda de la salida si difieren
-            if self.habitacion.moneda != self.salida.moneda:
-                from apps.paquete.utils import convertir_entre_monedas
-                precio_habitacion = convertir_entre_monedas(
-                    monto=precio_habitacion,
-                    moneda_origen=self.habitacion.moneda,
-                    moneda_destino=self.salida.moneda,
-                    fecha=self.salida.fecha_salida
-                )
-
-            # 2. Calcular cantidad de noches
-            if self.salida.fecha_regreso and self.salida.fecha_salida:
-                noches = (self.salida.fecha_regreso - self.salida.fecha_salida).days
-            else:
-                noches = 1
-
-            # 3. Precio base de la habitación por toda la estadía (en su moneda original)
-            precio_habitacion_total = precio_habitacion * noches
-
-            # 4. Convertir precio de habitación a la moneda del paquete si es necesario
-            if self.habitacion.moneda and self.salida.moneda and self.habitacion.moneda != self.salida.moneda:
-                # Las monedas son diferentes, debemos convertir
-                from apps.paquete.utils import convertir_entre_monedas
-                
-                try:
-                    precio_habitacion_total_convertido = convertir_entre_monedas(
-                        monto=precio_habitacion_total,
-                        moneda_origen=self.habitacion.moneda,
-                        moneda_destino=self.salida.moneda,
-                        fecha=self.salida.fecha_salida
-                    )
-                except ValidationError:
-                    # Si falla la conversión, usar el precio original (fallback)
-                    precio_habitacion_total_convertido = precio_habitacion_total
-            else:
-                # Misma moneda o no hay moneda definida, usar directo
-                precio_habitacion_total_convertido = precio_habitacion_total
-
-            # 5. Sumar servicios incluidos en el paquete
-            total_servicios = Decimal("0")
-            for ps in self.paquete.paquete_servicios.all():
-                if ps.precio and ps.precio > 0:
-                    total_servicios += ps.precio
-                elif hasattr(ps.servicio, "precio") and ps.servicio.precio:
-                    total_servicios += ps.servicio.precio
-
-            # 6. Calcular costo base total (habitación convertida + servicios)
-            costo_base_total = precio_habitacion_total_convertido + total_servicios
-
-            # 7. Aplicar ganancia sobre el costo total
-            ganancia = self.salida.ganancia or Decimal("0")
-            if ganancia > 0:
-                factor = Decimal("1") + (ganancia / Decimal("100"))
-                return costo_base_total * factor
-            else:
-                return costo_base_total
+        # El precio de catálogo es el precio final — sin aplicar ningún factor.
+        # ganancia% y comision% son informativos y no afectan el precio unitario.
+        return precio_base
 
     def clean(self):
         """

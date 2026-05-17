@@ -6,7 +6,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.http import HttpResponse
 
-from .models import Paquete, SalidaPaquete
+from .models import Paquete, SalidaPaquete, TipoCostoSalida
 from .serializers import (
     PaqueteSerializer,
     SalidaPaqueteSerializer,
@@ -14,6 +14,7 @@ from .serializers import (
     SalidaPaqueteListSerializer,
     SalidaPaqueteDetalleSerializer,
     ReservaPasajeroDetalleSerializer,
+    TipoCostoSalidaSerializer,
 )
 from .filters import PaqueteFilter, SalidaFilter
 
@@ -32,6 +33,29 @@ class PaquetePagination(PageNumberPagination):
             "previous": self.get_previous_link(),
             "results": data,
         })
+
+
+# -------------------- TIPO COSTO SALIDA --------------------
+class TipoCostoSalidaViewSet(viewsets.ModelViewSet):
+    """
+    ABM de tipos de costo operativo para paquetes terrestres propios.
+    Ejemplos: Bus, Coordinador, IVA, Tasa municipal.
+    """
+    serializer_class = TipoCostoSalidaSerializer
+    http_method_names = ["get", "post", "patch", "delete"]
+
+    def get_queryset(self):
+        activo = self.request.query_params.get("activo")
+        qs = TipoCostoSalida.objects.all()
+        if activo is not None:
+            qs = qs.filter(activo=activo.lower() == "true")
+        return qs
+
+    @action(detail=False, methods=["get"], url_path="todos", pagination_class=None)
+    def todos(self, request):
+        qs = TipoCostoSalida.objects.filter(activo=True).order_by("nombre")
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
 
 
 # -------------------- VIEWSET --------------------
@@ -58,7 +82,6 @@ class PaqueteViewSet(viewsets.ModelViewSet):
             "paquete_servicios__servicio",
             "salidas__moneda",
             "salidas__hoteles",
-            "salidas__habitacion_fija__hotel",
         )
         .order_by("-fecha_creacion")
     )
@@ -164,13 +187,11 @@ class SalidaPaqueteViewSet(viewsets.ModelViewSet):
             "paquete__destino__ciudad__pais",
             "moneda",
             "temporada",
-            "habitacion_fija__tipo_habitacion",
-            "habitacion_fija__hotel",
         ).prefetch_related(
             "hoteles",
             "cupos_habitaciones__habitacion__tipo_habitacion",
             "precios_catalogo_hoteles__hotel",
-            "precios_catalogo__habitacion__tipo_habitacion",
+            "precios_catalogo_habitaciones__habitacion__tipo_habitacion",
         ).order_by("-fecha_creacion")
 
         # Para el detalle también pre-cargamos reservas y pasajeros

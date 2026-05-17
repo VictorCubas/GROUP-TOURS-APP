@@ -30,16 +30,6 @@ class PaqueteFilter(django_filters.FilterSet):
     )
 
     # 🔹 Filtros adicionales
-    modalidad = django_filters.CharFilter(
-        field_name="modalidad",
-        lookup_expr="iexact",  # búsqueda exacta pero insensible a mayúsculas
-        help_text="Filtrar por modalidad (ej: fija, flexible)."
-    )
-    habitacion_fija = django_filters.BooleanFilter(
-        field_name="habitacion_fija",
-        help_text="Filtrar si el paquete tiene habitación fija."
-    )
-
     # 🔹 Fechas
     fecha_creacion_desde = django_filters.DateFilter(
         field_name="fecha_creacion",
@@ -68,8 +58,6 @@ class PaqueteFilter(django_filters.FilterSet):
             "propio",
             "activo",
             "zona_geografica",     # 🔹 agregado aquí
-            "modalidad",
-            "habitacion_fija",
             "fecha_creacion_desde",
             "fecha_creacion_hasta"
         ]
@@ -102,8 +90,7 @@ class PaqueteFilter(django_filters.FilterSet):
                     Q(destino__ciudad__pais__nombre__icontains=value) | \
                     Q(destino__ciudad__pais__zona_geografica__nombre__icontains=value) | \
                     Q(tipo_paquete__nombre__icontains=value) | \
-                    Q(distribuidora__nombre__icontains=value) | \
-                    Q(modalidad__icontains=value)
+                    Q(distribuidora__nombre__icontains=value)
         
         # Si detectamos un ID de paquete, agregarlo a la búsqueda
         if paquete_id is not None:

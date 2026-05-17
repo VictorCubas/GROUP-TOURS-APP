@@ -107,12 +107,12 @@ class SalidaPaqueteFactory(DjangoModelFactory):
     moneda = factory.LazyAttribute(lambda obj: obj.paquete.moneda)
     
     # Precios
-    precio_actual = factory.LazyAttribute(
+    costo_base_desde = factory.LazyAttribute(
         lambda obj: Decimal(fake.random_int(1000, 5000))
     )
     
-    precio_final = factory.LazyAttribute(
-        lambda obj: obj.precio_actual * Decimal('2')
+    costo_base_hasta = factory.LazyAttribute(
+        lambda obj: obj.costo_base_desde * Decimal('2')
     )
     
     ganancia = factory.LazyAttribute(
@@ -120,7 +120,7 @@ class SalidaPaqueteFactory(DjangoModelFactory):
     )
     
     cupo = factory.LazyAttribute(lambda obj: obj.paquete.cantidad_pasajeros if obj.paquete else 30)
-    senia = factory.LazyAttribute(lambda obj: obj.precio_actual * Decimal('0.2'))
+    senia = factory.LazyAttribute(lambda obj: obj.costo_base_desde * Decimal('0.2'))
     
     @factory.post_generation
     def hoteles(obj, create, extracted, **kwargs):

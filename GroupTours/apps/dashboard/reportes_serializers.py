@@ -300,7 +300,7 @@ class PaqueteReporteSerializer(serializers.ModelSerializer):
         """Precio de la próxima salida"""
         proxima_salida = obj.salidas.filter(activo=True).order_by('fecha_salida').first()
         if proxima_salida:
-            return str(proxima_salida.precio_final or proxima_salida.precio_actual)
+            return str(proxima_salida.costo_base_hasta or proxima_salida.costo_base_desde)
         return "0.00"
     
     def get_precio_unitario(self, obj):
@@ -391,7 +391,7 @@ class PaqueteReporteSerializer(serializers.ModelSerializer):
         if not proxima_salida:
             return None
         
-        precio = proxima_salida.precio_final or proxima_salida.precio_actual
+        precio = proxima_salida.costo_base_hasta or proxima_salida.costo_base_desde
         
         # Si el paquete está en Gs, retornar directamente
         if obj.moneda and obj.moneda.codigo == 'PYG':
@@ -415,7 +415,7 @@ class PaqueteReporteSerializer(serializers.ModelSerializer):
         if not proxima_salida:
             return None
         
-        precio = proxima_salida.precio_final or proxima_salida.precio_actual
+        precio = proxima_salida.costo_base_hasta or proxima_salida.costo_base_desde
         
         # Si el paquete está en USD, retornar directamente
         if obj.moneda and obj.moneda.codigo == 'USD':
