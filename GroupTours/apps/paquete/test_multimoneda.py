@@ -127,7 +127,7 @@ salida_ejemplo = SalidaPaquete.objects.filter(moneda__isnull=False).first()
 if salida_ejemplo:
     print(f"✓ Salida encontrada: {salida_ejemplo} (ID: {salida_ejemplo.id})")
     print(f"  - Moneda: {salida_ejemplo.moneda.codigo}")
-    print(f"  - Precio actual: {salida_ejemplo.precio_actual}")
+    print(f"  - Precio actual: {salida_ejemplo.costo_base_desde}")
 
     # Probar método de conversión a moneda alternativa
     try:
@@ -158,7 +158,7 @@ try:
             print("✓ Campo 'precio_moneda_alternativa' disponible en serializer")
             if data['precio_moneda_alternativa']:
                 print(f"  Moneda alternativa: {data['precio_moneda_alternativa'].get('moneda')}")
-                print(f"  Precio actual: {data['precio_moneda_alternativa'].get('precio_actual')}")
+                print(f"  Precio actual: {data['precio_moneda_alternativa'].get('costo_base_desde')}")
             else:
                 print("  ⚠ Campo está en null (puede ser por falta de cotización)")
         else:
@@ -203,7 +203,7 @@ data = {
 
 salida = create_salida_paquete(data)
 print(f"Salida creada: {salida}")
-print(f"Precio en {salida.moneda.codigo}: {salida.precio_actual}")
+print(f"Precio en {salida.moneda.codigo}: {salida.costo_base_desde}")
 
 # Ver precio en moneda alternativa
 precio_alt = salida.precio_en_moneda_alternativa

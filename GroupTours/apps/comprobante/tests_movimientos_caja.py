@@ -110,7 +110,7 @@ class ComprobantePagoMovimientoCajaTestCase(TestCase):
         self.salida = SalidaPaquete.objects.create(
             paquete=self.paquete,
             fecha_salida=timezone.now().date(),
-            precio_actual=Decimal('1000000'),
+            costo_base_desde=Decimal('1000000'),
             senia=Decimal('300000')
         )
 

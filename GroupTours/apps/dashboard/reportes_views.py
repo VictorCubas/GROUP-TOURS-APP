@@ -193,7 +193,7 @@ def calcular_precio_promedio_usd(salidas_o_paquetes, es_queryset_paquetes=False)
                 if not proxima_salida:
                     continue
                 
-                precio = proxima_salida.precio_final or proxima_salida.precio_actual or Decimal('0')
+                precio = proxima_salida.costo_base_hasta or proxima_salida.costo_base_desde or Decimal('0')
                 if precio <= 0:
                     continue
                 
@@ -228,7 +228,7 @@ def calcular_precio_promedio_usd(salidas_o_paquetes, es_queryset_paquetes=False)
             
             for salida in salidas:
                 paquete = salida.paquete
-                precio = salida.precio_actual or Decimal('0')
+                precio = salida.costo_base_desde or Decimal('0')
                 
                 if precio <= 0:
                     continue
@@ -293,7 +293,7 @@ def calcular_precio_promedio_pyg(salidas_o_paquetes, es_queryset_paquetes=False)
                 if not proxima_salida:
                     continue
                 
-                precio = proxima_salida.precio_final or proxima_salida.precio_actual or Decimal('0')
+                precio = proxima_salida.costo_base_hasta or proxima_salida.costo_base_desde or Decimal('0')
                 if precio <= 0:
                     continue
                 
@@ -316,7 +316,7 @@ def calcular_precio_promedio_pyg(salidas_o_paquetes, es_queryset_paquetes=False)
             
             for salida in salidas:
                 paquete = salida.paquete
-                precio = salida.precio_actual or Decimal('0')
+                precio = salida.costo_base_desde or Decimal('0')
                 
                 if precio <= 0:
                     continue
@@ -708,14 +708,14 @@ def reporte_paquetes(request):
         
         if salidas.exists():
             precio_stats = salidas.aggregate(
-                promedio=Avg('precio_actual')
+                promedio=Avg('costo_base_desde')
             )
-            salida_minima = salidas.order_by('precio_actual').first()
-            salida_maxima = salidas.order_by('-precio_actual').first()
+            salida_minima = salidas.order_by('costo_base_desde').first()
+            salida_maxima = salidas.order_by('-costo_base_desde').first()
             
             precio_promedio = str(precio_stats['promedio'] or Decimal('0'))
-            precio_minimo = str(salida_minima.precio_actual if salida_minima else Decimal('0'))
-            precio_maximo = str(salida_maxima.precio_actual if salida_maxima else Decimal('0'))
+            precio_minimo = str(salida_minima.costo_base_desde if salida_minima else Decimal('0'))
+            precio_maximo = str(salida_maxima.costo_base_desde if salida_maxima else Decimal('0'))
             
             # Calcular promedios en ambas monedas (usando solo la próxima salida de cada paquete)
             precio_promedio_pyg = calcular_precio_promedio_pyg(queryset, es_queryset_paquetes=True)
@@ -1473,14 +1473,14 @@ def exportar_paquetes_pdf(request):
         
         if salidas.exists():
             precio_stats = salidas.aggregate(
-                promedio=Avg('precio_actual')
+                promedio=Avg('costo_base_desde')
             )
-            salida_minima = salidas.order_by('precio_actual').first()
-            salida_maxima = salidas.order_by('-precio_actual').first()
+            salida_minima = salidas.order_by('costo_base_desde').first()
+            salida_maxima = salidas.order_by('-costo_base_desde').first()
             
             precio_promedio = precio_stats['promedio'] or Decimal('0')
-            precio_minimo = salida_minima.precio_actual if salida_minima else Decimal('0')
-            precio_maximo = salida_maxima.precio_actual if salida_maxima else Decimal('0')
+            precio_minimo = salida_minima.costo_base_desde if salida_minima else Decimal('0')
+            precio_maximo = salida_maxima.costo_base_desde if salida_maxima else Decimal('0')
             
             # Calcular promedios en ambas monedas (usando solo la próxima salida de cada paquete)
             precio_promedio_pyg = calcular_precio_promedio_pyg(queryset, es_queryset_paquetes=True)
@@ -1694,14 +1694,14 @@ def exportar_paquetes_excel(request):
         
         if salidas.exists():
             precio_stats = salidas.aggregate(
-                promedio=Avg('precio_actual')
+                promedio=Avg('costo_base_desde')
             )
-            salida_minima = salidas.order_by('precio_actual').first()
-            salida_maxima = salidas.order_by('-precio_actual').first()
+            salida_minima = salidas.order_by('costo_base_desde').first()
+            salida_maxima = salidas.order_by('-costo_base_desde').first()
             
             precio_promedio = precio_stats['promedio'] or Decimal('0')
-            precio_minimo = salida_minima.precio_actual if salida_minima else Decimal('0')
-            precio_maximo = salida_maxima.precio_actual if salida_maxima else Decimal('0')
+            precio_minimo = salida_minima.costo_base_desde if salida_minima else Decimal('0')
+            precio_maximo = salida_maxima.costo_base_desde if salida_maxima else Decimal('0')
             
             # Calcular promedios en ambas monedas (usando solo la próxima salida de cada paquete)
             precio_promedio_pyg = calcular_precio_promedio_pyg(queryset, es_queryset_paquetes=True)

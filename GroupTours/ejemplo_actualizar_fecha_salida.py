@@ -64,7 +64,7 @@ def obtener_detalle_salida(salida_id):
         print(f"  Paquete: {salida.get('paquete', {}).get('nombre', 'N/A')}")
         print(f"  Fecha Salida: {salida['fecha_salida']}")
         print(f"  Fecha Regreso: {salida['fecha_regreso']}")
-        print(f"  Precio Actual: {salida['precio_actual']} {salida.get('moneda', {}).get('codigo', '')}")
+        print(f"  Costo Base Desde: {salida['costo_base_desde']} {salida.get('moneda', {}).get('codigo', '')}")
         print(f"  Cupo: {salida.get('cupo', 'N/A')}")
         print(f"  Activo: {salida['activo']}")
         
