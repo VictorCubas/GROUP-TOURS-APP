@@ -98,7 +98,7 @@ class Habitacion(models.Model):
         help_text="Tipo de habitación"
     )
     precio_noche = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    moneda = models.ForeignKey(Moneda, on_delete=models.PROTECT, related_name="habitaciones")
+    moneda = models.ForeignKey(Moneda, on_delete=models.PROTECT, related_name="habitaciones", null=True, blank=True)
     servicios = models.ManyToManyField(Servicio, blank=True, related_name="habitaciones")
     activo = models.BooleanField(default=True)
     fecha_creacion = models.DateTimeField(auto_now_add=True)

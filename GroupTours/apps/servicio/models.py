@@ -15,11 +15,14 @@ class Servicio(models.Model):
     nombre = models.CharField(max_length=150)
     descripcion = models.TextField(blank=True, null=True)
     
-    # Precio base del servicio
+    # Precio base del servicio — campo legacy, opcional.
+    # El precio real de venta vive en PrecioCatalogoHabitacion por salida.
     precio = models.DecimalField(
         max_digits=12,
         decimal_places=2,
-        help_text="Precio base del servicio. Puede ser sobreescrito en PaqueteServicio."
+        null=True,
+        blank=True,
+        help_text="Precio base del servicio (legacy). No afecta el cálculo de precios de venta."
     )
 
     TIPO_CHOICES = [
